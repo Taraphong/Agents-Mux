@@ -63,6 +63,12 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
         conversation_id = str(uuid.uuid4())
     now = datetime.now().astimezone()
     existing = find_history_file(conversation_id)
+    existing_record = {}
+    if existing and existing.exists():
+        try:
+            existing_record = json.loads(existing.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            existing_record = {}
     created_at = payload.get("created_at") or now.isoformat(timespec="seconds")
     path = existing or HISTORY_ROOT / now.strftime("%Y-%m-%d") / f"{now.strftime('%H-%M-%S')}_{conversation_id}.json"
     record = {
@@ -70,6 +76,7 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
         "title": (payload.get("title") or "บทสนทนาใหม่")[:100],
         "created_at": created_at,
         "updated_at": now.isoformat(timespec="seconds"),
+        "locked": bool(existing_record.get("locked", False)),
         "messages": payload.get("messages", []),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -212,7 +219,7 @@ def history_list():
         for path in HISTORY_ROOT.rglob("*.json"):
             try:
                 record = json.loads(path.read_text(encoding="utf-8"))
-                records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at")})
+                records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked")})
             except (OSError, json.JSONDecodeError):
                 continue
     records.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
@@ -225,6 +232,37 @@ def history_get(conversation_id: str):
     if not path or not path.exists():
         return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
     return jsonify(json.loads(path.read_text(encoding="utf-8")))
+
+
+@app.patch("/api/history/<conversation_id>")
+def history_update(conversation_id: str):
+    path = find_history_file(conversation_id)
+    if not path or not path.exists():
+        return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+    record = json.loads(path.read_text(encoding="utf-8"))
+    body = request.get_json(silent=True) or {}
+    if record.get("locked") and "title" in body:
+        return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนเปลี่ยนชื่อ"}), 423
+    if "title" in body:
+        title = str(body["title"]).strip()
+        if title:
+            record["title"] = title[:100]
+    if "locked" in body:
+        record["locked"] = bool(body["locked"])
+    path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    return jsonify(record)
+
+
+@app.delete("/api/history/<conversation_id>")
+def history_delete(conversation_id: str):
+    path = find_history_file(conversation_id)
+    if not path or not path.exists():
+        return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if record.get("locked"):
+        return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนลบ"}), 423
+    path.unlink()
+    return jsonify({"ok": True})
 
 
 @app.post("/api/history")
