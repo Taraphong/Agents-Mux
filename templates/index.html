@@ -1,76 +1,82 @@
 <!doctype html>
 <html lang="th">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Web บน Termux</title>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Control Center</title>
   <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
-    body { margin: 0; background: #111827; color: #f9fafb; }
-    main { max-width: 850px; margin: auto; min-height: 100vh; display: flex; flex-direction: column; }
-    header { padding: 20px; border-bottom: 1px solid #374151; }
-    h1 { margin: 0 0 6px; font-size: 1.35rem; }
-    .muted { color: #9ca3af; font-size: .9rem; }
-    #messages { flex: 1; padding: 20px; overflow-y: auto; }
-    .message { white-space: pre-wrap; padding: 13px 16px; border-radius: 14px; margin: 10px 0; max-width: 85%; line-height: 1.55; }
-    .user { background: #2563eb; margin-left: auto; }
-    .assistant { background: #1f2937; margin-right: auto; }
-    form { display: flex; gap: 10px; padding: 16px 20px 22px; border-top: 1px solid #374151; }
-    textarea { flex: 1; resize: vertical; min-height: 48px; max-height: 180px; border: 1px solid #4b5563; border-radius: 12px; padding: 12px; background: #111827; color: white; font: inherit; }
-    button { border: 0; border-radius: 12px; padding: 0 20px; background: #10b981; color: #06281f; font-weight: 700; cursor: pointer; }
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
+    * { box-sizing: border-box; } body { margin: 0; background: #0b1020; color: #e5e7eb; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; }
+    aside { border-right: 1px solid #24304a; background: #10172a; padding: 22px 14px; }
+    .brand { display: flex; gap: 10px; align-items: center; font-weight: 800; font-size: 1.1rem; padding: 0 10px 26px; }
+    .brand-mark { background: linear-gradient(135deg,#4f46e5,#06b6d4); width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; }
+    nav button { display: block; width: 100%; text-align: left; border: 0; color: #9ca3af; background: transparent; padding: 12px; border-radius: 10px; font: inherit; cursor: pointer; margin: 3px 0; }
+    nav button.active, nav button:hover { color: white; background: #202b49; }
+    .layout { min-width: 0; display: flex; flex-direction: column; }
+    header { height: 68px; border-bottom: 1px solid #24304a; padding: 0 28px; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { font-size: 1.1rem; margin: 0; } .status { color: #34d399; font-size: .85rem; }
+    .content { width: min(1100px, 100%); margin: auto; padding: 28px; flex: 1; }
+    .view { display: none; } .view.active { display: block; }
+    .messages { min-height: calc(100vh - 160px); display: flex; flex-direction: column; }
+    #messages { flex: 1; overflow-y: auto; padding: 10px 0 25px; }
+    .message { white-space: pre-wrap; padding: 14px 17px; border-radius: 15px; margin: 11px 0; max-width: 82%; line-height: 1.6; }
+    .user { background: #3554c7; margin-left: auto; } .assistant { background: #182238; margin-right: auto; }
+    form.chat-form { display: flex; gap: 10px; padding-top: 14px; border-top: 1px solid #24304a; }
+    textarea, input, select { width: 100%; border: 1px solid #34415f; border-radius: 10px; padding: 11px 12px; background: #111a30; color: white; font: inherit; }
+    textarea:focus, input:focus, select:focus { outline: 2px solid #4f46e5; border-color: transparent; }
+    .chat-form textarea { min-height: 52px; max-height: 180px; resize: vertical; } button { border: 0; border-radius: 10px; padding: 0 18px; background: #10b981; color: #04261c; font-weight: 800; cursor: pointer; }
     button:disabled { opacity: .5; cursor: wait; }
+    .card { background: #121b30; border: 1px solid #263555; border-radius: 15px; padding: 21px; margin-bottom: 18px; }
+    .card h2 { margin: 0 0 5px; font-size: 1rem; } .hint { color: #94a3b8; font-size: .86rem; margin: 0 0 18px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } label { display: block; color: #cbd5e1; font-size: .88rem; } label span { display: block; margin-bottom: 7px; }
+    .full { grid-column: 1 / -1; } .range-row { display: flex; gap: 12px; align-items: center; } input[type=range] { accent-color: #6366f1; padding: 0; } .range-value { width: 45px; color: #a5b4fc; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; } .secondary { background: #273452; color: #e5e7eb; } .danger { background: #4b2431; color: #fecdd3; }
+    .notice { padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; background: #102d28; color: #a7f3d0; display: none; } .notice.error { background: #3b1d29; color: #fecdd3; }
+    .toggle { display: flex; align-items: center; gap: 10px; } .toggle input { width: auto; accent-color: #6366f1; }
+    @media (max-width: 700px) { .app { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid #24304a; padding: 10px; } .brand { padding: 5px 10px 10px; } nav { display: flex; gap: 5px; } nav button { text-align: center; padding: 9px 7px; font-size: .82rem; } header { padding: 0 18px; } .content { padding: 18px; } .grid { grid-template-columns: 1fr; } .full { grid-column: auto; } }
   </style>
 </head>
 <body>
-  <main>
-    <header><h1>AI Web บน Termux</h1><div class="muted">พิมพ์ข้อความเพื่อเริ่มสนทนา</div></header>
-    <section id="messages"><div class="message assistant">สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div></section>
-    <form id="chat-form">
-      <textarea id="input" placeholder="พิมพ์ข้อความ..." required></textarea>
-      <button id="send" type="submit">ส่ง</button>
-    </form>
-  </main>
+  <div class="app">
+    <aside><div class="brand"><div class="brand-mark">✦</div><span>AI Control Center</span></div>
+      <nav><button class="active" data-view="chat">💬 แชต</button><button data-view="settings">⚙️ Settings</button><button data-view="about">ⓘ เกี่ยวกับ</button></nav>
+    </aside>
+    <div class="layout"><header><h1 id="page-title">แชตกับ AI</h1><span class="status">● พร้อมใช้งาน</span></header>
+      <div class="content">
+        <section id="chat-view" class="view active"><div class="messages"><div id="messages"><div class="message assistant">สวัสดีครับ ผมพร้อมช่วยคุณแล้ว ไปตั้งค่าผู้ให้บริการได้ที่เมนู Settings</div></div>
+          <form class="chat-form" id="chat-form"><textarea id="input" placeholder="พิมพ์ข้อความ..." required></textarea><button id="send" type="submit">ส่ง</button></form></div></section>
+        <section id="settings-view" class="view"><div id="notice" class="notice"></div>
+          <div class="card"><h2>ผู้ให้บริการและโมเดล</h2><p class="hint">เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ OpenAI-compatible API</p><div class="grid">
+            <label><span>Provider</span><select id="provider"><option value="openai">OpenAI / OpenAI-compatible</option><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic Claude</option></select></label>
+            <label><span>Model</span><input id="model" placeholder="gpt-4.1-mini"></label>
+            <label class="full"><span>Base URL (สำหรับ OpenAI-compatible)</span><input id="base_url" placeholder="https://api.openai.com/v1"></label>
+            <label class="full"><span>API key</span><input id="api_key" type="password" placeholder="เว้นว่างเพื่อใช้คีย์เดิม"></label>
+          </div></div>
+          <div class="card"><h2>พฤติกรรมของผู้ช่วย</h2><p class="hint">ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ</p><div class="grid">
+            <label class="full"><span>System prompt</span><textarea id="system_prompt" rows="5"></textarea></label>
+            <label><span>Temperature <b id="temperature-value">0.7</b></span><div class="range-row"><input id="temperature" type="range" min="0" max="2" step="0.1"><span class="range-value" id="temp-label">0.7</span></div></label>
+            <label><span>Top P <b id="top_p-value">1</b></span><div class="range-row"><input id="top_p" type="range" min="0" max="1" step="0.05"><span class="range-value" id="top-label">1</span></div></label>
+            <label><span>Max output tokens</span><input id="max_tokens" type="number" min="1" max="100000"></label>
+            <label class="toggle"><input id="stream" type="checkbox"><span>เปิดการตอบแบบ streaming (เตรียมรองรับ)</span></label>
+          </div><div class="actions"><button id="save">บันทึกการตั้งค่า</button><button class="secondary" id="test" type="button">ทดสอบการเชื่อมต่อ</button><button class="danger" id="reset" type="button">รีเซ็ต</button></div></div>
+        </section>
+        <section id="about-view" class="view"><div class="card"><h2>เกี่ยวกับระบบ</h2><p class="hint">เว็บแชต AI ที่รันบน Termux พร้อมหน้า settings สำหรับควบคุม provider, model, endpoint, prompt และพารามิเตอร์ต่าง ๆ</p><p class="hint">API key จะเก็บฝั่งเซิร์ฟเวอร์ในไฟล์ตั้งค่าที่ไม่ถูก commit เข้า Git</p></div></section>
+      </div>
+    </div>
+  </div>
   <script>
-    const form = document.querySelector('#chat-form');
-    const input = document.querySelector('#input');
-    const send = document.querySelector('#send');
-    const messagesEl = document.querySelector('#messages');
+    const $ = (id) => document.getElementById(id);
     const messages = [];
-
-    function addMessage(role, content) {
-      const el = document.createElement('div');
-      el.className = `message ${role}`;
-      el.textContent = content;
-      messagesEl.appendChild(el);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const content = input.value.trim();
-      if (!content || send.disabled) return;
-      messages.push({ role: 'user', content });
-      addMessage('user', content);
-      input.value = '';
-      send.disabled = true;
-      send.textContent = 'กำลังคิด...';
-      try {
-        const response = await fetch('/api/chat', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ messages })
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด');
-        messages.push({ role: 'assistant', content: data.answer });
-        addMessage('assistant', data.answer);
-      } catch (error) {
-        addMessage('assistant', `ข้อผิดพลาด: ${error.message}`);
-      } finally {
-        send.disabled = false;
-        send.textContent = 'ส่ง';
-        input.focus();
-      }
-    });
+    function addMessage(role, content) { const el = document.createElement('div'); el.className = `message ${role}`; el.textContent = content; $('messages').appendChild(el); $('messages').scrollTop = $('messages').scrollHeight; }
+    document.querySelectorAll('nav button').forEach(button => button.addEventListener('click', () => { document.querySelectorAll('nav button').forEach(b => b.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.view').forEach(v => v.classList.remove('active')); $(`${button.dataset.view}-view`).classList.add('active'); $('page-title').textContent = button.dataset.view === 'chat' ? 'แชตกับ AI' : button.dataset.view === 'settings' ? 'ตั้งค่าระบบ' : 'เกี่ยวกับระบบ'; if (button.dataset.view === 'settings') loadSettings(); }));
+    $('chat-form').addEventListener('submit', async (event) => { event.preventDefault(); const content = $('input').value.trim(); if (!content || $('send').disabled) return; messages.push({role:'user',content}); addMessage('user', content); $('input').value = ''; $('send').disabled = true; $('send').textContent = 'กำลังคิด...'; try { const r = await fetch('/api/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages})}); const data = await r.json(); if (!r.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด'); messages.push({role:'assistant',content:data.answer}); addMessage('assistant', data.answer); } catch (e) { addMessage('assistant', `ข้อผิดพลาด: ${e.message}`); } finally { $('send').disabled = false; $('send').textContent = 'ส่ง'; $('input').focus(); } });
+    function showNotice(text, error=false) { const n = $('notice'); n.textContent = text; n.className = `notice${error ? ' error' : ''}`; n.style.display = 'block'; setTimeout(() => n.style.display = 'none', 4000); }
+    async function loadSettings() { const r = await fetch('/api/settings'); const s = await r.json(); ['provider','model','base_url','system_prompt','temperature','max_tokens','top_p'].forEach(k => { if ($(k)) $(k).value = s[k] ?? ''; }); $('stream').checked = !!s.stream; $('api_key').value = ''; $('api_key').placeholder = s.has_api_key ? 'มีคีย์เดิมอยู่แล้ว — เว้นว่างเพื่อคงเดิม' : 'ใส่ API key'; updateRanges(); }
+    function updateRanges() { $('temp-label').textContent = $('temperature').value; $('temperature-value').textContent = $('temperature').value; $('top-label').textContent = $('top_p').value; $('top_p-value').textContent = $('top_p').value; }
+    $('temperature').addEventListener('input', updateRanges); $('top_p').addEventListener('input', updateRanges);
+    $('save').addEventListener('click', async () => { const body = {}; ['provider','model','base_url','system_prompt','api_key'].forEach(k => body[k] = $(k).value); body.temperature = Number($('temperature').value); body.top_p = Number($('top_p').value); body.max_tokens = Number($('max_tokens').value); body.stream = $('stream').checked; const r = await fetch('/api/settings', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); showNotice(r.ok ? 'บันทึกการตั้งค่าแล้ว' : 'บันทึกไม่สำเร็จ', !r.ok); });
+    $('test').addEventListener('click', async () => { $('test').disabled = true; $('test').textContent = 'กำลังทดสอบ...'; const r = await fetch('/api/settings/test', {method:'POST'}); const data = await r.json(); showNotice(data.ok ? `เชื่อมต่อสำเร็จ: ${data.answer}` : `เชื่อมต่อไม่สำเร็จ: ${data.error}`, !data.ok); $('test').disabled = false; $('test').textContent = 'ทดสอบการเชื่อมต่อ'; });
+    $('reset').addEventListener('click', async () => { if (!confirm('รีเซ็ตการตั้งค่าทั้งหมดหรือไม่?')) return; await fetch('/api/settings/reset', {method:'POST'}); await loadSettings(); showNotice('รีเซ็ตการตั้งค่าแล้ว'); });
   </script>
 </body>
 </html>

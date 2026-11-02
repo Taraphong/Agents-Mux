@@ -1,4 +1,6 @@
 import os
+import json
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -8,20 +10,63 @@ from flask import Flask, jsonify, render_template, request
 load_dotenv()
 
 app = Flask(__name__)
+SETTINGS_FILE = Path(os.getenv("AI_WEB_SETTINGS_FILE", ".app-settings.json"))
+
+DEFAULT_SETTINGS = {
+    "provider": os.getenv("AI_PROVIDER", "openai"),
+    "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+    "base_url": "https://api.openai.com/v1",
+    "system_prompt": "คุณเป็นผู้ช่วย AI ที่สุภาพ ชัดเจน และช่วยผู้ใช้ให้บรรลุเป้าหมาย",
+    "temperature": 0.7,
+    "max_tokens": 2048,
+    "top_p": 1,
+    "stream": False,
+}
 
 
-def call_openai(messages: list[dict[str, str]]) -> str:
-    key = os.getenv("OPENAI_API_KEY", "")
+def load_settings() -> dict[str, Any]:
+    settings = DEFAULT_SETTINGS.copy()
+    if SETTINGS_FILE.exists():
+        try:
+            settings.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            pass
+    return settings
+
+
+def save_settings(settings: dict[str, Any]) -> None:
+    SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_api_key(provider: str) -> str:
+    settings = load_settings()
+    stored = settings.get("api_key", "")
+    if stored:
+        return stored
+    return os.getenv({"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}.get(provider, "OPENAI_API_KEY"), "")
+
+
+def clean_messages(messages: list[dict[str, str]], settings: dict[str, Any]) -> list[dict[str, str]]:
+    result = [{"role": "system", "content": settings.get("system_prompt", "")}] if settings.get("system_prompt") else []
+    result.extend({"role": item.get("role", "user"), "content": item.get("content", "")} for item in messages)
+    return result
+
+
+def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> str:
+    key = get_api_key(settings["provider"])
     if not key:
-        raise RuntimeError("ยังไม่ได้ตั้งค่า OPENAI_API_KEY")
+        raise RuntimeError("ยังไม่ได้ตั้งค่า API key")
 
+    base_url = settings.get("base_url", "https://api.openai.com/v1").rstrip("/")
     response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
+        f"{base_url}/chat/completions",
         headers={"Authorization": f"Bearer {key}"},
         json={
-            "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+            "model": settings["model"],
             "messages": messages,
-            "temperature": 0.7,
+            "temperature": settings["temperature"],
+            "max_tokens": settings["max_tokens"],
+            "top_p": settings["top_p"],
         },
         timeout=90,
     )
@@ -30,21 +75,27 @@ def call_openai(messages: list[dict[str, str]]) -> str:
     return data["choices"][0]["message"]["content"]
 
 
-def call_gemini(messages: list[dict[str, str]]) -> str:
-    key = os.getenv("GEMINI_API_KEY", "")
+def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> str:
+    key = get_api_key("gemini")
     if not key:
-        raise RuntimeError("ยังไม่ได้ตั้งค่า GEMINI_API_KEY")
+        raise RuntimeError("ยังไม่ได้ตั้งค่า Gemini API key")
 
     contents: list[dict[str, Any]] = []
     for message in messages:
+        if message["role"] == "system":
+            continue
         role = "model" if message["role"] == "assistant" else "user"
         contents.append({"role": role, "parts": [{"text": message["content"]}]})
 
-    model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    model = settings["model"]
     response = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         params={"key": key},
-        json={"contents": contents},
+        json={"contents": contents, "generationConfig": {
+            "temperature": settings["temperature"],
+            "topP": settings["top_p"],
+            "maxOutputTokens": settings["max_tokens"],
+        }},
         timeout=90,
     )
     response.raise_for_status()
@@ -52,9 +103,77 @@ def call_gemini(messages: list[dict[str, str]]) -> str:
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
+def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> str:
+    key = get_api_key("anthropic")
+    if not key:
+        raise RuntimeError("ยังไม่ได้ตั้งค่า Anthropic API key")
+    system = next((m["content"] for m in messages if m["role"] == "system"), "")
+    response = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+        json={
+            "model": settings["model"],
+            "system": system,
+            "messages": [m for m in messages if m["role"] != "system"],
+            "max_tokens": settings["max_tokens"],
+            "temperature": settings["temperature"],
+        },
+        timeout=90,
+    )
+    response.raise_for_status()
+    return response.json()["content"][0]["text"]
+
+
 @app.get("/")
 def index():
     return render_template("index.html")
+
+
+@app.get("/api/settings")
+def settings_get():
+    settings = load_settings()
+    key = get_api_key(settings["provider"])
+    safe = {**settings, "api_key": "" if not key else "••••••••"}
+    safe["has_api_key"] = bool(key)
+    return jsonify(safe)
+
+
+@app.put("/api/settings")
+def settings_put():
+    body = request.get_json(silent=True) or {}
+    current = load_settings()
+    allowed = {"provider", "model", "base_url", "system_prompt", "temperature", "max_tokens", "top_p", "stream"}
+    for key in allowed:
+        if key in body:
+            current[key] = body[key]
+    if body.get("api_key") and body["api_key"] != "••••••••":
+        current["api_key"] = body["api_key"]
+    save_settings(current)
+    return jsonify({"ok": True})
+
+
+@app.post("/api/settings/test")
+def settings_test():
+    settings = load_settings()
+    try:
+        messages = clean_messages([{"role": "user", "content": "ตอบคำว่า OK สั้น ๆ"}], settings)
+        provider = settings["provider"]
+        if provider in {"gemini"}:
+            answer = call_gemini(messages, settings)
+        elif provider == "anthropic":
+            answer = call_anthropic(messages, settings)
+        else:
+            answer = call_openai(messages, settings)
+        return jsonify({"ok": True, "answer": answer})
+    except (requests.RequestException, KeyError, IndexError, RuntimeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+
+@app.post("/api/settings/reset")
+def settings_reset():
+    if SETTINGS_FILE.exists():
+        SETTINGS_FILE.unlink()
+    return jsonify({"ok": True})
 
 
 @app.post("/api/chat")
@@ -65,8 +184,15 @@ def chat():
         return jsonify({"error": "กรุณาส่งข้อความ"}), 400
 
     try:
-        provider = os.getenv("AI_PROVIDER", "openai").lower()
-        answer = call_gemini(messages) if provider == "gemini" else call_openai(messages)
+        settings = load_settings()
+        provider = settings["provider"].lower()
+        messages = clean_messages(messages, settings)
+        if provider == "gemini":
+            answer = call_gemini(messages, settings)
+        elif provider == "anthropic":
+            answer = call_anthropic(messages, settings)
+        else:
+            answer = call_openai(messages, settings)
         return jsonify({"answer": answer, "provider": provider})
     except requests.HTTPError as exc:
         detail = exc.response.text[:500] if exc.response is not None else str(exc)

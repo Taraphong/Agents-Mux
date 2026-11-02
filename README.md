@@ -1,6 +1,6 @@
 # AI Web บน Termux
 
-เว็บแชต AI แบบเรียบง่าย รองรับ OpenAI และ Google Gemini
+เว็บแชต AI สำหรับ Termux พร้อม Control Center สำหรับตั้งค่า provider, model, endpoint, API key, system prompt และพารามิเตอร์การตอบ รองรับ OpenAI-compatible, Google Gemini และ Anthropic
 
 ## เริ่มใช้งาน
 
@@ -15,3 +15,5 @@ python app.py
 เปิดเว็บที่ `http://127.0.0.1:5000`
 
 ตั้งค่า API key ในไฟล์ `.env` และเลือก `AI_PROVIDER=openai` หรือ `AI_PROVIDER=gemini`
+
+หรือเปิดเมนู `Settings` ในเว็บเพื่อบันทึกค่าลงไฟล์ `.app-settings.json` ซึ่งถูกกันออกจาก Git แล้ว
