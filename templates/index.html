@@ -18,13 +18,13 @@
     .history-item:hover, .history-item.active { background: #202b49; color: white; }
     nav button { display: block; width: 100%; text-align: left; border: 0; color: #9ca3af; background: transparent; padding: 12px; border-radius: 10px; font: inherit; cursor: pointer; margin: 3px 0; }
     nav button.active, nav button:hover { color: white; background: #202b49; }
-    .layout { min-width: 0; display: flex; flex-direction: column; }
+    .layout { min-width: 0; height: 100vh; min-height: 0; display: flex; flex-direction: column; }
     header { height: 68px; border-bottom: 1px solid #24304a; padding: 0 28px; display: flex; justify-content: space-between; align-items: center; }
     header h1 { font-size: 1.1rem; margin: 0; } .status { color: #34d399; font-size: .85rem; }
-    .content { width: min(1100px, 100%); margin: auto; padding: 28px; flex: 1; }
-    .view { display: none; } .view.active { display: block; }
-    .messages { min-height: calc(100vh - 160px); display: flex; flex-direction: column; }
-    #messages { flex: 1; overflow-y: auto; padding: 10px 0 25px; }
+    .content { width: min(1100px, 100%); margin: auto; padding: 28px; flex: 1; min-height: 0; overflow: hidden; }
+    .view { display: none; } .view.active { display: block; } #chat-view, #settings-view { height: 100%; min-height: 0; } #settings-view { overflow-y: auto; }
+    .messages { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+    #messages { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 0 25px; }
     .message { white-space: pre-wrap; padding: 14px 17px; border-radius: 15px; margin: 11px 0; max-width: 82%; line-height: 1.6; }
     .user { background: #3554c7; margin-left: auto; } .assistant { background: #182238; margin-right: auto; }
     form.chat-form { display: flex; gap: 10px; padding-top: 14px; border-top: 1px solid #24304a; }
@@ -82,7 +82,7 @@
     function resizeInput() { const el = $('input'); el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 180)}px`; el.style.overflowY = el.scrollHeight > 180 ? 'auto' : 'hidden'; }
     $('input').addEventListener('input', resizeInput); $('input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('chat-form').requestSubmit(); } });
     async function saveConversation() { if (!messages.length) return; const firstUser = messages.find(message => message.role === 'user'); const body = {id:conversationId, created_at:conversationCreatedAt, title:firstUser?.content || 'บทสนทนาใหม่', messages}; const response = await fetch('/api/history', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if (response.ok) { const saved = await response.json(); conversationId = saved.id; conversationCreatedAt = saved.created_at; await loadHistoryList(); } }
-    $('chat-form').addEventListener('submit', async (event) => { event.preventDefault(); const content = $('input').value.trim(); if (!content || $('send').disabled) return; messages.push({role:'user',content}); addMessage('user', content); $('input').value = ''; resizeInput(); $('send').disabled = true; $('send').textContent = '…'; try { const r = await fetch('/api/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages, thinking_level:$('chat-thinking-level').value, model:$('chat-model-select').value})}); const data = await r.json(); if (!r.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด'); messages.push({role:'assistant',content:data.answer}); addMessage('assistant', data.answer); await saveConversation(); } catch (e) { addMessage('assistant', `ข้อผิดพลาด: ${e.message}`); } finally { $('send').disabled = false; $('send').textContent = '↑'; $('input').focus(); } });
+    $('chat-form').addEventListener('submit', async (event) => { event.preventDefault(); const content = $('input').value.trim(); if (!content || $('send').disabled) return; messages.push({role:'user',content}); addMessage('user', content); await saveConversation(); $('input').value = ''; resizeInput(); $('send').disabled = true; $('send').textContent = '…'; try { const r = await fetch('/api/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages, thinking_level:$('chat-thinking-level').value, model:$('chat-model-select').value})}); const data = await r.json(); if (!r.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด'); messages.push({role:'assistant',content:data.answer}); addMessage('assistant', data.answer); await saveConversation(); } catch (e) { addMessage('assistant', `ข้อผิดพลาด: ${e.message}`); await saveConversation(); } finally { $('send').disabled = false; $('send').textContent = '↑'; $('input').focus(); } });
     function showNotice(text, error=false) { const n = $('notice'); n.textContent = text; n.className = `notice${error ? ' error' : ''}`; n.style.display = 'block'; setTimeout(() => n.style.display = 'none', 4000); }
     const MODEL_OPTIONS = {
       openai: { label: 'OpenAI / OpenAI-compatible', models: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o-mini', 'gpt-4o', 'o4-mini', 'o3'] },
