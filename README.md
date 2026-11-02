@@ -1,5 +1,7 @@
 # AI Web บน Termux
 
+สำหรับ Agents ที่เข้ามาทำงานร่วมกัน โปรดอ่าน [AGENTS.md](AGENTS.md) ก่อนแก้ไขโปรเจกต์
+
 เว็บแชต AI สำหรับ Termux พร้อม Control Center สำหรับตั้งค่า provider, model, endpoint, API key, system prompt และพารามิเตอร์การตอบ รองรับ OpenAI-compatible, Google Gemini และ Anthropic
 
 ## เริ่มใช้งาน
