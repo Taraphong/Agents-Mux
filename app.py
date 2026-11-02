@@ -50,7 +50,7 @@ def save_settings(settings: dict[str, Any]) -> None:
 
 
 def find_history_file(conversation_id: str) -> Path | None:
-    if not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+    if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
         return None
     for path in HISTORY_ROOT.rglob(f"*_{conversation_id}.json"):
         return path
@@ -58,8 +58,8 @@ def find_history_file(conversation_id: str) -> Path | None:
 
 
 def save_history(payload: dict[str, Any]) -> dict[str, Any]:
-    conversation_id = payload.get("id", "")
-    if not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+    conversation_id = payload.get("id") or ""
+    if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
         conversation_id = str(uuid.uuid4())
     now = datetime.now().astimezone()
     existing = find_history_file(conversation_id)
