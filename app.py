@@ -77,6 +77,7 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
         "created_at": created_at,
         "updated_at": now.isoformat(timespec="seconds"),
         "locked": bool(existing_record.get("locked", False)),
+        "pinned": bool(existing_record.get("pinned", False)),
         "messages": payload.get("messages", []),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -219,7 +220,7 @@ def history_list():
         for path in HISTORY_ROOT.rglob("*.json"):
             try:
                 record = json.loads(path.read_text(encoding="utf-8"))
-                records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked")})
+                records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked", "pinned")})
             except (OSError, json.JSONDecodeError):
                 continue
     records.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
@@ -249,6 +250,8 @@ def history_update(conversation_id: str):
             record["title"] = title[:100]
     if "locked" in body:
         record["locked"] = bool(body["locked"])
+    if "pinned" in body:
+        record["pinned"] = bool(body["pinned"])
     path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     return jsonify(record)
 
