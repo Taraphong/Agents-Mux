@@ -234,6 +234,9 @@ def chat():
         requested_thinking = body.get("thinking_level")
         if requested_thinking in {"off", "low", "medium", "high"}:
             settings["thinking_level"] = requested_thinking
+        requested_model = body.get("model")
+        if isinstance(requested_model, str) and requested_model.strip():
+            settings["model"] = requested_model.strip()
         provider = settings["provider"].lower()
         messages = clean_messages(messages, settings)
         if provider == "gemini":
