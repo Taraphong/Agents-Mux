@@ -231,6 +231,9 @@ def chat():
 
     try:
         settings = load_settings()
+        requested_thinking = body.get("thinking_level")
+        if requested_thinking in {"off", "low", "medium", "high"}:
+            settings["thinking_level"] = requested_thinking
         provider = settings["provider"].lower()
         messages = clean_messages(messages, settings)
         if provider == "gemini":
