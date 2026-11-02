@@ -10,6 +10,12 @@
     aside { border-right: 1px solid #24304a; background: #10172a; padding: 22px 14px; }
     .brand { display: flex; gap: 10px; align-items: center; font-weight: 800; font-size: 1.1rem; padding: 0 10px 26px; }
     .brand-mark { background: linear-gradient(135deg,#4f46e5,#06b6d4); width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; }
+    .new-chat { width: 100%; margin: 0 0 16px; padding: 10px; background: #273452; color: #e5e7eb; }
+    .history-title { color: #64748b; font-size: .75rem; padding: 8px 10px 5px; text-transform: uppercase; letter-spacing: .04em; }
+    #history-list { max-height: 45vh; overflow-y: auto; }
+    .history-day { color: #64748b; font-size: .72rem; padding: 10px 10px 4px; }
+    .history-item { width: 100%; border: 0; background: transparent; color: #cbd5e1; padding: 9px 10px; border-radius: 8px; text-align: left; cursor: pointer; font: inherit; font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-item:hover, .history-item.active { background: #202b49; color: white; }
     nav button { display: block; width: 100%; text-align: left; border: 0; color: #9ca3af; background: transparent; padding: 12px; border-radius: 10px; font: inherit; cursor: pointer; margin: 3px 0; }
     nav button.active, nav button:hover { color: white; background: #202b49; }
     .layout { min-width: 0; display: flex; flex-direction: column; }
@@ -40,7 +46,7 @@
 <body>
   <div class="app">
     <aside><div class="brand"><div class="brand-mark">✦</div><span>AI Control Center</span></div>
-      <nav><button class="active" data-view="chat">💬 แชต</button><button data-view="settings">⚙️ Settings</button><button data-view="about">ⓘ เกี่ยวกับ</button></nav>
+      <nav><button class="active" data-view="chat">💬 แชต</button><button data-view="settings">⚙️ Settings</button><button data-view="about">ⓘ เกี่ยวกับ</button></nav><button class="new-chat" id="new-chat">＋ แชตใหม่</button><div class="history-title">ประวัติการพูดคุย</div><div id="history-list"></div>
     </aside>
     <div class="layout"><header><h1 id="page-title">แชตกับ AI</h1><span class="status">● พร้อมใช้งาน</span></header>
       <div class="content">
@@ -69,11 +75,14 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const messages = [];
+    let conversationId = null;
+    let conversationCreatedAt = null;
     function addMessage(role, content) { const el = document.createElement('div'); el.className = `message ${role}`; el.textContent = content; $('messages').appendChild(el); $('messages').scrollTop = $('messages').scrollHeight; }
     document.querySelectorAll('nav button').forEach(button => button.addEventListener('click', () => { document.querySelectorAll('nav button').forEach(b => b.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.view').forEach(v => v.classList.remove('active')); $(`${button.dataset.view}-view`).classList.add('active'); $('page-title').textContent = button.dataset.view === 'chat' ? 'แชตกับ AI' : button.dataset.view === 'settings' ? 'ตั้งค่าระบบ' : 'เกี่ยวกับระบบ'; if (button.dataset.view === 'settings') loadSettings(); }));
     function resizeInput() { const el = $('input'); el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 180)}px`; el.style.overflowY = el.scrollHeight > 180 ? 'auto' : 'hidden'; }
     $('input').addEventListener('input', resizeInput); $('input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('chat-form').requestSubmit(); } });
-    $('chat-form').addEventListener('submit', async (event) => { event.preventDefault(); const content = $('input').value.trim(); if (!content || $('send').disabled) return; messages.push({role:'user',content}); addMessage('user', content); $('input').value = ''; resizeInput(); $('send').disabled = true; $('send').textContent = '…'; try { const r = await fetch('/api/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages, thinking_level:$('chat-thinking-level').value, model:$('chat-model-select').value})}); const data = await r.json(); if (!r.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด'); messages.push({role:'assistant',content:data.answer}); addMessage('assistant', data.answer); } catch (e) { addMessage('assistant', `ข้อผิดพลาด: ${e.message}`); } finally { $('send').disabled = false; $('send').textContent = '↑'; $('input').focus(); } });
+    async function saveConversation() { if (!messages.length) return; const firstUser = messages.find(message => message.role === 'user'); const body = {id:conversationId, created_at:conversationCreatedAt, title:firstUser?.content || 'บทสนทนาใหม่', messages}; const response = await fetch('/api/history', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if (response.ok) { const saved = await response.json(); conversationId = saved.id; conversationCreatedAt = saved.created_at; await loadHistoryList(); } }
+    $('chat-form').addEventListener('submit', async (event) => { event.preventDefault(); const content = $('input').value.trim(); if (!content || $('send').disabled) return; messages.push({role:'user',content}); addMessage('user', content); $('input').value = ''; resizeInput(); $('send').disabled = true; $('send').textContent = '…'; try { const r = await fetch('/api/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages, thinking_level:$('chat-thinking-level').value, model:$('chat-model-select').value})}); const data = await r.json(); if (!r.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด'); messages.push({role:'assistant',content:data.answer}); addMessage('assistant', data.answer); await saveConversation(); } catch (e) { addMessage('assistant', `ข้อผิดพลาด: ${e.message}`); } finally { $('send').disabled = false; $('send').textContent = '↑'; $('input').focus(); } });
     function showNotice(text, error=false) { const n = $('notice'); n.textContent = text; n.className = `notice${error ? ' error' : ''}`; n.style.display = 'block'; setTimeout(() => n.style.display = 'none', 4000); }
     const MODEL_OPTIONS = {
       openai: { label: 'OpenAI / OpenAI-compatible', models: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o-mini', 'gpt-4o', 'o4-mini', 'o3'] },
@@ -93,8 +102,14 @@
     $('temperature').addEventListener('input', updateRanges); $('top_p').addEventListener('input', updateRanges);
     $('save').addEventListener('click', async () => { const body = {provider:$('provider').value, model:currentModel(), base_url:$('base_url').value, system_prompt:$('system_prompt').value, api_key:$('api_key').value, temperature:Number($('temperature').value), top_p:Number($('top_p').value), max_tokens:Number($('max_tokens').value), thinking_level:$('thinking_level').value, stream:$('stream').checked}; const r = await fetch('/api/settings', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); showNotice(r.ok ? 'บันทึกการตั้งค่าแล้ว' : 'บันทึกไม่สำเร็จ', !r.ok); if (r.ok) { applyChatMeta(body); await fetchModels(body.provider, body.model); } });
     $('test').addEventListener('click', async () => { $('test').disabled = true; $('test').textContent = 'กำลังทดสอบ...'; const r = await fetch('/api/settings/test', {method:'POST'}); const data = await r.json(); showNotice(data.ok ? `เชื่อมต่อสำเร็จ: ${data.answer}` : `เชื่อมต่อไม่สำเร็จ: ${data.error}`, !data.ok); $('test').disabled = false; $('test').textContent = 'ทดสอบการเชื่อมต่อ'; });
+    function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[character])); }
+    function renderHistoryList(items) { const grouped = {}; items.forEach(item => { const day = (item.updated_at || '').slice(0, 10) || 'ไม่ทราบวันที่'; (grouped[day] ||= []).push(item); }); $('history-list').innerHTML = Object.entries(grouped).map(([day, dayItems]) => `<div class="history-day">${escapeHtml(day)}</div>${dayItems.map(item => `<button class="history-item${item.id === conversationId ? ' active' : ''}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.title || '')}">${escapeHtml(item.title || 'บทสนทนาไม่มีชื่อ')}</button>`).join('')}`).join('') || '<div class="history-day">ยังไม่มีประวัติ</div>'; }
+    async function loadHistoryList() { const response = await fetch('/api/history'); if (response.ok) renderHistoryList((await response.json()).items || []); }
+    async function openConversation(id) { const response = await fetch(`/api/history/${id}`); if (!response.ok) return; const record = await response.json(); conversationId = record.id; conversationCreatedAt = record.created_at; messages.splice(0, messages.length, ...(record.messages || [])); $('messages').innerHTML = ''; messages.forEach(message => addMessage(message.role, message.content)); renderHistoryList((await (await fetch('/api/history')).json()).items || []); document.querySelector('[data-view="chat"]').click(); }
+    $('history-list').addEventListener('click', (event) => { const item = event.target.closest('[data-history-id]'); if (item) openConversation(item.dataset.historyId); });
+    $('new-chat').addEventListener('click', () => { conversationId = null; conversationCreatedAt = null; messages.splice(0, messages.length); $('messages').innerHTML = '<div class="message assistant">สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div>'; document.querySelector('[data-view="chat"]').click(); $('input').focus(); });
     $('reset').addEventListener('click', async () => { if (!confirm('รีเซ็ตการตั้งค่าทั้งหมดหรือไม่?')) return; await fetch('/api/settings/reset', {method:'POST'}); await loadSettings(); showNotice('รีเซ็ตการตั้งค่าแล้ว'); });
-    loadChatMeta();
+    loadChatMeta(); loadHistoryList();
   </script>
 </body>
 </html>

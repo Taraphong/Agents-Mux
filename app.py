@@ -1,5 +1,8 @@
 import os
 import json
+import re
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +14,7 @@ load_dotenv()
 
 app = Flask(__name__)
 SETTINGS_FILE = Path(os.getenv("AI_WEB_SETTINGS_FILE", ".app-settings.json"))
+HISTORY_ROOT = Path(os.getenv("AI_WEB_HISTORY_DIR", "history"))
 
 DEFAULT_SETTINGS = {
     "provider": os.getenv("AI_PROVIDER", "openai"),
@@ -43,6 +47,34 @@ def load_settings() -> dict[str, Any]:
 
 def save_settings(settings: dict[str, Any]) -> None:
     SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def find_history_file(conversation_id: str) -> Path | None:
+    if not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+        return None
+    for path in HISTORY_ROOT.rglob(f"*_{conversation_id}.json"):
+        return path
+    return None
+
+
+def save_history(payload: dict[str, Any]) -> dict[str, Any]:
+    conversation_id = payload.get("id", "")
+    if not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+        conversation_id = str(uuid.uuid4())
+    now = datetime.now().astimezone()
+    existing = find_history_file(conversation_id)
+    created_at = payload.get("created_at") or now.isoformat(timespec="seconds")
+    path = existing or HISTORY_ROOT / now.strftime("%Y-%m-%d") / f"{now.strftime('%H-%M-%S')}_{conversation_id}.json"
+    record = {
+        "id": conversation_id,
+        "title": (payload.get("title") or "บทสนทนาใหม่")[:100],
+        "created_at": created_at,
+        "updated_at": now.isoformat(timespec="seconds"),
+        "messages": payload.get("messages", []),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    return record
 
 
 def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]:
@@ -171,6 +203,36 @@ def settings_get():
     safe = {**settings, "api_key": "" if not key else "••••••••"}
     safe["has_api_key"] = bool(key)
     return jsonify(safe)
+
+
+@app.get("/api/history")
+def history_list():
+    records = []
+    if HISTORY_ROOT.exists():
+        for path in HISTORY_ROOT.rglob("*.json"):
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+                records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at")})
+            except (OSError, json.JSONDecodeError):
+                continue
+    records.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+    return jsonify({"items": records})
+
+
+@app.get("/api/history/<conversation_id>")
+def history_get(conversation_id: str):
+    path = find_history_file(conversation_id)
+    if not path or not path.exists():
+        return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+    return jsonify(json.loads(path.read_text(encoding="utf-8")))
+
+
+@app.post("/api/history")
+def history_save():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("messages"), list):
+        return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
+    return jsonify(save_history(body))
 
 
 @app.get("/api/models")
