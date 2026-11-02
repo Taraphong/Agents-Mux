@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Web บน Termux</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #111827; color: #f9fafb; }
+    main { max-width: 850px; margin: auto; min-height: 100vh; display: flex; flex-direction: column; }
+    header { padding: 20px; border-bottom: 1px solid #374151; }
+    h1 { margin: 0 0 6px; font-size: 1.35rem; }
+    .muted { color: #9ca3af; font-size: .9rem; }
+    #messages { flex: 1; padding: 20px; overflow-y: auto; }
+    .message { white-space: pre-wrap; padding: 13px 16px; border-radius: 14px; margin: 10px 0; max-width: 85%; line-height: 1.55; }
+    .user { background: #2563eb; margin-left: auto; }
+    .assistant { background: #1f2937; margin-right: auto; }
+    form { display: flex; gap: 10px; padding: 16px 20px 22px; border-top: 1px solid #374151; }
+    textarea { flex: 1; resize: vertical; min-height: 48px; max-height: 180px; border: 1px solid #4b5563; border-radius: 12px; padding: 12px; background: #111827; color: white; font: inherit; }
+    button { border: 0; border-radius: 12px; padding: 0 20px; background: #10b981; color: #06281f; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: wait; }
+  </style>
+</head>
+<body>
+  <main>
+    <header><h1>AI Web บน Termux</h1><div class="muted">พิมพ์ข้อความเพื่อเริ่มสนทนา</div></header>
+    <section id="messages"><div class="message assistant">สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div></section>
+    <form id="chat-form">
+      <textarea id="input" placeholder="พิมพ์ข้อความ..." required></textarea>
+      <button id="send" type="submit">ส่ง</button>
+    </form>
+  </main>
+  <script>
+    const form = document.querySelector('#chat-form');
+    const input = document.querySelector('#input');
+    const send = document.querySelector('#send');
+    const messagesEl = document.querySelector('#messages');
+    const messages = [];
+
+    function addMessage(role, content) {
+      const el = document.createElement('div');
+      el.className = `message ${role}`;
+      el.textContent = content;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const content = input.value.trim();
+      if (!content || send.disabled) return;
+      messages.push({ role: 'user', content });
+      addMessage('user', content);
+      input.value = '';
+      send.disabled = true;
+      send.textContent = 'กำลังคิด...';
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ messages })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด');
+        messages.push({ role: 'assistant', content: data.answer });
+        addMessage('assistant', data.answer);
+      } catch (error) {
+        addMessage('assistant', `ข้อผิดพลาด: ${error.message}`);
+      } finally {
+        send.disabled = false;
+        send.textContent = 'ส่ง';
+        input.focus();
+      }
+    });
+  </script>
+</body>
+</html>
