@@ -21,6 +21,7 @@ DEFAULT_SETTINGS = {
     "max_tokens": 2048,
     "top_p": 1,
     "stream": False,
+    "thinking_level": "off",
 }
 
 FALLBACK_MODELS = {
@@ -82,16 +83,19 @@ def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> str
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key")
 
     base_url = settings.get("base_url", "https://api.openai.com/v1").rstrip("/")
+    payload = {
+        "model": settings["model"],
+        "messages": messages,
+        "temperature": settings["temperature"],
+        "max_tokens": settings["max_tokens"],
+        "top_p": settings["top_p"],
+    }
+    if settings.get("thinking_level") in {"low", "medium", "high"} and (settings["model"].startswith(("o", "gpt-5"))):
+        payload["reasoning_effort"] = settings["thinking_level"]
     response = requests.post(
         f"{base_url}/chat/completions",
         headers={"Authorization": f"Bearer {key}"},
-        json={
-            "model": settings["model"],
-            "messages": messages,
-            "temperature": settings["temperature"],
-            "max_tokens": settings["max_tokens"],
-            "top_p": settings["top_p"],
-        },
+        json=payload,
         timeout=90,
     )
     response.raise_for_status()
@@ -112,14 +116,21 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> str
         contents.append({"role": role, "parts": [{"text": message["content"]}]})
 
     model = settings["model"]
+    generation_config = {
+        "temperature": settings["temperature"],
+        "topP": settings["top_p"],
+        "maxOutputTokens": settings["max_tokens"],
+    }
+    thinking_level = settings.get("thinking_level", "off")
+    if thinking_level in {"low", "medium", "high"}:
+        if settings["model"].startswith("gemini-2.5"):
+            generation_config["thinkingConfig"] = {"thinkingBudget": {"low": 1024, "medium": 4096, "high": 8192}[thinking_level]}
+        else:
+            generation_config["thinkingConfig"] = {"thinkingLevel": thinking_level}
     response = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         params={"key": key},
-        json={"contents": contents, "generationConfig": {
-            "temperature": settings["temperature"],
-            "topP": settings["top_p"],
-            "maxOutputTokens": settings["max_tokens"],
-        }},
+        json={"contents": contents, "generationConfig": generation_config},
         timeout=90,
     )
     response.raise_for_status()

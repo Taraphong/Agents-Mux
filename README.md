@@ -17,3 +17,5 @@ python app.py
 ตั้งค่า API key ในไฟล์ `.env` และเลือก `AI_PROVIDER=openai` หรือ `AI_PROVIDER=gemini`
 
 หรือเปิดเมนู `Settings` ในเว็บเพื่อบันทึกค่าลงไฟล์ `.app-settings.json` ซึ่งถูกกันออกจาก Git แล้ว
+
+เมนู Settings มีระดับการคิด `ปิด`, `ต่ำ`, `กลาง`, `สูง` โดย OpenAI reasoning models จะใช้ `reasoning_effort` และ Gemini จะใช้ `thinkingConfig` ตามรุ่นที่รองรับ
