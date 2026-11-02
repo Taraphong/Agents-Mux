@@ -23,6 +23,12 @@ DEFAULT_SETTINGS = {
     "stream": False,
 }
 
+FALLBACK_MODELS = {
+    "openai": ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "o4-mini", "o3"],
+    "gemini": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+    "anthropic": ["claude-sonnet-4-5", "claude-opus-4-1", "claude-3-7-sonnet-latest"],
+}
+
 
 def load_settings() -> dict[str, Any]:
     settings = DEFAULT_SETTINGS.copy()
@@ -36,6 +42,24 @@ def load_settings() -> dict[str, Any]:
 
 def save_settings(settings: dict[str, Any]) -> None:
     SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]:
+    key = get_api_key(provider)
+    if not key:
+        raise RuntimeError("ยังไม่ได้ตั้งค่า API key จึงดึงรายการโมเดลไม่ได้")
+    if provider == "gemini":
+        response = requests.get("https://generativelanguage.googleapis.com/v1beta/models", params={"key": key}, timeout=30)
+        response.raise_for_status()
+        models = response.json().get("models", [])
+        return [{"id": item["name"].removeprefix("models/"), "name": item.get("displayName", item["name"])} for item in models if "generateContent" in item.get("supportedGenerationMethods", [])]
+    if provider == "anthropic":
+        return [{"id": model, "name": model} for model in FALLBACK_MODELS["anthropic"]]
+    base_url = settings.get("base_url", "https://api.openai.com/v1").rstrip("/")
+    response = requests.get(f"{base_url}/models", headers={"Authorization": f"Bearer {key}"}, timeout=30)
+    response.raise_for_status()
+    models = response.json().get("data", [])
+    return [{"id": item["id"], "name": item["id"]} for item in sorted(models, key=lambda item: item.get("id", ""))]
 
 
 def get_api_key(provider: str) -> str:
@@ -136,6 +160,17 @@ def settings_get():
     safe = {**settings, "api_key": "" if not key else "••••••••"}
     safe["has_api_key"] = bool(key)
     return jsonify(safe)
+
+
+@app.get("/api/models")
+def models_get():
+    settings = load_settings()
+    provider = request.args.get("provider", settings.get("provider", "openai")).lower()
+    try:
+        models = list_models(provider, settings)
+        return jsonify({"provider": provider, "models": models, "source": "api"})
+    except (requests.RequestException, RuntimeError, KeyError, TypeError) as exc:
+        return jsonify({"provider": provider, "models": [], "source": "error", "error": str(exc)}), 502
 
 
 @app.put("/api/settings")
