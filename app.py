@@ -135,6 +135,8 @@ def update_schedule(job_id: str, **changes: Any) -> None:
 def execute_schedule(job: dict[str, Any]) -> None:
     try:
         settings = load_settings()
+        if job.get("model"):
+            settings["model"] = job["model"]
         messages = clean_messages([{"role": "user", "content": job["prompt"]}], settings)
         started_at = time.perf_counter()
         answer, usage = call_provider(messages, settings)
@@ -479,7 +481,7 @@ def tools_execute():
 
 @app.get("/api/schedules")
 def schedules_get():
-    return jsonify({"items": load_schedules()})
+    return jsonify({"items": load_schedules(), "timezone": datetime.now().astimezone().tzname()})
 
 
 @app.post("/api/schedules")
@@ -493,7 +495,7 @@ def schedules_create():
         schedule = validate_cron(body.get("schedule", ""))
     except (TypeError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
-    job = {"id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
+    job = {"id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "model": str(body.get("model", "")).strip()[:200], "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
     with SCHEDULE_LOCK:
         jobs = load_schedules()
         jobs.append(job)
@@ -518,6 +520,8 @@ def schedules_update(job_id: str):
             job["name"] = str(body["name"]).strip()[:100] or job["name"]
         if "prompt" in body:
             job["prompt"] = str(body["prompt"]).strip()[:10_000]
+        if "model" in body:
+            job["model"] = str(body["model"]).strip()[:200]
         if "enabled" in body:
             job["enabled"] = bool(body["enabled"])
         save_schedules(jobs)
