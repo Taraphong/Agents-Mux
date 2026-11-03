@@ -1,137 +1,1355 @@
 <!doctype html>
 <html lang="th">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Control Center</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
-    * { box-sizing: border-box; } body { margin: 0; background: #0b1020; color: #e5e7eb; }
-    .app { min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; }
-    aside { border-right: 1px solid #24304a; background: #10172a; padding: 22px 14px; }
-    .brand { display: flex; gap: 10px; align-items: center; font-weight: 800; font-size: 1.1rem; padding: 0 10px 26px; }
-    .brand-mark { background: linear-gradient(135deg,#4f46e5,#06b6d4); width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; }
-    .new-chat { width: 100%; margin: 0 0 16px; padding: 10px; background: #273452; color: #e5e7eb; }
-    .history-title { color: #64748b; font-size: .75rem; padding: 8px 10px 5px; text-transform: uppercase; letter-spacing: .04em; }
-    #history-list { max-height: 45vh; overflow-y: auto; }
-    .history-day { color: #64748b; font-size: .72rem; padding: 10px 10px 4px; }
-    .history-row { display: flex; gap: 3px; align-items: center; border-radius: 8px; } .history-row:hover, .history-row.active { background: #202b49; }
-    .history-item { flex: 1; min-width: 0; border: 0; background: transparent; color: #cbd5e1; padding: 9px 6px 9px 10px; text-align: left; cursor: pointer; font: inherit; font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .history-row:hover .history-item, .history-row.active .history-item { color: white; }
-    .history-actions { display: flex; gap: 1px; padding-right: 4px; } .history-action { border: 0; background: transparent; color: #94a3b8; padding: 4px; font-size: .75rem; cursor: pointer; } .history-action:hover { color: white; }
-    .sidebar-backdrop { display: none; }
-    .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: none; place-items: center; padding: 20px; background: #030615aa; backdrop-filter: blur(3px); } .modal-backdrop.open { display: grid; }
-    .modal { width: min(420px, 100%); background: #121b30; border: 1px solid #3b4b70; border-radius: 16px; padding: 20px; box-shadow: 0 20px 60px #0009; } .modal h3 { margin: 0 0 8px; } .modal p { color: #94a3b8; font-size: .9rem; margin: 0 0 16px; } .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; } .modal-cancel { background: #273452; color: #e5e7eb; } .modal-danger { background: #b4233d; color: white; }
-    nav button { display: block; width: 100%; text-align: left; border: 0; color: #9ca3af; background: transparent; padding: 12px; border-radius: 10px; font: inherit; cursor: pointer; margin: 3px 0; }
-    nav button.active, nav button:hover { color: white; background: #202b49; }
-    .layout { min-width: 0; height: 100vh; min-height: 0; display: flex; flex-direction: column; }
-    header { height: 68px; border-bottom: 1px solid #24304a; padding: 0 28px; display: flex; gap: 12px; justify-content: space-between; align-items: center; }
-    header h1 { font-size: 1.1rem; margin: 0; } .status { color: #34d399; font-size: .85rem; }
-    .mobile-menu-toggle { display: none; width: 38px; height: 38px; padding: 0; border-radius: 10px; background: #202b49; color: #e5e7eb; font-size: 1.2rem; }
-    .content { width: min(1100px, 100%); margin: auto; padding: 28px; flex: 1; min-height: 0; overflow: hidden; }
-    .view { display: none; } .view.active { display: block; } #chat-view, #settings-view { height: 100%; min-height: 0; } #settings-view { overflow-y: auto; }
-    .messages { height: 100%; min-height: 0; display: flex; flex-direction: column; }
-    #messages { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 0 25px; }
-    .message { white-space: pre-wrap; padding: 14px 17px; border-radius: 15px; margin: 11px 0; max-width: 82%; line-height: 1.6; }
-    .message-meta { display: block; margin-top: 8px; color: #94a3b8; font-size: .72rem; line-height: 1.3; white-space: normal; }
-    .user { background: #3554c7; margin-left: auto; } .assistant { background: #182238; margin-right: auto; }
-    form.chat-form { display: block; padding-top: 14px; border-top: 1px solid #24304a; }
-    textarea, input, select { width: 100%; border: 1px solid #34415f; border-radius: 10px; padding: 11px 12px; background: #111a30; color: white; font: inherit; }
-    textarea:focus, input:focus, select:focus { outline: 2px solid #4f46e5; border-color: transparent; }
-    .chat-form { background: #121b30; border: 1px solid #34415f; border-radius: 18px; padding: 12px 14px 10px; box-shadow: 0 10px 30px #05091455; } .chat-form textarea { display: block; min-height: 42px; max-height: 180px; resize: none; overflow-y: hidden; border: 0; outline: 0; padding: 4px 2px 10px; background: transparent; text-align: left; vertical-align: top; line-height: 1.45; } .chat-tools { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid #263555; padding-top: 8px; } .chat-tools-left { display: flex; align-items: center; gap: 5px; min-width: 0; } .chat-tools select { width: 108px; padding: 6px 8px; border: 0; background: transparent; color: #cbd5e1; } .chat-tools #chat-model-select { width: 150px; } .chat-model-label { color: #94a3b8; font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; } button { border: 0; border-radius: 10px; padding: 0 18px; background: #10b981; color: #04261c; font-weight: 800; cursor: pointer; }
-    .send-round { width: 34px; height: 34px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 1.05rem; }
-    button:disabled { opacity: .5; cursor: wait; }
-    .card { background: #121b30; border: 1px solid #263555; border-radius: 15px; padding: 21px; margin-bottom: 18px; }
-    .card h2 { margin: 0 0 5px; font-size: 1rem; } .hint { color: #94a3b8; font-size: .86rem; margin: 0 0 18px; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } label { display: block; color: #cbd5e1; font-size: .88rem; } label span { display: block; margin-bottom: 7px; }
-    .full { grid-column: 1 / -1; } .range-row { display: flex; gap: 12px; align-items: center; } input[type=range] { accent-color: #6366f1; padding: 0; } .range-value { width: 45px; color: #a5b4fc; }
-    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; } .secondary { background: #273452; color: #e5e7eb; } .danger { background: #4b2431; color: #fecdd3; }
-    .notice { padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; background: #102d28; color: #a7f3d0; display: none; } .notice.error { background: #3b1d29; color: #fecdd3; }
-    .toggle { display: flex; align-items: center; gap: 10px; } .toggle input { width: auto; accent-color: #6366f1; }
-    @media (max-width: 700px) { .app { display: block; min-height: 100dvh; } aside { position: fixed; inset: 0 auto 0 0; z-index: 30; width: min(86vw, 320px); overflow-y: auto; border-right: 1px solid #24304a; border-bottom: 0; padding: 18px 12px; transform: translateX(-105%); transition: transform .2s ease; box-shadow: 14px 0 40px #0008; } aside.open { transform: translateX(0); } .sidebar-backdrop.open { display: block; position: fixed; inset: 0; z-index: 25; background: #030615aa; backdrop-filter: blur(2px); } .brand { padding: 5px 10px 20px; } nav { display: flex; gap: 5px; } nav button { text-align: center; padding: 9px 7px; font-size: .82rem; } .mobile-menu-toggle { display: grid; place-items: center; flex: 0 0 auto; } header { height: 60px; padding: 0 14px; } header h1 { flex: 1; } .status { font-size: .76rem; } .content { padding: 14px 12px 16px; } .message { max-width: 92%; } .chat-form { padding: 10px 12px 8px; border-radius: 16px; } .chat-tools-left { flex: 1; overflow: hidden; } .chat-tools select { width: auto; max-width: 46%; } .chat-tools #chat-model-select { width: auto; max-width: 54%; } .grid { grid-template-columns: 1fr; } .full { grid-column: auto; } }
-  </style>
-</head>
-<body>
-  <div class="app">
-    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
-    <aside><div class="brand"><div class="brand-mark">✦</div><span>AI Control Center</span></div>
-      <nav><button class="active" data-view="chat">💬 แชต</button><button data-view="settings">⚙️ Settings</button><button data-view="about">ⓘ เกี่ยวกับ</button></nav><button class="new-chat" id="new-chat">＋ แชตใหม่</button><div class="history-title">ประวัติการพูดคุย</div><div id="history-list"></div>
-      <div class="modal-backdrop" id="history-modal"><div class="modal"><h3 id="history-modal-title">เปลี่ยนชื่อประวัติ</h3><p id="history-modal-text"></p><input id="history-modal-input" placeholder="ชื่อประวัติใหม่"><div class="modal-actions"><button class="modal-cancel" id="history-modal-cancel" type="button">ยกเลิก</button><button id="history-modal-confirm" type="button">บันทึก</button></div></div></div>
-    </aside>
-    <div class="layout"><header><button class="mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-label="เปิดเมนู" aria-expanded="false">☰</button><h1 id="page-title">แชตกับ AI</h1><span class="status">● พร้อมใช้งาน</span></header>
-      <div class="content">
-        <section id="chat-view" class="view active"><div class="messages"><div id="messages"><div class="message assistant">สวัสดีครับ ผมพร้อมช่วยคุณแล้ว ไปตั้งค่าผู้ให้บริการได้ที่เมนู Settings</div></div>
-          <form class="chat-form" id="chat-form"><textarea id="input" placeholder="ส่งข้อความถึง AI..." required></textarea><div class="chat-tools"><div class="chat-tools-left"><select id="chat-thinking-level" title="ระดับการคิด"><option value="off">คิด: ปิด</option><option value="low">คิด: ต่ำ</option><option value="medium">คิด: กลาง</option><option value="high">คิด: สูง</option></select><select id="chat-model-select" title="เลือกโมเดล"><option value="">กำลังโหลดโมเดล...</option></select></div><button class="send-round" id="send" type="submit" title="ส่ง">↑</button></div></form></div></section>
-        <section id="settings-view" class="view"><div id="notice" class="notice"></div>
-          <div class="card"><h2>ผู้ให้บริการและโมเดล</h2><p class="hint">เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ OpenAI-compatible API</p><div class="grid">
-            <label><span>Provider</span><select id="provider"><option value="openai">OpenAI / OpenAI-compatible</option><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic Claude</option></select></label>
-            <label><span>Model <small id="model_status" style="color:#94a3b8;font-weight:normal">ยังไม่ได้ดึงจาก API</small></span><select id="model_select"></select><input id="model_custom" placeholder="พิมพ์ชื่อโมเดลเอง" style="display:none;margin-top:8px"></label>
-            <label class="full"><span>Base URL (สำหรับ OpenAI-compatible)</span><input id="base_url" placeholder="https://api.openai.com/v1"></label>
-            <label class="full"><span>API key</span><input id="api_key" type="password" placeholder="เว้นว่างเพื่อใช้คีย์เดิม"></label>
-          </div></div>
-          <div class="card"><h2>พฤติกรรมของผู้ช่วย</h2><p class="hint">ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ</p><div class="grid">
-            <label class="full"><span>System prompt</span><textarea id="system_prompt" rows="5"></textarea></label>
-            <label><span>Temperature <b id="temperature-value">0.7</b></span><div class="range-row"><input id="temperature" type="range" min="0" max="2" step="0.1"><span class="range-value" id="temp-label">0.7</span></div></label>
-            <label><span>Top P <b id="top_p-value">1</b></span><div class="range-row"><input id="top_p" type="range" min="0" max="1" step="0.05"><span class="range-value" id="top-label">1</span></div></label>
-            <label><span>Max output tokens</span><input id="max_tokens" type="number" min="1" max="100000"></label>
-            <label><span>ระดับการคิด</span><select id="thinking_level"><option value="off">ปิด</option><option value="low">ต่ำ</option><option value="medium">กลาง</option><option value="high">สูง</option></select></label>
-            <label class="toggle"><input id="stream" type="checkbox"><span>เปิดการตอบแบบ streaming (เตรียมรองรับ)</span></label>
-          </div><div class="actions"><button id="save">บันทึกการตั้งค่า</button><button class="secondary" id="test" type="button">ทดสอบการเชื่อมต่อ</button><button class="danger" id="reset" type="button">รีเซ็ต</button></div></div>
-        </section>
-        <section id="about-view" class="view"><div class="card"><h2>เกี่ยวกับระบบ</h2><p class="hint">เว็บแชต AI ที่รันบน Termux พร้อมหน้า settings สำหรับควบคุม provider, model, endpoint, prompt และพารามิเตอร์ต่าง ๆ</p><p class="hint">API key จะเก็บฝั่งเซิร์ฟเวอร์ในไฟล์ตั้งค่าที่ไม่ถูก commit เข้า Git</p></div></section>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Control Center</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #0b1020;
+        color: #e5e7eb;
+      }
+      .app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 240px 1fr;
+      }
+      aside {
+        border-right: 1px solid #24304a;
+        background: #10172a;
+        padding: 22px 14px;
+      }
+      .brand {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        font-weight: 800;
+        font-size: 1.1rem;
+        padding: 0 10px 26px;
+      }
+      .brand-mark {
+        background: linear-gradient(135deg, #4f46e5, #06b6d4);
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+      }
+      .new-chat {
+        width: 100%;
+        margin: 0 0 16px;
+        padding: 10px;
+        background: #273452;
+        color: #e5e7eb;
+      }
+      .history-title {
+        color: #64748b;
+        font-size: 0.75rem;
+        padding: 8px 10px 5px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      #history-list {
+        max-height: 45vh;
+        overflow-y: auto;
+      }
+      .history-day {
+        color: #64748b;
+        font-size: 0.72rem;
+        padding: 10px 10px 4px;
+      }
+      .history-row {
+        display: flex;
+        gap: 3px;
+        align-items: center;
+        border-radius: 8px;
+      }
+      .history-row:hover,
+      .history-row.active {
+        background: #202b49;
+      }
+      .history-item {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        color: #cbd5e1;
+        padding: 9px 6px 9px 10px;
+        text-align: left;
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.82rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .history-row:hover .history-item,
+      .history-row.active .history-item {
+        color: white;
+      }
+      .history-actions {
+        display: flex;
+        gap: 1px;
+        padding-right: 4px;
+      }
+      .history-action {
+        border: 0;
+        background: transparent;
+        color: #94a3b8;
+        padding: 4px;
+        font-size: 0.75rem;
+        cursor: pointer;
+      }
+      .history-action:hover {
+        color: white;
+      }
+      .sidebar-backdrop {
+        display: none;
+      }
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: none;
+        place-items: center;
+        padding: 20px;
+        background: #030615aa;
+        backdrop-filter: blur(3px);
+      }
+      .modal-backdrop.open {
+        display: grid;
+      }
+      .modal {
+        width: min(420px, 100%);
+        background: #121b30;
+        border: 1px solid #3b4b70;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 20px 60px #0009;
+      }
+      .modal h3 {
+        margin: 0 0 8px;
+      }
+      .modal p {
+        color: #94a3b8;
+        font-size: 0.9rem;
+        margin: 0 0 16px;
+      }
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 18px;
+      }
+      .modal-cancel {
+        background: #273452;
+        color: #e5e7eb;
+      }
+      .modal-danger {
+        background: #b4233d;
+        color: white;
+      }
+      nav button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        color: #9ca3af;
+        background: transparent;
+        padding: 12px;
+        border-radius: 10px;
+        font: inherit;
+        cursor: pointer;
+        margin: 3px 0;
+      }
+      nav button.active,
+      nav button:hover {
+        color: white;
+        background: #202b49;
+      }
+      .layout {
+        min-width: 0;
+        height: 100vh;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        height: 68px;
+        border-bottom: 1px solid #24304a;
+        padding: 0 28px;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: center;
+      }
+      header h1 {
+        font-size: 1.1rem;
+        margin: 0;
+      }
+      .status {
+        color: #34d399;
+        font-size: 0.85rem;
+      }
+      .mobile-menu-toggle {
+        display: none;
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        border-radius: 10px;
+        background: #202b49;
+        color: #e5e7eb;
+        font-size: 1.2rem;
+      }
+      .content {
+        width: min(1100px, 100%);
+        margin: auto;
+        padding: 28px;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .view {
+        display: none;
+      }
+      .view.active {
+        display: block;
+      }
+      #chat-view,
+      #settings-view {
+        height: 100%;
+        min-height: 0;
+      }
+      #settings-view {
+        overflow-y: auto;
+      }
+      .messages {
+        height: 100%;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      #messages {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 10px 0 25px;
+      }
+      .message {
+        white-space: pre-wrap;
+        padding: 14px 17px;
+        border-radius: 15px;
+        margin: 11px 0;
+        max-width: 82%;
+        line-height: 1.6;
+      }
+      .message-meta {
+        display: block;
+        margin-top: 8px;
+        color: #94a3b8;
+        font-size: 0.72rem;
+        line-height: 1.3;
+        white-space: normal;
+      }
+      .message-attachment {
+        display: block;
+        margin-top: 8px;
+        color: #bfdbfe;
+        font-size: 0.78rem;
+        white-space: normal;
+      }
+      .user {
+        background: #3554c7;
+        margin-left: auto;
+      }
+      .assistant {
+        background: #182238;
+        margin-right: auto;
+      }
+      form.chat-form {
+        display: block;
+        padding-top: 14px;
+        border-top: 1px solid #24304a;
+      }
+      textarea,
+      input,
+      select {
+        width: 100%;
+        border: 1px solid #34415f;
+        border-radius: 10px;
+        padding: 11px 12px;
+        background: #111a30;
+        color: white;
+        font: inherit;
+      }
+      textarea:focus,
+      input:focus,
+      select:focus {
+        outline: 2px solid #4f46e5;
+        border-color: transparent;
+      }
+      .chat-form {
+        background: #121b30;
+        border: 1px solid #34415f;
+        border-radius: 18px;
+        padding: 12px 14px 10px;
+        box-shadow: 0 10px 30px #05091455;
+      }
+      .chat-form textarea {
+        display: block;
+        min-height: 42px;
+        max-height: 180px;
+        resize: none;
+        overflow-y: hidden;
+        border: 0;
+        outline: 0;
+        padding: 4px 2px 10px;
+        background: transparent;
+        text-align: left;
+        vertical-align: top;
+        line-height: 1.45;
+      }
+      .chat-tools {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid #263555;
+        padding-top: 8px;
+      }
+      .chat-tools-left {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+      }
+      .chat-tools select {
+        width: 108px;
+        padding: 6px 8px;
+        border: 0;
+        background: transparent;
+        color: #cbd5e1;
+      }
+      .chat-tools #chat-model-select {
+        width: 150px;
+      }
+      .chat-model-label {
+        color: #94a3b8;
+        font-size: 0.78rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 180px;
+      }
+      .attach-button {
+        display: grid;
+        place-items: center;
+        flex: 0 0 34px;
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: #94a3b8;
+        font-size: 1.1rem;
+        cursor: pointer;
+      }
+      .attach-button:hover {
+        background: #202b49;
+        color: white;
+      }
+      .attachment-chip {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #93c5fd;
+        font-size: 0.75rem;
+      }
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 0 18px;
+        background: #10b981;
+        color: #04261c;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .send-round {
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 1.05rem;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: wait;
+      }
+      .card {
+        background: #121b30;
+        border: 1px solid #263555;
+        border-radius: 15px;
+        padding: 21px;
+        margin-bottom: 18px;
+      }
+      .card h2 {
+        margin: 0 0 5px;
+        font-size: 1rem;
+      }
+      .hint {
+        color: #94a3b8;
+        font-size: 0.86rem;
+        margin: 0 0 18px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+      label {
+        display: block;
+        color: #cbd5e1;
+        font-size: 0.88rem;
+      }
+      label span {
+        display: block;
+        margin-bottom: 7px;
+      }
+      .full {
+        grid-column: 1 / -1;
+      }
+      .range-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      input[type="range"] {
+        accent-color: #6366f1;
+        padding: 0;
+      }
+      .range-value {
+        width: 45px;
+        color: #a5b4fc;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+      }
+      .secondary {
+        background: #273452;
+        color: #e5e7eb;
+      }
+      .danger {
+        background: #4b2431;
+        color: #fecdd3;
+      }
+      .notice {
+        padding: 12px 14px;
+        border-radius: 10px;
+        margin-bottom: 16px;
+        background: #102d28;
+        color: #a7f3d0;
+        display: none;
+      }
+      .notice.error {
+        background: #3b1d29;
+        color: #fecdd3;
+      }
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .toggle input {
+        width: auto;
+        accent-color: #6366f1;
+      }
+      @media (max-width: 700px) {
+        .app {
+          display: block;
+          min-height: 100dvh;
+        }
+        aside {
+          position: fixed;
+          inset: 0 auto 0 0;
+          z-index: 30;
+          width: min(86vw, 320px);
+          overflow-y: auto;
+          border-right: 1px solid #24304a;
+          border-bottom: 0;
+          padding: 18px 12px;
+          transform: translateX(-105%);
+          transition: transform 0.2s ease;
+          box-shadow: 14px 0 40px #0008;
+        }
+        aside.open {
+          transform: translateX(0);
+        }
+        .sidebar-backdrop.open {
+          display: block;
+          position: fixed;
+          inset: 0;
+          z-index: 25;
+          background: #030615aa;
+          backdrop-filter: blur(2px);
+        }
+        .brand {
+          padding: 5px 10px 20px;
+        }
+        nav {
+          display: flex;
+          gap: 5px;
+        }
+        nav button {
+          text-align: center;
+          padding: 9px 7px;
+          font-size: 0.82rem;
+        }
+        .mobile-menu-toggle {
+          display: grid;
+          place-items: center;
+          flex: 0 0 auto;
+        }
+        header {
+          height: 60px;
+          padding: 0 14px;
+        }
+        header h1 {
+          flex: 1;
+        }
+        .status {
+          font-size: 0.76rem;
+        }
+        .content {
+          padding: 14px 12px 16px;
+        }
+        .message {
+          max-width: 92%;
+        }
+        .chat-form {
+          padding: 10px 12px 8px;
+          border-radius: 16px;
+        }
+        .chat-tools-left {
+          flex: 1;
+          overflow: hidden;
+        }
+        .attachment-chip {
+          max-width: 92px;
+        }
+        .chat-tools select {
+          width: auto;
+          max-width: 46%;
+        }
+        .chat-tools #chat-model-select {
+          width: auto;
+          max-width: 54%;
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .full {
+          grid-column: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+      <aside>
+        <div class="brand">
+          <div class="brand-mark">✦</div>
+          <span>AI Control Center</span>
+        </div>
+        <nav>
+          <button class="active" data-view="chat">💬 แชต</button
+          ><button data-view="settings">⚙️ Settings</button
+          ><button data-view="about">ⓘ เกี่ยวกับ</button>
+        </nav>
+        <button class="new-chat" id="new-chat">＋ แชตใหม่</button>
+        <div class="history-title">ประวัติการพูดคุย</div>
+        <div id="history-list"></div>
+        <div class="modal-backdrop" id="history-modal">
+          <div class="modal">
+            <h3 id="history-modal-title">เปลี่ยนชื่อประวัติ</h3>
+            <p id="history-modal-text"></p>
+            <input id="history-modal-input" placeholder="ชื่อประวัติใหม่" />
+            <div class="modal-actions">
+              <button
+                class="modal-cancel"
+                id="history-modal-cancel"
+                type="button"
+              >
+                ยกเลิก</button
+              ><button id="history-modal-confirm" type="button">บันทึก</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <div class="layout">
+        <header>
+          <button
+            class="mobile-menu-toggle"
+            id="mobile-menu-toggle"
+            type="button"
+            aria-label="เปิดเมนู"
+            aria-expanded="false"
+          >
+            ☰
+          </button>
+          <h1 id="page-title">แชตกับ AI</h1>
+          <span class="status">● พร้อมใช้งาน</span>
+        </header>
+        <div class="content">
+          <section id="chat-view" class="view active">
+            <div class="messages">
+              <div id="messages">
+                <div class="message assistant">
+                  สวัสดีครับ ผมพร้อมช่วยคุณแล้ว ไปตั้งค่าผู้ให้บริการได้ที่เมนู
+                  Settings
+                </div>
+              </div>
+              <form class="chat-form" id="chat-form">
+                <textarea
+                  id="input"
+                  placeholder="ส่งข้อความถึง AI..."
+                  required
+                ></textarea>
+                <div class="chat-tools">
+                  <div class="chat-tools-left">
+                    <label class="attach-button" for="file-input" title="แนบไฟล์">📎</label>
+                    <input id="file-input" type="file" hidden accept=".txt,.md,.csv,.json,.py,.js,.ts,.tsx,.jsx,.html,.css,.xml,.yaml,.yml,.sql,.sh,.log" />
+                    <span id="attachment-chip" class="attachment-chip" hidden></span>
+                    <select id="chat-thinking-level" title="ระดับการคิด">
+                      <option value="off">คิด: ปิด</option>
+                      <option value="low">คิด: ต่ำ</option>
+                      <option value="medium">คิด: กลาง</option>
+                      <option value="high">คิด: สูง</option></select
+                    ><select id="chat-model-select" title="เลือกโมเดล">
+                      <option value="">กำลังโหลดโมเดล...</option>
+                    </select>
+                  </div>
+                  <button
+                    class="send-round"
+                    id="send"
+                    type="submit"
+                    title="ส่ง"
+                  >
+                    ↑
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+          <section id="settings-view" class="view">
+            <div id="notice" class="notice"></div>
+            <div class="card">
+              <h2>ผู้ให้บริการและโมเดล</h2>
+              <p class="hint">
+                เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ
+                OpenAI-compatible API
+              </p>
+              <div class="grid">
+                <label
+                  ><span>Provider</span
+                  ><select id="provider">
+                    <option value="openai">OpenAI / OpenAI-compatible</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="anthropic">Anthropic Claude</option>
+                  </select></label
+                >
+                <label
+                  ><span
+                    >Model
+                    <small
+                      id="model_status"
+                      style="color: #94a3b8; font-weight: normal"
+                      >ยังไม่ได้ดึงจาก API</small
+                    ></span
+                  ><select id="model_select"></select
+                  ><input
+                    id="model_custom"
+                    placeholder="พิมพ์ชื่อโมเดลเอง"
+                    style="display: none; margin-top: 8px"
+                /></label>
+                <label class="full"
+                  ><span>Base URL (สำหรับ OpenAI-compatible)</span
+                  ><input id="base_url" placeholder="https://api.openai.com/v1"
+                /></label>
+                <label class="full"
+                  ><span>API key</span
+                  ><input
+                    id="api_key"
+                    type="password"
+                    placeholder="เว้นว่างเพื่อใช้คีย์เดิม"
+                /></label>
+              </div>
+            </div>
+            <div class="card">
+              <h2>พฤติกรรมของผู้ช่วย</h2>
+              <p class="hint">ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ</p>
+              <div class="grid">
+                <label class="full"
+                  ><span>System prompt</span
+                  ><textarea id="system_prompt" rows="5"></textarea>
+                </label>
+                <label
+                  ><span>Temperature <b id="temperature-value">0.7</b></span>
+                  <div class="range-row">
+                    <input
+                      id="temperature"
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                    /><span class="range-value" id="temp-label">0.7</span>
+                  </div></label
+                >
+                <label
+                  ><span>Top P <b id="top_p-value">1</b></span>
+                  <div class="range-row">
+                    <input
+                      id="top_p"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                    /><span class="range-value" id="top-label">1</span>
+                  </div></label
+                >
+                <label
+                  ><span>Max output tokens</span
+                  ><input id="max_tokens" type="number" min="1" max="100000"
+                /></label>
+                <label
+                  ><span>ระดับการคิด</span
+                  ><select id="thinking_level">
+                    <option value="off">ปิด</option>
+                    <option value="low">ต่ำ</option>
+                    <option value="medium">กลาง</option>
+                    <option value="high">สูง</option>
+                  </select></label
+                >
+                <label class="toggle"
+                  ><input id="stream" type="checkbox" /><span
+                    >เปิดการตอบแบบ streaming (เตรียมรองรับ)</span
+                  ></label
+                >
+              </div>
+              <div class="actions">
+                <button id="save">บันทึกการตั้งค่า</button
+                ><button class="secondary" id="test" type="button">
+                  ทดสอบการเชื่อมต่อ</button
+                ><button class="danger" id="reset" type="button">รีเซ็ต</button>
+              </div>
+            </div>
+          </section>
+          <section id="about-view" class="view">
+            <div class="card">
+              <h2>เกี่ยวกับระบบ</h2>
+              <p class="hint">
+                เว็บแชต AI ที่รันบน Termux พร้อมหน้า settings สำหรับควบคุม
+                provider, model, endpoint, prompt และพารามิเตอร์ต่าง ๆ
+              </p>
+              <p class="hint">
+                API key จะเก็บฝั่งเซิร์ฟเวอร์ในไฟล์ตั้งค่าที่ไม่ถูก commit เข้า
+                Git
+              </p>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
-  </div>
-  <script>
-    const $ = (id) => document.getElementById(id);
-    const messages = [];
-    let conversationId = null;
-    let conversationCreatedAt = null;
-    function closeSidebar() { document.querySelector('aside').classList.remove('open'); $('sidebar-backdrop').classList.remove('open'); $('mobile-menu-toggle').setAttribute('aria-expanded', 'false'); }
-    $('mobile-menu-toggle').addEventListener('click', () => { const open = document.querySelector('aside').classList.toggle('open'); $('sidebar-backdrop').classList.toggle('open', open); $('mobile-menu-toggle').setAttribute('aria-expanded', String(open)); });
-    $('sidebar-backdrop').addEventListener('click', closeSidebar);
-    function formatUsage(durationMs, usage) { const duration = Number.isFinite(Number(durationMs)) ? `${(Number(durationMs) / 1000).toFixed(2)} วินาที` : 'ไม่ทราบเวลา'; const tokens = usage?.total_tokens != null ? `${usage.total_tokens.toLocaleString()} tokens` : 'ไม่ทราบ token'; return `ใช้เวลา ${duration} · ${tokens}`; }
-    function addMessage(role, content, meta=null) { const el = document.createElement('div'); el.className = `message ${role}`; const text = document.createElement('div'); text.textContent = content; el.appendChild(text); if (role === 'assistant' && meta) { const details = document.createElement('small'); details.className = 'message-meta'; details.textContent = formatUsage(meta.duration_ms, meta.usage); el.appendChild(details); } $('messages').appendChild(el); $('messages').scrollTop = $('messages').scrollHeight; }
-    document.querySelectorAll('nav button').forEach(button => button.addEventListener('click', () => { document.querySelectorAll('nav button').forEach(b => b.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.view').forEach(v => v.classList.remove('active')); $(`${button.dataset.view}-view`).classList.add('active'); $('page-title').textContent = button.dataset.view === 'chat' ? 'แชตกับ AI' : button.dataset.view === 'settings' ? 'ตั้งค่าระบบ' : 'เกี่ยวกับระบบ'; if (button.dataset.view === 'settings') loadSettings(); closeSidebar(); }));
-    function resizeInput() { const el = $('input'); el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 180)}px`; el.style.overflowY = el.scrollHeight > 180 ? 'auto' : 'hidden'; }
-    $('input').addEventListener('input', resizeInput); $('input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('chat-form').requestSubmit(); } });
-    async function saveConversation() { if (!messages.length) return; try { const firstUser = messages.find(message => message.role === 'user'); const body = {id:conversationId, created_at:conversationCreatedAt, title:firstUser?.content || 'บทสนทนาใหม่', messages}; const response = await fetch('/api/history', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if (response.ok) { const saved = await response.json(); conversationId = saved.id; conversationCreatedAt = saved.created_at; await loadHistoryList(); } } catch (error) { console.warn('บันทึกประวัติไม่สำเร็จ', error); } }
-    $('chat-form').addEventListener('submit', async (event) => { event.preventDefault(); const content = $('input').value.trim(); if (!content || $('send').disabled) return; messages.push({role:'user',content}); addMessage('user', content); await saveConversation(); $('input').value = ''; resizeInput(); $('send').disabled = true; $('send').textContent = '…'; try { const r = await fetch('/api/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages, thinking_level:$('chat-thinking-level').value, model:$('chat-model-select').value})}); const data = await r.json(); if (!r.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด'); const assistantMessage = {role:'assistant',content:data.answer,duration_ms:data.duration_ms,usage:data.usage}; messages.push(assistantMessage); addMessage('assistant', data.answer, assistantMessage); await saveConversation(); } catch (e) { const errorMessage = {role:'assistant',content:`ข้อผิดพลาด: ${e.message}`}; messages.push(errorMessage); addMessage('assistant', errorMessage.content); await saveConversation(); } finally { $('send').disabled = false; $('send').textContent = '↑'; $('input').focus(); } });
-    function showNotice(text, error=false) { const n = $('notice'); n.textContent = text; n.className = `notice${error ? ' error' : ''}`; n.style.display = 'block'; setTimeout(() => n.style.display = 'none', 4000); }
-    const MODEL_OPTIONS = {
-      openai: { label: 'OpenAI / OpenAI-compatible', models: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o-mini', 'gpt-4o', 'o4-mini', 'o3'] },
-      gemini: { label: 'Google Gemini', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'] },
-      anthropic: { label: 'Anthropic Claude', models: ['claude-sonnet-4-5', 'claude-opus-4-1', 'claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest'] }
-    };
-    function updateModelOptions(provider, selected='', models=null) { const select = $('model_select'); const choices = models?.length ? models : (MODEL_OPTIONS[provider]?.models || []); select.innerHTML = choices.map(model => `<option value="${model.id || model}">${model.name || model.id || model}</option>`).join('') + '<option value="__custom__">กำหนดเอง...</option>'; if (choices.some(model => (model.id || model) === selected)) { select.value = selected; $('model_custom').style.display = 'none'; } else if (selected) { select.value = '__custom__'; $('model_custom').value = selected; $('model_custom').style.display = 'block'; } else { select.value = choices[0] ? (choices[0].id || choices[0]) : '__custom__'; $('model_custom').style.display = choices.length ? 'none' : 'block'; } }
-    async function fetchModels(provider, selected='') { $('model_status').textContent = 'กำลังดึงจาก API...'; try { const r = await fetch(`/api/models?provider=${encodeURIComponent(provider)}`); const data = await r.json(); if (!r.ok) throw new Error(data.error || 'ดึงรายการโมเดลไม่สำเร็จ'); updateModelOptions(provider, selected, data.models); updateChatModelOptions(data.models, selected); $('model_status').textContent = `ดึงจาก API แล้ว ${data.models.length} รายการ`; } catch (e) { updateModelOptions(provider, selected); updateChatModelOptions(MODEL_OPTIONS[provider]?.models || [], selected); $('model_status').textContent = 'API ใช้งานไม่ได้ — ใช้รายการสำรอง'; } }
-    function currentModel() { return $('model_select').value === '__custom__' ? $('model_custom').value.trim() : $('model_select').value; }
-    $('provider').addEventListener('change', () => { const provider = $('provider').value; if (provider === 'gemini') $('base_url').value = 'https://generativelanguage.googleapis.com'; else if (provider === 'anthropic') $('base_url').value = 'https://api.anthropic.com'; else $('base_url').value = 'https://api.openai.com/v1'; fetchModels(provider); });
-    $('model_select').addEventListener('change', () => { $('model_custom').style.display = $('model_select').value === '__custom__' ? 'block' : 'none'; if ($('model_select').value === '__custom__') $('model_custom').focus(); });
-    function updateChatModelOptions(models, selected='') { const select = $('chat-model-select'); const choices = models?.length ? models : [selected || 'ยังไม่ได้เลือกโมเดล']; select.innerHTML = choices.map(model => `<option value="${model.id || model}">${model.name || model.id || model}</option>`).join(''); if (selected && choices.some(model => (model.id || model) === selected)) select.value = selected; }
-    function applyChatMeta(settings) { $('chat-thinking-level').value = settings.thinking_level ?? 'off'; updateChatModelOptions([], settings.model ?? ''); }
-    async function loadChatMeta() { try { const r = await fetch('/api/settings'); const s = await r.json(); applyChatMeta(s); await fetchModels(s.provider ?? 'openai', s.model ?? ''); } catch (e) { updateChatModelOptions([], 'ยังไม่ได้เชื่อมต่อ'); } }
-    async function loadSettings() { const r = await fetch('/api/settings'); const s = await r.json(); $('provider').value = s.provider ?? 'openai'; $('base_url').value = s.base_url ?? ''; $('system_prompt').value = s.system_prompt ?? ''; $('temperature').value = s.temperature ?? .7; $('max_tokens').value = s.max_tokens ?? 2048; $('top_p').value = s.top_p ?? 1; $('thinking_level').value = s.thinking_level ?? 'off'; $('chat-thinking-level').value = s.thinking_level ?? 'off'; $('stream').checked = !!s.stream; $('api_key').value = ''; $('api_key').placeholder = s.has_api_key ? 'มีคีย์เดิมอยู่แล้ว — เว้นว่างเพื่อคงเดิม' : 'ใส่ API key'; await fetchModels($('provider').value, s.model ?? ''); updateRanges(); }
-    function updateRanges() { $('temp-label').textContent = $('temperature').value; $('temperature-value').textContent = $('temperature').value; $('top-label').textContent = $('top_p').value; $('top_p-value').textContent = $('top_p').value; }
-    $('temperature').addEventListener('input', updateRanges); $('top_p').addEventListener('input', updateRanges);
-    $('save').addEventListener('click', async () => { const body = {provider:$('provider').value, model:currentModel(), base_url:$('base_url').value, system_prompt:$('system_prompt').value, api_key:$('api_key').value, temperature:Number($('temperature').value), top_p:Number($('top_p').value), max_tokens:Number($('max_tokens').value), thinking_level:$('thinking_level').value, stream:$('stream').checked}; const r = await fetch('/api/settings', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); showNotice(r.ok ? 'บันทึกการตั้งค่าแล้ว' : 'บันทึกไม่สำเร็จ', !r.ok); if (r.ok) { applyChatMeta(body); await fetchModels(body.provider, body.model); } });
-    $('test').addEventListener('click', async () => { $('test').disabled = true; $('test').textContent = 'กำลังทดสอบ...'; const r = await fetch('/api/settings/test', {method:'POST'}); const data = await r.json(); showNotice(data.ok ? `เชื่อมต่อสำเร็จ: ${data.answer}` : `เชื่อมต่อไม่สำเร็จ: ${data.error}`, !data.ok); $('test').disabled = false; $('test').textContent = 'ทดสอบการเชื่อมต่อ'; });
-    function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[character])); }
-    function historyRows(items) { return items.map(item => `<div class="history-row${item.id === conversationId ? ' active' : ''}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.title || '')}">${item.locked ? '🔒 ' : ''}${escapeHtml(item.title || 'บทสนทนาไม่มีชื่อ')}</button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="เปลี่ยนชื่อ">✎</button><button class="history-action" data-history-action="${item.pinned ? 'unpin' : 'pin'}" data-history-id="${escapeHtml(item.id)}" title="${item.pinned ? 'ถอนหมุด' : 'ปักหมุด'}">${item.pinned ? '📌' : '📍'}</button><button class="history-action" data-history-action="${item.locked ? 'unlock' : 'lock'}" data-history-id="${escapeHtml(item.id)}" title="${item.locked ? 'ปลดล็อก' : 'ล็อก'}">${item.locked ? '🔓' : '🔒'}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="ลบ">×</button></div></div>`).join(''); }
-    function renderHistoryList(items) { const pinned = items.filter(item => item.pinned); const grouped = {}; items.filter(item => !item.pinned).forEach(item => { const day = (item.updated_at || '').slice(0, 10) || 'ไม่ทราบวันที่'; (grouped[day] ||= []).push(item); }); const pinnedHtml = pinned.length ? `<div class="history-day">📌 ปักหมุด</div>${historyRows(pinned)}` : ''; const daysHtml = Object.entries(grouped).map(([day, dayItems]) => `<div class="history-day">${escapeHtml(day)}</div>${historyRows(dayItems)}`).join(''); $('history-list').innerHTML = pinnedHtml + daysHtml || '<div class="history-day">ยังไม่มีประวัติ</div>'; }
-    async function loadHistoryList() { const response = await fetch('/api/history'); if (response.ok) renderHistoryList((await response.json()).items || []); }
-    async function openConversation(id) { const response = await fetch(`/api/history/${id}`); if (!response.ok) return; const record = await response.json(); conversationId = record.id; conversationCreatedAt = record.created_at; messages.splice(0, messages.length, ...(record.messages || [])); $('messages').innerHTML = ''; messages.forEach(message => addMessage(message.role, message.content, message)); renderHistoryList((await (await fetch('/api/history')).json()).items || []); document.querySelector('[data-view="chat"]').click(); }
-    async function updateHistory(id, body) { const response = await fetch(`/api/history/${id}`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'แก้ไขประวัติไม่สำเร็จ'); await loadHistoryList(); return data; }
-    async function deleteHistory(id) { const response = await fetch(`/api/history/${id}`, {method:'DELETE'}); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'ลบประวัติไม่สำเร็จ'); if (id === conversationId) { conversationId = null; conversationCreatedAt = null; messages.splice(0, messages.length); $('messages').innerHTML = '<div class="message assistant">เริ่มบทสนทนาใหม่ได้เลยครับ</div>'; } await loadHistoryList(); }
-    let historyModalAction = null; let historyModalId = null;
-    function openHistoryModal(action, id, title='') { historyModalAction = action; historyModalId = id; $('history-modal').classList.add('open'); $('history-modal-input').style.display = action === 'rename' ? 'block' : 'none'; $('history-modal-confirm').style.display = action === 'error' ? 'none' : 'block'; $('history-modal-title').textContent = action === 'rename' ? 'เปลี่ยนชื่อประวัติ' : 'ลบประวัติ'; $('history-modal-text').textContent = action === 'rename' ? 'กำหนดชื่อใหม่ให้ประวัติการสนทนา' : 'ประวัตินี้จะถูกลบออกจากเครื่องและไม่สามารถกู้คืนได้'; $('history-modal-input').value = title; $('history-modal-confirm').textContent = action === 'rename' ? 'บันทึก' : 'ลบ'; $('history-modal-confirm').className = action === 'rename' ? '' : 'modal-danger'; if (action === 'rename') $('history-modal-input').focus(); }
-    function closeHistoryModal() { $('history-modal').classList.remove('open'); historyModalAction = null; historyModalId = null; }
-    $('history-modal-cancel').addEventListener('click', closeHistoryModal);
-    $('history-modal').addEventListener('click', event => { if (event.target === $('history-modal')) closeHistoryModal(); });
-    $('history-modal-confirm').addEventListener('click', async () => { try { if (historyModalAction === 'rename') { const name = $('history-modal-input').value.trim(); if (!name) return; await updateHistory(historyModalId, {title:name}); } else if (historyModalAction === 'delete') await deleteHistory(historyModalId); closeHistoryModal(); } catch (error) { $('history-modal-text').textContent = error.message; } });
-    $('history-list').addEventListener('click', async (event) => { const action = event.target.closest('[data-history-action]'); if (action) { event.stopPropagation(); const id = action.dataset.historyId; if (action.dataset.historyAction === 'rename') { const row = action.closest('[data-history-row]'); openHistoryModal('rename', id, row.querySelector('.history-item').textContent.replace(/^🔒\s*/, '')); } else if (action.dataset.historyAction === 'delete') openHistoryModal('delete', id); else { try { await updateHistory(id, action.dataset.historyAction === 'pin' || action.dataset.historyAction === 'unpin' ? {pinned:action.dataset.historyAction === 'pin'} : {locked:action.dataset.historyAction === 'lock'}); } catch (error) { openHistoryModal('error', id); $('history-modal-title').textContent = 'ดำเนินการไม่สำเร็จ'; $('history-modal-text').textContent = error.message; $('history-modal-input').style.display = 'none'; $('history-modal-confirm').style.display = 'none'; } } return; } const item = event.target.closest('[data-history-id]'); if (item) openConversation(item.dataset.historyId); });
-    $('new-chat').addEventListener('click', () => { conversationId = null; conversationCreatedAt = null; messages.splice(0, messages.length); $('messages').innerHTML = '<div class="message assistant">สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div>'; document.querySelector('[data-view="chat"]').click(); closeSidebar(); $('input').focus(); });
-    $('reset').addEventListener('click', async () => { if (!confirm('รีเซ็ตการตั้งค่าทั้งหมดหรือไม่?')) return; await fetch('/api/settings/reset', {method:'POST'}); await loadSettings(); showNotice('รีเซ็ตการตั้งค่าแล้ว'); });
-    loadChatMeta(); loadHistoryList();
-  </script>
-</body>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const messages = [];
+      let conversationId = null;
+      let conversationCreatedAt = null;
+      let pendingAttachment = null;
+      function closeSidebar() {
+        document.querySelector("aside").classList.remove("open");
+        $("sidebar-backdrop").classList.remove("open");
+        $("mobile-menu-toggle").setAttribute("aria-expanded", "false");
+      }
+      $("mobile-menu-toggle").addEventListener("click", () => {
+        const open = document.querySelector("aside").classList.toggle("open");
+        $("sidebar-backdrop").classList.toggle("open", open);
+        $("mobile-menu-toggle").setAttribute("aria-expanded", String(open));
+      });
+      $("sidebar-backdrop").addEventListener("click", closeSidebar);
+      function formatUsage(durationMs, usage) {
+        const duration = Number.isFinite(Number(durationMs))
+          ? `${(Number(durationMs) / 1000).toFixed(2)} วินาที`
+          : "ไม่ทราบเวลา";
+        const tokens =
+          usage?.total_tokens != null
+            ? `${usage.total_tokens.toLocaleString()} tokens`
+            : "ไม่ทราบ token";
+        return `ใช้เวลา ${duration} · ${tokens}`;
+      }
+      function addMessage(role, content, meta = null) {
+        const el = document.createElement("div");
+        el.className = `message ${role}`;
+        const text = document.createElement("div");
+        text.textContent = content;
+        el.appendChild(text);
+        if (role === "user" && meta?.attachment?.name) {
+          const attachment = document.createElement("small");
+          attachment.className = "message-attachment";
+          attachment.textContent = `📎 ${meta.attachment.name}`;
+          el.appendChild(attachment);
+        }
+        if (role === "assistant" && meta) {
+          const details = document.createElement("small");
+          details.className = "message-meta";
+          details.textContent = formatUsage(meta.duration_ms, meta.usage);
+          el.appendChild(details);
+        }
+        $("messages").appendChild(el);
+        $("messages").scrollTop = $("messages").scrollHeight;
+      }
+      document.querySelectorAll("nav button").forEach((button) =>
+        button.addEventListener("click", () => {
+          document
+            .querySelectorAll("nav button")
+            .forEach((b) => b.classList.remove("active"));
+          button.classList.add("active");
+          document
+            .querySelectorAll(".view")
+            .forEach((v) => v.classList.remove("active"));
+          $(`${button.dataset.view}-view`).classList.add("active");
+          $("page-title").textContent =
+            button.dataset.view === "chat"
+              ? "แชตกับ AI"
+              : button.dataset.view === "settings"
+                ? "ตั้งค่าระบบ"
+                : "เกี่ยวกับระบบ";
+          if (button.dataset.view === "settings") loadSettings();
+          closeSidebar();
+        }),
+      );
+      function resizeInput() {
+        const el = $("input");
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+        el.style.overflowY = el.scrollHeight > 180 ? "auto" : "hidden";
+      }
+      $("input").addEventListener("input", resizeInput);
+      $("input").addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          $("chat-form").requestSubmit();
+        }
+      });
+      $("file-input").addEventListener("change", async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        const maxBytes = 1024 * 1024;
+        if (file.size > maxBytes) {
+          $("attachment-chip").textContent = "ไฟล์ใหญ่เกิน 1 MB";
+          $("attachment-chip").hidden = false;
+          event.target.value = "";
+          pendingAttachment = null;
+          return;
+        }
+        try {
+          const content = await file.text();
+          pendingAttachment = { name: file.name, content };
+          $("attachment-chip").textContent = `📎 ${file.name}`;
+          $("attachment-chip").hidden = false;
+        } catch (error) {
+          pendingAttachment = null;
+          $("attachment-chip").textContent = "อ่านไฟล์ไม่สำเร็จ";
+          $("attachment-chip").hidden = false;
+        }
+      });
+      async function saveConversation() {
+        if (!messages.length) return;
+        try {
+          const firstUser = messages.find((message) => message.role === "user");
+          const body = {
+            id: conversationId,
+            created_at: conversationCreatedAt,
+            title: firstUser?.content || "บทสนทนาใหม่",
+            messages,
+          };
+          const response = await fetch("/api/history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (response.ok) {
+            const saved = await response.json();
+            conversationId = saved.id;
+            conversationCreatedAt = saved.created_at;
+            await loadHistoryList();
+          }
+        } catch (error) {
+          console.warn("บันทึกประวัติไม่สำเร็จ", error);
+        }
+      }
+      $("chat-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const content = $("input").value.trim();
+        if ((!content && !pendingAttachment) || $("send").disabled) return;
+        const userMessage = {
+          role: "user",
+          content: content || "ช่วยวิเคราะห์ไฟล์แนบนี้ให้หน่อย",
+        };
+        if (pendingAttachment) userMessage.attachment = pendingAttachment;
+        messages.push(userMessage);
+        addMessage("user", content, userMessage);
+        await saveConversation();
+        $("input").value = "";
+        pendingAttachment = null;
+        $("file-input").value = "";
+        $("attachment-chip").hidden = true;
+        resizeInput();
+        $("send").disabled = true;
+        $("send").textContent = "…";
+        try {
+          const r = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages,
+              thinking_level: $("chat-thinking-level").value,
+              model: $("chat-model-select").value,
+            }),
+          });
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || "เกิดข้อผิดพลาด");
+          const assistantMessage = {
+            role: "assistant",
+            content: data.answer,
+            duration_ms: data.duration_ms,
+            usage: data.usage,
+          };
+          messages.push(assistantMessage);
+          addMessage("assistant", data.answer, assistantMessage);
+          await saveConversation();
+        } catch (e) {
+          const errorMessage = {
+            role: "assistant",
+            content: `ข้อผิดพลาด: ${e.message}`,
+          };
+          messages.push(errorMessage);
+          addMessage("assistant", errorMessage.content);
+          await saveConversation();
+        } finally {
+          $("send").disabled = false;
+          $("send").textContent = "↑";
+          $("input").focus();
+        }
+      });
+      function showNotice(text, error = false) {
+        const n = $("notice");
+        n.textContent = text;
+        n.className = `notice${error ? " error" : ""}`;
+        n.style.display = "block";
+        setTimeout(() => (n.style.display = "none"), 4000);
+      }
+      const MODEL_OPTIONS = {
+        openai: {
+          label: "OpenAI / OpenAI-compatible",
+          models: [
+            "gpt-4.1-mini",
+            "gpt-4.1",
+            "gpt-4o-mini",
+            "gpt-4o",
+            "o4-mini",
+            "o3",
+          ],
+        },
+        gemini: {
+          label: "Google Gemini",
+          models: [
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+          ],
+        },
+        anthropic: {
+          label: "Anthropic Claude",
+          models: [
+            "claude-sonnet-4-5",
+            "claude-opus-4-1",
+            "claude-3-7-sonnet-latest",
+            "claude-3-5-haiku-latest",
+          ],
+        },
+      };
+      function updateModelOptions(provider, selected = "", models = null) {
+        const select = $("model_select");
+        const choices = models?.length
+          ? models
+          : MODEL_OPTIONS[provider]?.models || [];
+        select.innerHTML =
+          choices
+            .map(
+              (model) =>
+                `<option value="${model.id || model}">${model.name || model.id || model}</option>`,
+            )
+            .join("") + '<option value="__custom__">กำหนดเอง...</option>';
+        if (choices.some((model) => (model.id || model) === selected)) {
+          select.value = selected;
+          $("model_custom").style.display = "none";
+        } else if (selected) {
+          select.value = "__custom__";
+          $("model_custom").value = selected;
+          $("model_custom").style.display = "block";
+        } else {
+          select.value = choices[0]
+            ? choices[0].id || choices[0]
+            : "__custom__";
+          $("model_custom").style.display = choices.length ? "none" : "block";
+        }
+      }
+      async function fetchModels(provider, selected = "") {
+        $("model_status").textContent = "กำลังดึงจาก API...";
+        try {
+          const r = await fetch(
+            `/api/models?provider=${encodeURIComponent(provider)}`,
+          );
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || "ดึงรายการโมเดลไม่สำเร็จ");
+          updateModelOptions(provider, selected, data.models);
+          updateChatModelOptions(data.models, selected);
+          $("model_status").textContent =
+            `ดึงจาก API แล้ว ${data.models.length} รายการ`;
+        } catch (e) {
+          updateModelOptions(provider, selected);
+          updateChatModelOptions(
+            MODEL_OPTIONS[provider]?.models || [],
+            selected,
+          );
+          $("model_status").textContent = "API ใช้งานไม่ได้ — ใช้รายการสำรอง";
+        }
+      }
+      function currentModel() {
+        return $("model_select").value === "__custom__"
+          ? $("model_custom").value.trim()
+          : $("model_select").value;
+      }
+      $("provider").addEventListener("change", () => {
+        const provider = $("provider").value;
+        if (provider === "gemini")
+          $("base_url").value = "https://generativelanguage.googleapis.com";
+        else if (provider === "anthropic")
+          $("base_url").value = "https://api.anthropic.com";
+        else $("base_url").value = "https://api.openai.com/v1";
+        fetchModels(provider);
+      });
+      $("model_select").addEventListener("change", () => {
+        $("model_custom").style.display =
+          $("model_select").value === "__custom__" ? "block" : "none";
+        if ($("model_select").value === "__custom__") $("model_custom").focus();
+      });
+      function updateChatModelOptions(models, selected = "") {
+        const select = $("chat-model-select");
+        const choices = models?.length
+          ? models
+          : [selected || "ยังไม่ได้เลือกโมเดล"];
+        select.innerHTML = choices
+          .map(
+            (model) =>
+              `<option value="${model.id || model}">${model.name || model.id || model}</option>`,
+          )
+          .join("");
+        if (
+          selected &&
+          choices.some((model) => (model.id || model) === selected)
+        )
+          select.value = selected;
+      }
+      function applyChatMeta(settings) {
+        $("chat-thinking-level").value = settings.thinking_level ?? "off";
+        updateChatModelOptions([], settings.model ?? "");
+      }
+      async function loadChatMeta() {
+        try {
+          const r = await fetch("/api/settings");
+          const s = await r.json();
+          applyChatMeta(s);
+          await fetchModels(s.provider ?? "openai", s.model ?? "");
+        } catch (e) {
+          updateChatModelOptions([], "ยังไม่ได้เชื่อมต่อ");
+        }
+      }
+      async function loadSettings() {
+        const r = await fetch("/api/settings");
+        const s = await r.json();
+        $("provider").value = s.provider ?? "openai";
+        $("base_url").value = s.base_url ?? "";
+        $("system_prompt").value = s.system_prompt ?? "";
+        $("temperature").value = s.temperature ?? 0.7;
+        $("max_tokens").value = s.max_tokens ?? 2048;
+        $("top_p").value = s.top_p ?? 1;
+        $("thinking_level").value = s.thinking_level ?? "off";
+        $("chat-thinking-level").value = s.thinking_level ?? "off";
+        $("stream").checked = !!s.stream;
+        $("api_key").value = "";
+        $("api_key").placeholder = s.has_api_key
+          ? "มีคีย์เดิมอยู่แล้ว — เว้นว่างเพื่อคงเดิม"
+          : "ใส่ API key";
+        await fetchModels($("provider").value, s.model ?? "");
+        updateRanges();
+      }
+      function updateRanges() {
+        $("temp-label").textContent = $("temperature").value;
+        $("temperature-value").textContent = $("temperature").value;
+        $("top-label").textContent = $("top_p").value;
+        $("top_p-value").textContent = $("top_p").value;
+      }
+      $("temperature").addEventListener("input", updateRanges);
+      $("top_p").addEventListener("input", updateRanges);
+      $("save").addEventListener("click", async () => {
+        const body = {
+          provider: $("provider").value,
+          model: currentModel(),
+          base_url: $("base_url").value,
+          system_prompt: $("system_prompt").value,
+          api_key: $("api_key").value,
+          temperature: Number($("temperature").value),
+          top_p: Number($("top_p").value),
+          max_tokens: Number($("max_tokens").value),
+          thinking_level: $("thinking_level").value,
+          stream: $("stream").checked,
+        };
+        const r = await fetch("/api/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        showNotice(r.ok ? "บันทึกการตั้งค่าแล้ว" : "บันทึกไม่สำเร็จ", !r.ok);
+        if (r.ok) {
+          applyChatMeta(body);
+          await fetchModels(body.provider, body.model);
+        }
+      });
+      $("test").addEventListener("click", async () => {
+        $("test").disabled = true;
+        $("test").textContent = "กำลังทดสอบ...";
+        const r = await fetch("/api/settings/test", { method: "POST" });
+        const data = await r.json();
+        showNotice(
+          data.ok
+            ? `เชื่อมต่อสำเร็จ: ${data.answer}`
+            : `เชื่อมต่อไม่สำเร็จ: ${data.error}`,
+          !data.ok,
+        );
+        $("test").disabled = false;
+        $("test").textContent = "ทดสอบการเชื่อมต่อ";
+      });
+      function escapeHtml(value) {
+        return String(value).replace(
+          /[&<>'"]/g,
+          (character) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              "'": "&#39;",
+              '\"': "&quot;",
+            })[character],
+        );
+      }
+      function historyRows(items) {
+        return items
+          .map(
+            (item) =>
+              `<div class="history-row${item.id === conversationId ? " active" : ""}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.title || "")}">${item.locked ? "🔒 " : ""}${escapeHtml(item.title || "บทสนทนาไม่มีชื่อ")}</button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="เปลี่ยนชื่อ">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${item.pinned ? "ถอนหมุด" : "ปักหมุด"}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${item.locked ? "ปลดล็อก" : "ล็อก"}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="ลบ">×</button></div></div>`,
+          )
+          .join("");
+      }
+      function renderHistoryList(items) {
+        const pinned = items.filter((item) => item.pinned);
+        const grouped = {};
+        items
+          .filter((item) => !item.pinned)
+          .forEach((item) => {
+            const day = (item.updated_at || "").slice(0, 10) || "ไม่ทราบวันที่";
+            (grouped[day] ||= []).push(item);
+          });
+        const pinnedHtml = pinned.length
+          ? `<div class="history-day">📌 ปักหมุด</div>${historyRows(pinned)}`
+          : "";
+        const daysHtml = Object.entries(grouped)
+          .map(
+            ([day, dayItems]) =>
+              `<div class="history-day">${escapeHtml(day)}</div>${historyRows(dayItems)}`,
+          )
+          .join("");
+        $("history-list").innerHTML =
+          pinnedHtml + daysHtml ||
+          '<div class="history-day">ยังไม่มีประวัติ</div>';
+      }
+      async function loadHistoryList() {
+        const response = await fetch("/api/history");
+        if (response.ok) renderHistoryList((await response.json()).items || []);
+      }
+      async function openConversation(id) {
+        const response = await fetch(`/api/history/${id}`);
+        if (!response.ok) return;
+        const record = await response.json();
+        conversationId = record.id;
+        conversationCreatedAt = record.created_at;
+        messages.splice(0, messages.length, ...(record.messages || []));
+        $("messages").innerHTML = "";
+        messages.forEach((message) =>
+          addMessage(message.role, message.content, message),
+        );
+        renderHistoryList(
+          (await (await fetch("/api/history")).json()).items || [],
+        );
+        document.querySelector('[data-view="chat"]').click();
+      }
+      async function updateHistory(id, body) {
+        const response = await fetch(`/api/history/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        if (!response.ok)
+          throw new Error(data.error || "แก้ไขประวัติไม่สำเร็จ");
+        await loadHistoryList();
+        return data;
+      }
+      async function deleteHistory(id) {
+        const response = await fetch(`/api/history/${id}`, {
+          method: "DELETE",
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "ลบประวัติไม่สำเร็จ");
+        if (id === conversationId) {
+          conversationId = null;
+          conversationCreatedAt = null;
+          messages.splice(0, messages.length);
+          $("messages").innerHTML =
+            '<div class="message assistant">เริ่มบทสนทนาใหม่ได้เลยครับ</div>';
+        }
+        await loadHistoryList();
+      }
+      let historyModalAction = null;
+      let historyModalId = null;
+      function openHistoryModal(action, id, title = "") {
+        historyModalAction = action;
+        historyModalId = id;
+        $("history-modal").classList.add("open");
+        $("history-modal-input").style.display =
+          action === "rename" ? "block" : "none";
+        $("history-modal-confirm").style.display =
+          action === "error" ? "none" : "block";
+        $("history-modal-title").textContent =
+          action === "rename" ? "เปลี่ยนชื่อประวัติ" : "ลบประวัติ";
+        $("history-modal-text").textContent =
+          action === "rename"
+            ? "กำหนดชื่อใหม่ให้ประวัติการสนทนา"
+            : "ประวัตินี้จะถูกลบออกจากเครื่องและไม่สามารถกู้คืนได้";
+        $("history-modal-input").value = title;
+        $("history-modal-confirm").textContent =
+          action === "rename" ? "บันทึก" : "ลบ";
+        $("history-modal-confirm").className =
+          action === "rename" ? "" : "modal-danger";
+        if (action === "rename") $("history-modal-input").focus();
+      }
+      function closeHistoryModal() {
+        $("history-modal").classList.remove("open");
+        historyModalAction = null;
+        historyModalId = null;
+      }
+      $("history-modal-cancel").addEventListener("click", closeHistoryModal);
+      $("history-modal").addEventListener("click", (event) => {
+        if (event.target === $("history-modal")) closeHistoryModal();
+      });
+      $("history-modal-confirm").addEventListener("click", async () => {
+        try {
+          if (historyModalAction === "rename") {
+            const name = $("history-modal-input").value.trim();
+            if (!name) return;
+            await updateHistory(historyModalId, { title: name });
+          } else if (historyModalAction === "delete")
+            await deleteHistory(historyModalId);
+          closeHistoryModal();
+        } catch (error) {
+          $("history-modal-text").textContent = error.message;
+        }
+      });
+      $("history-list").addEventListener("click", async (event) => {
+        const action = event.target.closest("[data-history-action]");
+        if (action) {
+          event.stopPropagation();
+          const id = action.dataset.historyId;
+          if (action.dataset.historyAction === "rename") {
+            const row = action.closest("[data-history-row]");
+            openHistoryModal(
+              "rename",
+              id,
+              row
+                .querySelector(".history-item")
+                .textContent.replace(/^🔒\s*/, ""),
+            );
+          } else if (action.dataset.historyAction === "delete")
+            openHistoryModal("delete", id);
+          else {
+            try {
+              await updateHistory(
+                id,
+                action.dataset.historyAction === "pin" ||
+                  action.dataset.historyAction === "unpin"
+                  ? { pinned: action.dataset.historyAction === "pin" }
+                  : { locked: action.dataset.historyAction === "lock" },
+              );
+            } catch (error) {
+              openHistoryModal("error", id);
+              $("history-modal-title").textContent = "ดำเนินการไม่สำเร็จ";
+              $("history-modal-text").textContent = error.message;
+              $("history-modal-input").style.display = "none";
+              $("history-modal-confirm").style.display = "none";
+            }
+          }
+          return;
+        }
+        const item = event.target.closest("[data-history-id]");
+        if (item) openConversation(item.dataset.historyId);
+      });
+      $("new-chat").addEventListener("click", () => {
+        conversationId = null;
+        conversationCreatedAt = null;
+        messages.splice(0, messages.length);
+        $("messages").innerHTML =
+          '<div class="message assistant">สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div>';
+        document.querySelector('[data-view="chat"]').click();
+        closeSidebar();
+        $("input").focus();
+      });
+      $("reset").addEventListener("click", async () => {
+        if (!confirm("รีเซ็ตการตั้งค่าทั้งหมดหรือไม่?")) return;
+        await fetch("/api/settings/reset", { method: "POST" });
+        await loadSettings();
+        showNotice("รีเซ็ตการตั้งค่าแล้ว");
+      });
+      loadChatMeta();
+      loadHistoryList();
+    </script>
+  </body>
 </html>

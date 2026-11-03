@@ -114,7 +114,12 @@ def get_api_key(provider: str) -> str:
 
 def clean_messages(messages: list[dict[str, str]], settings: dict[str, Any]) -> list[dict[str, str]]:
     result = [{"role": "system", "content": settings.get("system_prompt", "")}] if settings.get("system_prompt") else []
-    result.extend({"role": item.get("role", "user"), "content": item.get("content", "")} for item in messages)
+    for item in messages:
+        content = item.get("content", "")
+        attachment = item.get("attachment")
+        if isinstance(attachment, dict) and attachment.get("name") and attachment.get("content"):
+            content = f"{content}\n\n[ไฟล์แนบ: {attachment['name']}]\n```\n{attachment['content']}\n```"
+        result.append({"role": item.get("role", "user"), "content": content})
     return result
 
 
