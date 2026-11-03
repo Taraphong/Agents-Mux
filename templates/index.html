@@ -739,9 +739,7 @@
           <section id="chat-view" class="view active">
             <div class="messages">
               <div id="messages">
-                <div class="message assistant">
-                  สวัสดีครับ ผมพร้อมช่วยคุณแล้ว
-                </div>
+                <div class="message assistant"><div>สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div></div>
               </div>
               <form class="chat-form" id="chat-form">
                 <textarea
@@ -1628,7 +1626,7 @@
           conversationCreatedAt = null;
           messages.splice(0, messages.length);
           $("messages").innerHTML =
-            '<div class="message assistant">เริ่มบทสนทนาใหม่ได้เลยครับ</div>';
+            '<div class="message assistant"><div>เริ่มบทสนทนาใหม่ได้เลยครับ</div></div>';
         }
         await loadHistoryList();
       }
@@ -1721,7 +1719,7 @@
         conversationTitle = null;
         messages.splice(0, messages.length);
         $("messages").innerHTML =
-          '<div class="message assistant">สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div>';
+          '<div class="message assistant"><div>สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div></div>';
         document.querySelector('[data-view="chat"]').click();
         closeSidebar();
         $("input").focus();
