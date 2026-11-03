@@ -253,6 +253,10 @@
         align-items: center;
         margin-bottom: 14px;
       }
+      .logs-actions {
+        display: flex;
+        gap: 8px;
+      }
       .logs-list {
         display: grid;
         gap: 8px;
@@ -923,7 +927,10 @@
                   <h2>Log ระบบ</h2>
                   <p class="hint">ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง API key หรือเนื้อหาไฟล์</p>
                 </div>
-                <button id="refresh-logs" type="button">รีเฟรช</button>
+                <div class="logs-actions">
+                  <button id="save-logs" type="button">บันทึกไฟล์</button>
+                  <button id="refresh-logs" type="button">รีเฟรช</button>
+                </div>
               </div>
               <div id="logs-list" class="logs-list"><p class="hint">กำลังโหลด...</p></div>
             </div>
@@ -1077,16 +1084,18 @@
           closeSidebar();
         }),
       );
+      let currentLogs = [];
       async function loadLogs() {
         const list = $("logs-list");
         try {
           const response = await fetch("/api/logs");
           const data = await response.json();
-          if (!data.items?.length) {
+          currentLogs = Array.isArray(data.items) ? data.items : [];
+          if (!currentLogs.length) {
             list.innerHTML = '<p class="hint">ยังไม่มี log</p>';
             return;
           }
-          list.innerHTML = data.items.slice().reverse().map((item) => {
+          list.innerHTML = currentLogs.slice().reverse().map((item) => {
             const details = Object.entries(item.details || {})
               .map(([key, value]) => `${key}: ${value}`)
               .join(" · ");
@@ -1101,6 +1110,26 @@
         }
       }
       $("refresh-logs").addEventListener("click", loadLogs);
+      $("save-logs").addEventListener("click", async () => {
+        try {
+          const response = await fetch("/api/logs");
+          const data = await response.json();
+          const items = Array.isArray(data.items) ? data.items : currentLogs;
+          const blob = new Blob([JSON.stringify(items, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `ai-web-log-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+        } catch (error) {
+          const button = $("save-logs");
+          button.textContent = "บันทึกไม่สำเร็จ";
+          setTimeout(() => { button.textContent = "บันทึกไฟล์"; }, 2500);
+        }
+      });
       function resizeInput() {
         const el = $("input");
         el.style.height = "auto";
