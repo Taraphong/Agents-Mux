@@ -324,6 +324,15 @@
         color: #271500;
         font-size: 0.78rem;
       }
+      .tool-approval-detail {
+        display: block;
+        margin-top: 6px;
+        color: #cbd5e1;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+        font-size: 0.74rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
       .user {
         background: #3554c7;
         margin-left: auto;
@@ -960,14 +969,24 @@
           attachment.textContent = `📎 ${meta.attachment.name}`;
           el.appendChild(attachment);
         }
-        if (role === "assistant" && meta?.tool_request) {
+        if (role === "assistant" && meta?.tool_request && meta?.approval_id) {
           const approval = document.createElement("button");
           approval.type = "button";
           approval.className = "tool-approval";
           approval.textContent = `อนุมัติใช้ ${meta.tool_request.name}`;
           approval.toolRequest = meta.tool_request;
+          approval.approvalId = meta.approval_id;
           approval.addEventListener("click", approveToolRequest);
           el.appendChild(approval);
+          const args = meta.tool_request.arguments || {};
+          const summary = args.command || args.path || "";
+          if (summary) {
+            const detail = document.createElement("small");
+            detail.className = "tool-approval-detail";
+            detail.textContent =
+              summary + (args.content ? ` (${String(args.content).length} ตัวอักษร)` : "");
+            el.appendChild(detail);
+          }
         }
         if (role === "assistant" && meta) {
           const details = document.createElement("small");
@@ -987,17 +1006,27 @@
           const response = await fetch("/api/tools/execute", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...request, approved: true }),
+            body: JSON.stringify({
+              name: request.name,
+              arguments: request.arguments,
+              approval_id: button.approvalId,
+            }),
           });
           const data = await response.json();
-          if (!response.ok || !data.ok) throw new Error(data.error || "ใช้เครื่องมือไม่สำเร็จ");
+          if (!response.ok || !data.ok) {
+            const error = new Error(data.error || "ใช้เครื่องมือไม่สำเร็จ");
+            error.fatal = response.status === 403;
+            throw error;
+          }
           button.textContent = "ทำงานแล้ว";
           $("input").value = `ผลการใช้เครื่องมือ:\n${JSON.stringify(data.result, null, 2)}`;
           resizeInput();
           $("chat-form").requestSubmit();
         } catch (error) {
-          button.disabled = false;
-          button.textContent = `ลองอีกครั้ง (${error.message})`;
+          button.disabled = Boolean(error.fatal);
+          button.textContent = error.fatal
+            ? "คำขออนุมัติหมดอายุ กรุณาส่งข้อความใหม่"
+            : `ลองอีกครั้ง (${error.message})`;
         }
       }
       document.querySelectorAll("nav button").forEach((button) =>
@@ -1095,7 +1124,7 @@
             id: conversationId,
             created_at: conversationCreatedAt,
             title,
-            messages,
+            messages: messages.map(({ tool_request, approval_id, ...rest }) => rest),
           };
           const response = await fetch("/api/history", {
             method: "POST",
@@ -1149,6 +1178,7 @@
             duration_ms: data.duration_ms,
             usage: data.usage,
             tool_request: data.tool_request,
+            approval_id: data.approval_id,
             fallback_used: data.fallback_used,
           };
           messages.push(assistantMessage);
@@ -1198,7 +1228,7 @@
       });
       function updateScheduleModelOptions(models, selected = "") {
         const select = $("schedule-model");
-        const options = '<option value="">ใช้โมเดลหลักจาก Settings</option>' + (models || []).map((model) => `<option value="${model.id || model}">${model.name || model.id || model}</option>`).join("");
+        const options = '<option value="">ใช้โมเดลหลักจาก Settings</option>' + (models || []).map((model) => `<option value="${escapeHtml(model.id || model)}">${escapeHtml(model.name || model.id || model)}</option>`).join("");
         select.innerHTML = options;
         select.value = selected || "";
       }
@@ -1283,7 +1313,7 @@
           choices
             .map(
               (model) =>
-                `<option value="${model.id || model}">${model.name || model.id || model}</option>`,
+                `<option value="${escapeHtml(model.id || model)}">${escapeHtml(model.name || model.id || model)}</option>`,
             )
             .join("") + '<option value="__custom__">กำหนดเอง...</option>';
         if (choices.some((model) => (model.id || model) === selected)) {
@@ -1333,11 +1363,11 @@
           choices
             .map(
               (model) =>
-                `<option value="${model.id || model}">${model.name || model.id || model}</option>`,
+                `<option value="${escapeHtml(model.id || model)}">${escapeHtml(model.name || model.id || model)}</option>`,
             )
             .join("");
         if (selected && !choices.some((model) => (model.id || model) === selected)) {
-          select.insertAdjacentHTML("beforeend", `<option value="${selected}">${selected}</option>`);
+          select.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(selected)}">${escapeHtml(selected)}</option>`);
         }
         select.value = selected || "";
       }
@@ -1368,7 +1398,7 @@
         select.innerHTML = choices
           .map(
             (model) =>
-              `<option value="${model.id || model}">${model.name || model.id || model}</option>`,
+              `<option value="${escapeHtml(model.id || model)}">${escapeHtml(model.name || model.id || model)}</option>`,
           )
           .join("");
         if (

@@ -1,8 +1,10 @@
 import os
+import fcntl
 import json
 import logging
 import re
 import secrets
+import shlex
 import subprocess
 import threading
 import time
@@ -30,6 +32,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 TOOL_MAX_READ_BYTES = 200_000
 TOOL_MAX_WRITE_BYTES = 200_000
 PENDING_TOOL_REQUESTS: dict[str, dict[str, Any]] = {}
+PENDING_APPROVAL_LOCK = threading.Lock()
+APPROVAL_TTL_SECONDS = 15 * 60
+MAX_PENDING_APPROVALS = 50
+APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command"}
+SCHEDULE_LOCK_FILE = Path(f"{SCHEDULE_FILE}.lock")
+SCHEDULE_RUNNING: set[str] = set()
+SCHEDULE_RUNNING_LOCK = threading.Lock()
+_SCHEDULER_STARTED = False
+_SCHEDULER_START_LOCK = threading.Lock()
+_SCHEDULER_LOCK_HANDLE: Any = None
 PROTECTED_NAMES = {".env", ".app-settings.json"}
 PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__"}
 TOOL_INSTRUCTIONS = """
@@ -143,9 +155,19 @@ def validate_cron(expression: str) -> str:
 
 
 def cron_matches(expression: str, now: datetime) -> bool:
-    fields = validate_cron(expression).split()
-    values = ((now.minute, 0, 59), (now.hour, 0, 23), (now.day, 1, 31), (now.month, 1, 12), ((now.weekday() + 1) % 7, 0, 6))
-    return all(value in cron_values(field, minimum, maximum) for field, (value, minimum, maximum) in zip(fields, values))
+    minute, hour, day_of_month, month, day_of_week = validate_cron(expression).split()
+    if now.minute not in cron_values(minute, 0, 59):
+        return False
+    if now.hour not in cron_values(hour, 0, 23):
+        return False
+    if now.month not in cron_values(month, 1, 12):
+        return False
+    dom_matches = now.day in cron_values(day_of_month, 1, 31)
+    dow_matches = ((now.weekday() + 1) % 7) in cron_values(day_of_week, 0, 6)
+    # Standard cron ORs day-of-month and day-of-week when both are restricted.
+    if day_of_month.strip() == "*" or day_of_week.strip() == "*":
+        return dom_matches and dow_matches
+    return dom_matches or dow_matches
 
 
 def update_schedule(job_id: str, **changes: Any) -> None:
@@ -172,8 +194,15 @@ def execute_schedule(job: dict[str, Any]) -> None:
             {"role": "assistant", "content": answer, "duration_ms": duration_ms, "usage": usage, "schedule_id": job["id"]},
         ]})
         update_schedule(job["id"], last_status="สำเร็จ", last_error="", last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+        log_event("schedule.success", f"งานตามเวลา {job['name']} สำเร็จ", job=job["id"], duration_ms=duration_ms)
     except Exception as exc:
+        log_event("schedule.error", f"งานตามเวลา {job.get('name', job.get('id', ''))} ล้มเหลว", error=str(exc))
         update_schedule(job["id"], last_status="ล้มเหลว", last_error=str(exc)[:500], last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+    finally:
+        job_id = job.get("id") if isinstance(job, dict) else None
+        if job_id:
+            with SCHEDULE_RUNNING_LOCK:
+                SCHEDULE_RUNNING.discard(job_id)
 
 
 def schedule_loop() -> None:
@@ -183,16 +212,52 @@ def schedule_loop() -> None:
         minute_key = now.strftime("%Y-%m-%d %H:%M")
         if minute_key != last_minute:
             last_minute = minute_key
-            for job in load_schedules():
-                if not job.get("enabled", True) or job.get("last_run_key") == minute_key:
-                    continue
-                try:
-                    if cron_matches(job["schedule"], now):
-                        update_schedule(job["id"], last_run_key=minute_key)
-                        threading.Thread(target=execute_schedule, args=(job,), daemon=True).start()
-                except (KeyError, TypeError, ValueError):
-                    update_schedule(job.get("id", ""), last_status="ล้มเหลว", last_error="cron ไม่ถูกต้อง")
+            try:
+                for job in load_schedules():
+                    if not job.get("enabled", True) or job.get("last_run_key") == minute_key:
+                        continue
+                    try:
+                        if not cron_matches(job["schedule"], now):
+                            continue
+                        job_id = job["id"]
+                        with SCHEDULE_RUNNING_LOCK:
+                            if job_id in SCHEDULE_RUNNING:
+                                log_event("schedule.skipped", "ข้ามงานที่ยังทำงานอยู่", job=job_id)
+                                continue
+                            SCHEDULE_RUNNING.add(job_id)
+                        try:
+                            update_schedule(job_id, last_run_key=minute_key)
+                            threading.Thread(target=execute_schedule, args=(job,), daemon=True).start()
+                        except Exception:
+                            with SCHEDULE_RUNNING_LOCK:
+                                SCHEDULE_RUNNING.discard(job_id)
+                            raise
+                    except (KeyError, TypeError, ValueError):
+                        update_schedule(job.get("id", ""), last_status="ล้มเหลว", last_error="cron ไม่ถูกต้อง")
+            except OSError as exc:
+                log_event("schedule.error", "อ่านหรือบันทึกงานตามเวลาไม่สำเร็จ", error=str(exc))
         time.sleep(15)
+
+
+def start_scheduler() -> None:
+    """Start the cron loop once per process, and only in one process at a time."""
+    global _SCHEDULER_STARTED, _SCHEDULER_LOCK_HANDLE
+    with _SCHEDULER_START_LOCK:
+        if _SCHEDULER_STARTED:
+            return
+        try:
+            handle = open(SCHEDULE_LOCK_FILE, "a+", encoding="utf-8")
+        except OSError as exc:
+            log_event("schedule.error", "เปิดไฟล์ lock ของ scheduler ไม่สำเร็จ", error=str(exc))
+            return
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            handle.close()
+            return
+        _SCHEDULER_LOCK_HANDLE = handle
+        _SCHEDULER_STARTED = True
+    threading.Thread(target=schedule_loop, name="scheduled-ai-jobs", daemon=True).start()
 
 
 def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
@@ -209,6 +274,90 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     return candidate
 
 
+def ensure_safe_command_token(token: str) -> None:
+    """Reject command arguments that point outside the project or at protected files."""
+    normalized = token.replace("\\", "/").strip()
+    if not normalized or normalized.startswith("-"):
+        return
+    parts = [part for part in normalized.split("/") if part not in {"", "."}]
+    if normalized.startswith(("/", "~")) or ".." in parts:
+        raise ValueError("คำสั่งต้องอ้างอิงเฉพาะ path ภายในโปรเจกต์")
+    if any(part in PROTECTED_PARTS or part in PROTECTED_NAMES for part in parts):
+        raise ValueError("ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
+
+
+SAFE_GIT_SUBCOMMANDS = {"status", "diff", "log"}
+SAFE_GIT_OPTIONS = {
+    "-p", "-n", "--oneline", "--stat", "--shortstat", "--name-only", "--name-status",
+    "--no-color", "--no-pager", "--graph", "--decorate", "--all", "--cached",
+}
+SAFE_LS_OPTIONS = {"-a", "-l", "-la", "-al", "-lh", "-lah", "-R", "-t", "-r", "-1", "-h"}
+
+
+def parse_command(command: str) -> list[str]:
+    """Parse one whitelisted command into argv without ever invoking a shell."""
+    if any(character in command for character in ("\n", "\r", ";", "|", "&", ">", "<", "`", "$(")):
+        raise ValueError("คำสั่งมี syntax ที่ไม่อนุญาต")
+    try:
+        argv = shlex.split(command)
+    except ValueError as exc:
+        raise ValueError("รูปแบบคำสั่งไม่ถูกต้อง") from exc
+    if not argv:
+        raise ValueError("ต้องระบุคำสั่ง")
+    binary, rest = argv[0], argv[1:]
+    if binary == "pwd":
+        if rest:
+            raise ValueError("pwd ไม่รับ argument")
+    elif binary == "ls":
+        for token in rest:
+            if token.startswith("-"):
+                if token not in SAFE_LS_OPTIONS:
+                    raise ValueError(f"ไม่อนุญาต ls option {token}")
+            else:
+                ensure_safe_command_token(token)
+    elif binary == "git":
+        if not rest or rest[0] not in SAFE_GIT_SUBCOMMANDS:
+            raise ValueError("อนุญาตเฉพาะ git status, git diff และ git log")
+        for token in rest[1:]:
+            if token.startswith("-"):
+                if token not in SAFE_GIT_OPTIONS and not token.lstrip("-").isdigit():
+                    raise ValueError(f"ไม่อนุญาต git option {token}")
+            else:
+                ensure_safe_command_token(token)
+    elif binary in {"python", "python3"}:
+        if rest != ["-m", "py_compile", "app.py"]:
+            raise ValueError("อนุญาตเฉพาะการตรวจ syntax ของ app.py")
+    else:
+        raise ValueError("อนุญาตเฉพาะคำสั่งตรวจสอบโปรเจกต์ที่กำหนดไว้")
+    return argv
+
+
+def request_tool_approval(name: str, arguments: dict[str, Any]) -> str:
+    approval_id = secrets.token_urlsafe(24)
+    now = time.time()
+    with PENDING_APPROVAL_LOCK:
+        for key, item in list(PENDING_TOOL_REQUESTS.items()):
+            if now - item.get("created_at", 0) > APPROVAL_TTL_SECONDS:
+                PENDING_TOOL_REQUESTS.pop(key, None)
+        while len(PENDING_TOOL_REQUESTS) >= MAX_PENDING_APPROVALS:
+            PENDING_TOOL_REQUESTS.pop(next(iter(PENDING_TOOL_REQUESTS)))
+        PENDING_TOOL_REQUESTS[approval_id] = {"name": name, "arguments": arguments, "created_at": now}
+    return approval_id
+
+
+def consume_tool_approval(approval_id: Any, name: str, arguments: dict[str, Any]) -> bool:
+    if not isinstance(approval_id, str) or not approval_id:
+        return False
+    now = time.time()
+    with PENDING_APPROVAL_LOCK:
+        pending = PENDING_TOOL_REQUESTS.pop(approval_id, None)
+    if not pending:
+        return False
+    if now - pending.get("created_at", 0) > APPROVAL_TTL_SECONDS:
+        return False
+    return pending.get("name") == name and pending.get("arguments") == arguments
+
+
 def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False) -> dict[str, Any]:
     requested_name = name
     name = TOOL_ALIASES.get(name, name)
@@ -219,15 +368,20 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         root = resolve_project_path(arguments.get("path", "."), must_exist=True)
         if not root.is_dir():
             raise ValueError("path นี้ไม่ใช่โฟลเดอร์")
-        files = []
-        for path in sorted(root.rglob("*")):
-            if not path.is_file():
-                continue
-            relative = path.relative_to(PROJECT_ROOT)
-            if any(part in PROTECTED_PARTS for part in relative.parts) or path.name in PROTECTED_NAMES:
-                continue
-            files.append(str(relative))
-        result = {"tool": name, "files": files[:500], "truncated": len(files) > 500}
+        files: list[str] = []
+        truncated = False
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = sorted(directory for directory in dirnames if directory not in PROTECTED_PARTS)
+            for filename in sorted(filenames):
+                if filename in PROTECTED_NAMES:
+                    continue
+                if len(files) >= 500:
+                    truncated = True
+                    break
+                files.append(str(Path(dirpath, filename).relative_to(PROJECT_ROOT)))
+            if truncated:
+                break
+        result = {"tool": name, "files": files, "truncated": truncated}
         log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, count=len(files))
         return result
 
@@ -260,19 +414,8 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         command = arguments.get("command", "")
         if not isinstance(command, str) or not command.strip():
             raise ValueError("ต้องระบุคำสั่ง")
-        if any(token in command for token in (";", "&&", "||", "|", ">", "<", "`", "$(", "..")):
-            raise ValueError("คำสั่งมี syntax ที่ไม่อนุญาต")
-        parts = command.split()
-        allowed_commands = {"pwd", "ls", "find", "rg", "git", "python", "python3", "py_compile"}
-        if not parts or parts[0] not in allowed_commands:
-            raise ValueError("อนุญาตเฉพาะคำสั่งตรวจสอบโปรเจกต์ที่กำหนดไว้")
-        if any(part.startswith(("/", "~")) for part in parts[1:]):
-            raise ValueError("คำสั่งต้องอ้างอิงเฉพาะ path ภายในโปรเจกต์")
-        if parts[0] == "git" and (len(parts) < 2 or parts[1] not in {"status", "diff", "log"}):
-            raise ValueError("อนุญาตเฉพาะ git status, git diff และ git log")
-        if parts[0] in {"python", "python3"} and parts[1:] != ["-m", "py_compile", "app.py"]:
-            raise ValueError("อนุญาตเฉพาะการตรวจ syntax ของ app.py")
-        completed = subprocess.run(command, cwd=PROJECT_ROOT, shell=True, capture_output=True, text=True, timeout=30)
+        argv = parse_command(command)
+        completed = subprocess.run(argv, cwd=PROJECT_ROOT, shell=False, capture_output=True, text=True, timeout=30)
         result = {"tool": name, "command": command, "returncode": completed.returncode, "stdout": completed.stdout[-20_000:], "stderr": completed.stderr[-20_000:]}
         log_event("tool.success" if completed.returncode == 0 else "tool.failed", f"รันคำสั่งเสร็จ ({completed.returncode})", tool=name, command=command)
         return result
@@ -517,10 +660,17 @@ def tools_execute():
     body = request.get_json(silent=True) or {}
     name = body.get("name")
     arguments = body.get("arguments", {})
-    approved = bool(body.get("approved", False))
+    approval_id = body.get("approval_id")
     if not isinstance(name, str) or not isinstance(arguments, dict):
         log_event("tool.invalid", "ข้อมูลเครื่องมือไม่ถูกต้อง")
         return jsonify({"ok": False, "error": "ข้อมูลเครื่องมือไม่ถูกต้อง"}), 400
+    canonical_name = TOOL_ALIASES.get(name, name)
+    approved = False
+    if canonical_name in APPROVAL_REQUIRED_TOOLS:
+        approved = consume_tool_approval(approval_id, name, arguments)
+        if not approved:
+            log_event("tool.denied", f"ปฏิเสธ {name} เพราะไม่มีการอนุมัติที่ถูกต้อง", tool=name)
+            return jsonify({"ok": False, "error": "คำขออนุมัติไม่ถูกต้องหรือหมดอายุ กรุณาขอใหม่อีกครั้ง"}), 403
     try:
         result = run_local_tool(name, arguments, approved=approved)
         return jsonify({"ok": True, "result": result})
@@ -692,6 +842,8 @@ def settings_put():
     for key in allowed:
         if key in body:
             current[key] = body[key]
+    current["fallback_enabled"] = bool(current.get("fallback_enabled"))
+    current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
     if body.get("api_key") and body["api_key"] != "••••••••":
         current["api_key"] = body["api_key"]
     save_settings(current)
@@ -733,14 +885,14 @@ def chat():
         if isinstance(requested_model, str) and requested_model.strip():
             settings["model"] = requested_model.strip()
         settings["system_prompt"] = f"{settings.get('system_prompt', '')}\n\n{TOOL_INSTRUCTIONS}"
-        provider = settings["provider"].lower()
+        provider = str(settings.get("provider", "openai")).lower()
         messages = clean_messages(messages, settings)
         started_at = time.perf_counter()
         fallback_used = None
         try:
             answer, usage = call_provider(messages, settings)
         except requests.HTTPError as primary_error:
-            fallback_model = settings.get("fallback_model", "").strip()
+            fallback_model = str(settings.get("fallback_model") or "").strip()
             status_code = primary_error.response.status_code if primary_error.response is not None else None
             can_fallback = bool(settings.get("fallback_enabled")) and fallback_model and fallback_model != settings["model"] and status_code in {400, 404, 429, 500, 502, 503, 504}
             if not can_fallback:
@@ -748,7 +900,11 @@ def chat():
             settings["model"] = fallback_model
             answer, usage = call_provider(messages, settings)
             fallback_used = fallback_model
-        tool_request = parse_tool_request(answer)
+        try:
+            tool_request = parse_tool_request(answer)
+        except ValueError as exc:
+            log_event("tool.parse_failed", "ข้าม tool_call ที่ไม่สมบูรณ์", error=str(exc))
+            tool_request = None
         if tool_request:
             if tool_request["name"] in {"list_files", "read_file"}:
                 result = run_local_tool(tool_request["name"], tool_request["arguments"])
@@ -762,6 +918,7 @@ def chat():
                     "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
                     "provider": provider,
                     "tool_request": tool_request,
+                    "approval_id": request_tool_approval(tool_request["name"], tool_request["arguments"]),
                     "duration_ms": round((time.perf_counter() - started_at) * 1000),
                     "usage": usage,
                     "model": settings["model"],
@@ -772,7 +929,8 @@ def chat():
     except requests.HTTPError as exc:
         log_event("provider.error", "ผู้ให้บริการตอบกลับด้วย HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
         if exc.response is not None and exc.response.status_code in {429, 503}:
-            return jsonify({"error": "Gemini กำลังมีผู้ใช้หนาแน่นหรือจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้งในอีกสักครู่ หรือเลือกโมเดล Gemini อื่น"}), 503
+            provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "ผู้ให้บริการ")
+            return jsonify({"error": f"{provider_label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้งในอีกสักครู่ หรือเลือกโมเดลอื่น"}), 503
         detail = exc.response.text[:500] if exc.response is not None else str(exc)
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError) as exc:
@@ -780,9 +938,11 @@ def chat():
         return jsonify({"error": str(exc)}), 500
 
 
-threading.Thread(target=schedule_loop, name="scheduled-ai-jobs", daemon=True).start()
+if os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower() in {"1", "true", "yes"}:
+    start_scheduler()
 
 
 if __name__ == "__main__":
+    start_scheduler()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 
