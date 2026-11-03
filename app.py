@@ -36,8 +36,11 @@ TOOL_INSTRUCTIONS = """
 คุณมีเครื่องมือจำกัดอยู่ในโฟลเดอร์โปรเจกต์เท่านั้น หากต้องอ่านไฟล์หรือดูรายการไฟล์ ให้ร้องขอด้วยรูปแบบนี้เพียงอย่างเดียว:
 <tool_call>{"name":"read_file","arguments":{"path":"app.py"}}</tool_call>
 หรือ <tool_call>{"name":"list_files","arguments":{"path":"."}}</tool_call>
-ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ หากต้องเขียนไฟล์หรือรันคำสั่ง ให้ร้องขอด้วย tool_call เช่นเดียวกัน ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
+หากต้องเขียนไฟล์ ให้ใช้ชื่อ write_file และหากต้องรันคำสั่ง ให้ใช้ชื่อ run_command (ระบบยอมรับ execute_command เป็นชื่อเก่าด้วย) ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
+ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ
 """.strip()
+
+TOOL_ALIASES = {"execute_command": "run_command"}
 
 
 def log_event(event: str, message: str, **details: Any) -> None:
@@ -207,6 +210,10 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
 
 
 def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False) -> dict[str, Any]:
+    requested_name = name
+    name = TOOL_ALIASES.get(name, name)
+    if requested_name != name:
+        log_event("tool.alias", f"แปลงชื่อ tool {requested_name} เป็น {name}", requested=requested_name, tool=name)
     log_event("tool.start", f"เริ่มใช้ {name}", tool=name, approved=approved)
     if name == "list_files":
         root = resolve_project_path(arguments.get("path", "."), must_exist=True)
@@ -500,6 +507,7 @@ def tools_get():
             {"name": "read_file", "approval_required": False},
             {"name": "write_file", "approval_required": True},
             {"name": "run_command", "approval_required": True},
+            {"name": "execute_command", "alias_for": "run_command", "approval_required": True},
         ],
     })
 
