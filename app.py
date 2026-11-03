@@ -1,6 +1,8 @@
 import os
 import json
 import re
+import secrets
+import subprocess
 import time
 import uuid
 from datetime import datetime
@@ -16,6 +18,18 @@ load_dotenv()
 app = Flask(__name__)
 SETTINGS_FILE = Path(os.getenv("AI_WEB_SETTINGS_FILE", ".app-settings.json"))
 HISTORY_ROOT = Path(os.getenv("AI_WEB_HISTORY_DIR", "history"))
+PROJECT_ROOT = Path(__file__).resolve().parent
+TOOL_MAX_READ_BYTES = 200_000
+TOOL_MAX_WRITE_BYTES = 200_000
+PENDING_TOOL_REQUESTS: dict[str, dict[str, Any]] = {}
+PROTECTED_NAMES = {".env", ".app-settings.json"}
+PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__"}
+TOOL_INSTRUCTIONS = """
+คุณมีเครื่องมือจำกัดอยู่ในโฟลเดอร์โปรเจกต์เท่านั้น หากต้องอ่านไฟล์หรือดูรายการไฟล์ ให้ร้องขอด้วยรูปแบบนี้เพียงอย่างเดียว:
+<tool_call>{"name":"read_file","arguments":{"path":"app.py"}}</tool_call>
+หรือ <tool_call>{"name":"list_files","arguments":{"path":"."}}</tool_call>
+ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ หากต้องเขียนไฟล์หรือรันคำสั่ง ให้ร้องขอด้วย tool_call เช่นเดียวกัน ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
+""".strip()
 
 DEFAULT_SETTINGS = {
     "provider": os.getenv("AI_PROVIDER", "openai"),
@@ -48,6 +62,91 @@ def load_settings() -> dict[str, Any]:
 
 def save_settings(settings: dict[str, Any]) -> None:
     SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("ต้องระบุ path ภายในโปรเจกต์")
+    candidate = (PROJECT_ROOT / raw_path).resolve()
+    if candidate != PROJECT_ROOT and PROJECT_ROOT not in candidate.parents:
+        raise ValueError("อนุญาตเฉพาะ path ภายในโฟลเดอร์โปรเจกต์")
+    relative_parts = candidate.relative_to(PROJECT_ROOT).parts
+    if any(part in PROTECTED_PARTS for part in relative_parts) or candidate.name in PROTECTED_NAMES:
+        raise ValueError("ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
+    if must_exist and not candidate.exists():
+        raise FileNotFoundError(f"ไม่พบ path: {raw_path}")
+    return candidate
+
+
+def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False) -> dict[str, Any]:
+    if name == "list_files":
+        root = resolve_project_path(arguments.get("path", "."), must_exist=True)
+        if not root.is_dir():
+            raise ValueError("path นี้ไม่ใช่โฟลเดอร์")
+        files = []
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(PROJECT_ROOT)
+            if any(part in PROTECTED_PARTS for part in relative.parts) or path.name in PROTECTED_NAMES:
+                continue
+            files.append(str(relative))
+        return {"tool": name, "files": files[:500], "truncated": len(files) > 500}
+
+    if name == "read_file":
+        path = resolve_project_path(arguments.get("path", ""), must_exist=True)
+        if not path.is_file():
+            raise ValueError("path นี้ไม่ใช่ไฟล์")
+        if path.stat().st_size > TOOL_MAX_READ_BYTES:
+            raise ValueError("ไฟล์ใหญ่เกินขนาดที่อนุญาตให้อ่าน")
+        return {"tool": name, "path": str(path.relative_to(PROJECT_ROOT)), "content": path.read_text(encoding="utf-8")}
+
+    if name == "write_file":
+        if not approved:
+            raise PermissionError("การเขียนไฟล์ต้องได้รับการอนุมัติก่อน")
+        path = resolve_project_path(arguments.get("path", ""))
+        content = arguments.get("content", "")
+        if not isinstance(content, str) or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
+            raise ValueError("เนื้อหาไฟล์ใหญ่เกินขนาดที่อนุญาต")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return {"tool": name, "path": str(path.relative_to(PROJECT_ROOT)), "bytes": len(content.encode("utf-8"))}
+
+    if name == "run_command":
+        if not approved:
+            raise PermissionError("การรันคำสั่งต้องได้รับการอนุมัติก่อน")
+        command = arguments.get("command", "")
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError("ต้องระบุคำสั่ง")
+        if any(token in command for token in (";", "&&", "||", "|", ">", "<", "`", "$(", "..")):
+            raise ValueError("คำสั่งมี syntax ที่ไม่อนุญาต")
+        parts = command.split()
+        allowed_commands = {"pwd", "ls", "find", "rg", "git", "python", "python3", "py_compile"}
+        if not parts or parts[0] not in allowed_commands:
+            raise ValueError("อนุญาตเฉพาะคำสั่งตรวจสอบโปรเจกต์ที่กำหนดไว้")
+        if any(part.startswith(("/", "~")) for part in parts[1:]):
+            raise ValueError("คำสั่งต้องอ้างอิงเฉพาะ path ภายในโปรเจกต์")
+        if parts[0] == "git" and (len(parts) < 2 or parts[1] not in {"status", "diff", "log"}):
+            raise ValueError("อนุญาตเฉพาะ git status, git diff และ git log")
+        if parts[0] in {"python", "python3"} and parts[1:] != ["-m", "py_compile", "app.py"]:
+            raise ValueError("อนุญาตเฉพาะการตรวจ syntax ของ app.py")
+        completed = subprocess.run(command, cwd=PROJECT_ROOT, shell=True, capture_output=True, text=True, timeout=30)
+        return {"tool": name, "command": command, "returncode": completed.returncode, "stdout": completed.stdout[-20_000:], "stderr": completed.stderr[-20_000:]}
+
+    raise ValueError("ไม่รู้จักเครื่องมือนี้")
+
+
+def parse_tool_request(answer: str) -> dict[str, Any] | None:
+    match = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", answer, re.DOTALL)
+    if not match:
+        return None
+    try:
+        request = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        raise ValueError("รูปแบบ tool_call ไม่ถูกต้อง") from exc
+    if not isinstance(request, dict) or not isinstance(request.get("name"), str) or not isinstance(request.get("arguments", {}), dict):
+        raise ValueError("ข้อมูล tool_call ไม่ถูกต้อง")
+    return {"name": request["name"], "arguments": request.get("arguments", {})}
 
 
 def find_history_file(conversation_id: str) -> Path | None:
@@ -231,6 +330,32 @@ def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> 
     return data["content"][0]["text"], normalize_usage(usage, "input_tokens", "output_tokens", None)
 
 
+@app.get("/api/tools")
+def tools_get():
+    return jsonify({
+        "scope": str(PROJECT_ROOT),
+        "tools": [
+            {"name": "list_files", "approval_required": False},
+            {"name": "read_file", "approval_required": False},
+            {"name": "write_file", "approval_required": True},
+            {"name": "run_command", "approval_required": True},
+        ],
+    })
+
+
+@app.post("/api/tools/execute")
+def tools_execute():
+    body = request.get_json(silent=True) or {}
+    name = body.get("name")
+    arguments = body.get("arguments", {})
+    approved = bool(body.get("approved", False))
+    try:
+        result = run_local_tool(name, arguments, approved=approved)
+        return jsonify({"ok": True, "result": result})
+    except (FileNotFoundError, PermissionError, ValueError, OSError, subprocess.SubprocessError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
 @app.get("/")
 def index():
     return render_template("index.html")
@@ -372,6 +497,7 @@ def chat():
         requested_model = body.get("model")
         if isinstance(requested_model, str) and requested_model.strip():
             settings["model"] = requested_model.strip()
+        settings["system_prompt"] = f"{settings.get('system_prompt', '')}\n\n{TOOL_INSTRUCTIONS}"
         provider = settings["provider"].lower()
         messages = clean_messages(messages, settings)
         started_at = time.perf_counter()
@@ -381,12 +507,34 @@ def chat():
             answer, usage = call_anthropic(messages, settings)
         else:
             answer, usage = call_openai(messages, settings)
+        tool_request = parse_tool_request(answer)
+        if tool_request:
+            if tool_request["name"] in {"list_files", "read_file"}:
+                result = run_local_tool(tool_request["name"], tool_request["arguments"])
+                messages.extend([
+                    {"role": "assistant", "content": answer},
+                    {"role": "user", "content": f"ผลการใช้เครื่องมือ:\n{json.dumps(result, ensure_ascii=False)}"},
+                ])
+                if provider == "gemini":
+                    answer, usage = call_gemini(messages, settings)
+                elif provider == "anthropic":
+                    answer, usage = call_anthropic(messages, settings)
+                else:
+                    answer, usage = call_openai(messages, settings)
+            else:
+                return jsonify({
+                    "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
+                    "provider": provider,
+                    "tool_request": tool_request,
+                    "duration_ms": round((time.perf_counter() - started_at) * 1000),
+                    "usage": usage,
+                })
         duration_ms = round((time.perf_counter() - started_at) * 1000)
         return jsonify({"answer": answer, "provider": provider, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
         detail = exc.response.text[:500] if exc.response is not None else str(exc)
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
-    except (KeyError, IndexError, RuntimeError) as exc:
+    except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError) as exc:
         return jsonify({"error": str(exc)}), 500
 
 

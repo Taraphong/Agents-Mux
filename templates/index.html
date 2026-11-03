@@ -269,6 +269,14 @@
         font-size: 0.78rem;
         white-space: normal;
       }
+      .tool-approval {
+        display: block;
+        margin-top: 10px;
+        padding: 7px 10px;
+        background: #f59e0b;
+        color: #271500;
+        font-size: 0.78rem;
+      }
       .user {
         background: #3554c7;
         margin-left: auto;
@@ -816,6 +824,15 @@
           attachment.textContent = `📎 ${meta.attachment.name}`;
           el.appendChild(attachment);
         }
+        if (role === "assistant" && meta?.tool_request) {
+          const approval = document.createElement("button");
+          approval.type = "button";
+          approval.className = "tool-approval";
+          approval.textContent = `อนุมัติใช้ ${meta.tool_request.name}`;
+          approval.toolRequest = meta.tool_request;
+          approval.addEventListener("click", approveToolRequest);
+          el.appendChild(approval);
+        }
         if (role === "assistant" && meta) {
           const details = document.createElement("small");
           details.className = "message-meta";
@@ -824,6 +841,28 @@
         }
         $("messages").appendChild(el);
         $("messages").scrollTop = $("messages").scrollHeight;
+      }
+      async function approveToolRequest(event) {
+        const button = event.currentTarget;
+        button.disabled = true;
+        button.textContent = "กำลังทำงาน...";
+        try {
+          const request = button.toolRequest;
+          const response = await fetch("/api/tools/execute", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...request, approved: true }),
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.error || "ใช้เครื่องมือไม่สำเร็จ");
+          button.textContent = "ทำงานแล้ว";
+          $("input").value = `ผลการใช้เครื่องมือ:\n${JSON.stringify(data.result, null, 2)}`;
+          resizeInput();
+          $("chat-form").requestSubmit();
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = `ลองอีกครั้ง (${error.message})`;
+        }
       }
       document.querySelectorAll("nav button").forEach((button) =>
         button.addEventListener("click", () => {
@@ -941,6 +980,7 @@
             content: data.answer,
             duration_ms: data.duration_ms,
             usage: data.usage,
+            tool_request: data.tool_request,
           };
           messages.push(assistantMessage);
           addMessage("assistant", data.answer, assistantMessage);
