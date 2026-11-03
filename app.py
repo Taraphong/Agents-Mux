@@ -3,6 +3,7 @@ import json
 import re
 import secrets
 import subprocess
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -18,6 +19,8 @@ load_dotenv()
 app = Flask(__name__)
 SETTINGS_FILE = Path(os.getenv("AI_WEB_SETTINGS_FILE", ".app-settings.json"))
 HISTORY_ROOT = Path(os.getenv("AI_WEB_HISTORY_DIR", "history"))
+SCHEDULE_FILE = Path(os.getenv("AI_WEB_SCHEDULE_FILE", "scheduled-jobs.json"))
+SCHEDULE_LOCK = threading.Lock()
 PROJECT_ROOT = Path(__file__).resolve().parent
 TOOL_MAX_READ_BYTES = 200_000
 TOOL_MAX_WRITE_BYTES = 200_000
@@ -64,6 +67,104 @@ def load_settings() -> dict[str, Any]:
 
 def save_settings(settings: dict[str, Any]) -> None:
     SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_schedules() -> list[dict[str, Any]]:
+    if not SCHEDULE_FILE.exists():
+        return []
+    try:
+        data = json.loads(SCHEDULE_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def save_schedules(jobs: list[dict[str, Any]]) -> None:
+    SCHEDULE_FILE.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def cron_values(field: str, minimum: int, maximum: int) -> set[int]:
+    values: set[int] = set()
+    for part in field.split(","):
+        if part == "*":
+            values.update(range(minimum, maximum + 1))
+        elif part.startswith("*/"):
+            step = int(part[2:])
+            if step < 1:
+                raise ValueError("cron step ต้องมากกว่า 0")
+            values.update(range(minimum, maximum + 1, step))
+        elif "-" in part:
+            start, end = (int(value) for value in part.split("-", 1))
+            if start > end:
+                raise ValueError("ช่วง cron ไม่ถูกต้อง")
+            values.update(range(start, end + 1))
+        else:
+            values.add(int(part))
+    if not values or min(values) < minimum or max(values) > maximum:
+        raise ValueError("ค่า cron อยู่นอกช่วงที่อนุญาต")
+    return values
+
+
+def validate_cron(expression: str) -> str:
+    aliases = {"@hourly": "0 * * * *", "@daily": "0 0 * * *", "@midnight": "0 0 * * *"}
+    expression = aliases.get(str(expression).strip().lower(), str(expression).strip())
+    fields = expression.split()
+    if len(fields) != 5:
+        raise ValueError("cron ต้องมี 5 ช่อง เช่น */5 * * * * หรือ 0 9 * * 1-5")
+    for field, minimum, maximum in zip(fields, (0, 0, 1, 1, 0), (59, 23, 31, 12, 6)):
+        cron_values(field, minimum, maximum)
+    return expression
+
+
+def cron_matches(expression: str, now: datetime) -> bool:
+    fields = validate_cron(expression).split()
+    values = ((now.minute, 0, 59), (now.hour, 0, 23), (now.day, 1, 31), (now.month, 1, 12), ((now.weekday() + 1) % 7, 0, 6))
+    return all(value in cron_values(field, minimum, maximum) for field, (value, minimum, maximum) in zip(fields, values))
+
+
+def update_schedule(job_id: str, **changes: Any) -> None:
+    with SCHEDULE_LOCK:
+        jobs = load_schedules()
+        for job in jobs:
+            if job.get("id") == job_id:
+                job.update(changes)
+                break
+        save_schedules(jobs)
+
+
+def execute_schedule(job: dict[str, Any]) -> None:
+    try:
+        settings = load_settings()
+        messages = clean_messages([{"role": "user", "content": job["prompt"]}], settings)
+        started_at = time.perf_counter()
+        answer, usage = call_provider(messages, settings)
+        duration_ms = round((time.perf_counter() - started_at) * 1000)
+        save_history({"title": f"⏰ {job['name']}", "messages": [
+            {"role": "user", "content": job["prompt"], "schedule_id": job["id"]},
+            {"role": "assistant", "content": answer, "duration_ms": duration_ms, "usage": usage, "schedule_id": job["id"]},
+        ]})
+        update_schedule(job["id"], last_status="สำเร็จ", last_error="", last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+    except Exception as exc:
+        update_schedule(job["id"], last_status="ล้มเหลว", last_error=str(exc)[:500], last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+
+
+def schedule_loop() -> None:
+    last_minute = ""
+    while True:
+        now = datetime.now().astimezone()
+        minute_key = now.strftime("%Y-%m-%d %H:%M")
+        if minute_key != last_minute:
+            last_minute = minute_key
+            for job in load_schedules():
+                if not job.get("enabled", True) or job.get("last_run_key") == minute_key:
+                    continue
+                try:
+                    if cron_matches(job["schedule"], now):
+                        update_schedule(job["id"], last_run_key=minute_key)
+                        threading.Thread(target=execute_schedule, args=(job,), daemon=True).start()
+                except (KeyError, TypeError, ValueError):
+                    update_schedule(job.get("id", ""), last_status="ล้มเหลว", last_error="cron ไม่ถูกต้อง")
+        time.sleep(15)
 
 
 def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
@@ -376,6 +477,64 @@ def tools_execute():
         return jsonify({"ok": False, "error": str(exc)}), 400
 
 
+@app.get("/api/schedules")
+def schedules_get():
+    return jsonify({"items": load_schedules()})
+
+
+@app.post("/api/schedules")
+def schedules_create():
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("name", "")).strip()
+    prompt = str(body.get("prompt", "")).strip()
+    if not name or not prompt:
+        return jsonify({"error": "กรุณาระบุชื่องานและ prompt"}), 400
+    try:
+        schedule = validate_cron(body.get("schedule", ""))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    job = {"id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
+    with SCHEDULE_LOCK:
+        jobs = load_schedules()
+        jobs.append(job)
+        save_schedules(jobs)
+    return jsonify(job), 201
+
+
+@app.patch("/api/schedules/<job_id>")
+def schedules_update(job_id: str):
+    body = request.get_json(silent=True) or {}
+    with SCHEDULE_LOCK:
+        jobs = load_schedules()
+        job = next((item for item in jobs if item.get("id") == job_id), None)
+        if not job:
+            return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
+        if "schedule" in body:
+            try:
+                job["schedule"] = validate_cron(body["schedule"])
+            except (TypeError, ValueError) as exc:
+                return jsonify({"error": str(exc)}), 400
+        if "name" in body:
+            job["name"] = str(body["name"]).strip()[:100] or job["name"]
+        if "prompt" in body:
+            job["prompt"] = str(body["prompt"]).strip()[:10_000]
+        if "enabled" in body:
+            job["enabled"] = bool(body["enabled"])
+        save_schedules(jobs)
+    return jsonify(job)
+
+
+@app.delete("/api/schedules/<job_id>")
+def schedules_delete(job_id: str):
+    with SCHEDULE_LOCK:
+        jobs = load_schedules()
+        remaining = [job for job in jobs if job.get("id") != job_id]
+        if len(remaining) == len(jobs):
+            return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
+        save_schedules(remaining)
+    return jsonify({"ok": True})
+
+
 @app.get("/")
 def index():
     return render_template("index.html")
@@ -554,6 +713,9 @@ def chat():
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError) as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+threading.Thread(target=schedule_loop, name="scheduled-ai-jobs", daemon=True).start()
 
 
 if __name__ == "__main__":
