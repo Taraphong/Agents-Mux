@@ -294,11 +294,15 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
         else:
             generation_config["thinkingConfig"] = {"thinkingLevel": thinking_level}
     request_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    request_payload = {"contents": contents, "generationConfig": generation_config}
+    system_instruction = next((message["content"] for message in messages if message["role"] == "system"), "")
+    if system_instruction:
+        request_payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
     for attempt in range(3):
         response = requests.post(
             request_url,
             params={"key": key},
-            json={"contents": contents, "generationConfig": generation_config},
+            json=request_payload,
             timeout=90,
         )
         if response.status_code not in {429, 503} or attempt == 2:
