@@ -197,6 +197,9 @@
       header h1 {
         font-size: 1.1rem;
         margin: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .status {
         color: #34d399;
@@ -247,6 +250,7 @@
         padding: 10px 0 25px;
       }
       .message {
+        width: fit-content;
         white-space: pre-wrap;
         padding: 14px 17px;
         border-radius: 15px;
@@ -280,10 +284,12 @@
       .user {
         background: #3554c7;
         margin-left: auto;
+        align-self: flex-end;
       }
       .assistant {
         background: #182238;
         margin-right: auto;
+        align-self: flex-start;
       }
       form.chat-form {
         display: block;
@@ -555,6 +561,7 @@
           left: 50%;
           transform: translateX(-50%);
           white-space: nowrap;
+          max-width: calc(100% - 150px);
         }
         .status {
           font-size: 0.76rem;
@@ -563,7 +570,7 @@
           padding: 14px 12px 16px;
         }
         .message {
-          max-width: 92%;
+          max-width: 88%;
         }
         .chat-form {
           padding: 10px 12px 8px;
@@ -818,7 +825,12 @@
       const messages = [];
       let conversationId = null;
       let conversationCreatedAt = null;
+      let conversationTitle = null;
       let pendingAttachment = null;
+      function setConversationTitle(title) {
+        conversationTitle = String(title || "").replace(/\s+/g, " ").trim().slice(0, 80) || null;
+        $("page-title").textContent = conversationTitle || "แชตกับ AI";
+      }
       function closeSidebar() {
         document.querySelector("aside").classList.remove("open");
         $("sidebar-backdrop").classList.remove("open");
@@ -904,7 +916,7 @@
           $(`${button.dataset.view}-view`).classList.add("active");
           $("page-title").textContent =
             button.dataset.view === "chat"
-              ? "แชตกับ AI"
+              ? conversationTitle || "แชตกับ AI"
               : button.dataset.view === "settings"
                 ? "ตั้งค่าระบบ"
                 : "เกี่ยวกับระบบ";
@@ -951,10 +963,12 @@
         if (!messages.length) return;
         try {
           const firstUser = messages.find((message) => message.role === "user");
+          const title = firstUser?.content || "บทสนทนาใหม่";
+          setConversationTitle(title);
           const body = {
             id: conversationId,
             created_at: conversationCreatedAt,
-            title: firstUser?.content || "บทสนทนาใหม่",
+            title,
             messages,
           };
           const response = await fetch("/api/history", {
@@ -1303,6 +1317,7 @@
         const record = await response.json();
         conversationId = record.id;
         conversationCreatedAt = record.created_at;
+        setConversationTitle(record.title || record.messages?.find((message) => message.role === "user")?.content);
         messages.splice(0, messages.length, ...(record.messages || []));
         $("messages").innerHTML = "";
         messages.forEach((message) =>
@@ -1426,6 +1441,7 @@
       $("new-chat").addEventListener("click", () => {
         conversationId = null;
         conversationCreatedAt = null;
+        conversationTitle = null;
         messages.splice(0, messages.length);
         $("messages").innerHTML =
           '<div class="message assistant">สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div>';
