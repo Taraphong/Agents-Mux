@@ -488,6 +488,17 @@
         width: auto;
         accent-color: #6366f1;
       }
+      .fallback-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .fallback-row .toggle {
+        flex: 0 0 auto;
+      }
+      .fallback-row select {
+        flex: 1;
+      }
       @media (max-width: 700px) {
         .app {
           display: block;
@@ -537,9 +548,13 @@
         header {
           height: 60px;
           padding: 0 14px;
+          position: relative;
         }
         header h1 {
-          flex: 1;
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          white-space: nowrap;
         }
         .status {
           font-size: 0.76rem;
@@ -697,6 +712,19 @@
                     placeholder="พิมพ์ชื่อโมเดลเอง"
                     style="display: none; margin-top: 8px"
                 /></label>
+                <label class="full fallback-setting"
+                  ><span>Fallback model เมื่อโมเดลหลักใช้ไม่ได้</span>
+                  <div class="fallback-row">
+                    <label class="toggle"
+                      ><input id="fallback_enabled" type="checkbox" /><span
+                        >เปิดใช้งาน</span
+                      ></label
+                    ><select id="fallback_model_select">
+                      <option value="">ไม่ใช้ fallback</option>
+                    </select>
+                  </div>
+                  <small class="hint">จะลองใช้เมื่อ API ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา</small>
+                </label>
                 <label class="full"
                   ><span>Base URL (สำหรับ OpenAI-compatible)</span
                   ><input id="base_url" placeholder="https://api.openai.com/v1"
@@ -836,7 +864,7 @@
         if (role === "assistant" && meta) {
           const details = document.createElement("small");
           details.className = "message-meta";
-          details.textContent = formatUsage(meta.duration_ms, meta.usage);
+          details.textContent = `${formatUsage(meta.duration_ms, meta.usage)}${meta.fallback_used ? ` · fallback: ${meta.fallback_used}` : ""}`;
           el.appendChild(details);
         }
         $("messages").appendChild(el);
@@ -981,6 +1009,7 @@
             duration_ms: data.duration_ms,
             usage: data.usage,
             tool_request: data.tool_request,
+            fallback_used: data.fallback_used,
           };
           messages.push(assistantMessage);
           addMessage("assistant", data.answer, assistantMessage);
@@ -1063,7 +1092,7 @@
           $("model_custom").style.display = choices.length ? "none" : "block";
         }
       }
-      async function fetchModels(provider, selected = "") {
+      async function fetchModels(provider, selected = "", fallbackSelected = "") {
         $("model_status").textContent = "กำลังดึงจาก API...";
         try {
           const r = await fetch(
@@ -1073,6 +1102,7 @@
           if (!r.ok) throw new Error(data.error || "ดึงรายการโมเดลไม่สำเร็จ");
           updateModelOptions(provider, selected, data.models);
           updateChatModelOptions(data.models, selected);
+          updateFallbackModelOptions(data.models, fallbackSelected);
           $("model_status").textContent =
             `ดึงจาก API แล้ว ${data.models.length} รายการ`;
         } catch (e) {
@@ -1081,8 +1111,25 @@
             MODEL_OPTIONS[provider]?.models || [],
             selected,
           );
+          updateFallbackModelOptions(MODEL_OPTIONS[provider]?.models || [], fallbackSelected);
           $("model_status").textContent = "API ใช้งานไม่ได้ — ใช้รายการสำรอง";
         }
+      }
+      function updateFallbackModelOptions(models, selected = "") {
+        const select = $("fallback_model_select");
+        const choices = models?.length ? models : [];
+        select.innerHTML =
+          '<option value="">ไม่ใช้ fallback</option>' +
+          choices
+            .map(
+              (model) =>
+                `<option value="${model.id || model}">${model.name || model.id || model}</option>`,
+            )
+            .join("");
+        if (selected && !choices.some((model) => (model.id || model) === selected)) {
+          select.insertAdjacentHTML("beforeend", `<option value="${selected}">${selected}</option>`);
+        }
+        select.value = selected || "";
       }
       function currentModel() {
         return $("model_select").value === "__custom__"
@@ -1129,7 +1176,7 @@
           const r = await fetch("/api/settings");
           const s = await r.json();
           applyChatMeta(s);
-          await fetchModels(s.provider ?? "openai", s.model ?? "");
+          await fetchModels(s.provider ?? "openai", s.model ?? "", "");
         } catch (e) {
           updateChatModelOptions([], "ยังไม่ได้เชื่อมต่อ");
         }
@@ -1146,11 +1193,13 @@
         $("thinking_level").value = s.thinking_level ?? "off";
         $("chat-thinking-level").value = s.thinking_level ?? "off";
         $("stream").checked = !!s.stream;
+        $("fallback_enabled").checked = !!s.fallback_enabled;
+        updateFallbackModelOptions([], s.fallback_model ?? "");
         $("api_key").value = "";
         $("api_key").placeholder = s.has_api_key
           ? "มีคีย์เดิมอยู่แล้ว — เว้นว่างเพื่อคงเดิม"
           : "ใส่ API key";
-        await fetchModels($("provider").value, s.model ?? "");
+        await fetchModels($("provider").value, s.model ?? "", s.fallback_model ?? "");
         updateRanges();
       }
       function updateRanges() {
@@ -1173,6 +1222,8 @@
           max_tokens: Number($("max_tokens").value),
           thinking_level: $("thinking_level").value,
           stream: $("stream").checked,
+          fallback_enabled: $("fallback_enabled").checked,
+          fallback_model: $("fallback_model_select").value,
         };
         const r = await fetch("/api/settings", {
           method: "PUT",
@@ -1182,7 +1233,7 @@
         showNotice(r.ok ? "บันทึกการตั้งค่าแล้ว" : "บันทึกไม่สำเร็จ", !r.ok);
         if (r.ok) {
           applyChatMeta(body);
-          await fetchModels(body.provider, body.model);
+          await fetchModels(body.provider, body.model, body.fallback_model);
         }
       });
       $("test").addEventListener("click", async () => {

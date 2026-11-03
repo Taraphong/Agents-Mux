@@ -41,6 +41,8 @@ DEFAULT_SETTINGS = {
     "top_p": 1,
     "stream": False,
     "thinking_level": "off",
+    "fallback_enabled": False,
+    "fallback_model": os.getenv("AI_FALLBACK_MODEL", ""),
 }
 
 FALLBACK_MODELS = {
@@ -339,6 +341,15 @@ def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> 
     return data["content"][0]["text"], normalize_usage(usage, "input_tokens", "output_tokens", None)
 
 
+def call_provider(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
+    provider = settings["provider"].lower()
+    if provider == "gemini":
+        return call_gemini(messages, settings)
+    if provider == "anthropic":
+        return call_anthropic(messages, settings)
+    return call_openai(messages, settings)
+
+
 @app.get("/api/tools")
 def tools_get():
     return jsonify({
@@ -457,7 +468,7 @@ def models_get():
 def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
-    allowed = {"provider", "model", "base_url", "system_prompt", "temperature", "max_tokens", "top_p", "stream"}
+    allowed = {"provider", "model", "base_url", "system_prompt", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -472,13 +483,7 @@ def settings_test():
     settings = load_settings()
     try:
         messages = clean_messages([{"role": "user", "content": "ตอบคำว่า OK สั้น ๆ"}], settings)
-        provider = settings["provider"]
-        if provider in {"gemini"}:
-            answer, _usage = call_gemini(messages, settings)
-        elif provider == "anthropic":
-            answer, _usage = call_anthropic(messages, settings)
-        else:
-            answer, _usage = call_openai(messages, settings)
+        answer, _usage = call_provider(messages, settings)
         return jsonify({"ok": True, "answer": answer})
     except (requests.RequestException, KeyError, IndexError, RuntimeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 502
@@ -510,12 +515,18 @@ def chat():
         provider = settings["provider"].lower()
         messages = clean_messages(messages, settings)
         started_at = time.perf_counter()
-        if provider == "gemini":
-            answer, usage = call_gemini(messages, settings)
-        elif provider == "anthropic":
-            answer, usage = call_anthropic(messages, settings)
-        else:
-            answer, usage = call_openai(messages, settings)
+        fallback_used = None
+        try:
+            answer, usage = call_provider(messages, settings)
+        except requests.HTTPError as primary_error:
+            fallback_model = settings.get("fallback_model", "").strip()
+            status_code = primary_error.response.status_code if primary_error.response is not None else None
+            can_fallback = bool(settings.get("fallback_enabled")) and fallback_model and fallback_model != settings["model"] and status_code in {400, 404, 429, 500, 502, 503, 504}
+            if not can_fallback:
+                raise
+            settings["model"] = fallback_model
+            answer, usage = call_provider(messages, settings)
+            fallback_used = fallback_model
         tool_request = parse_tool_request(answer)
         if tool_request:
             if tool_request["name"] in {"list_files", "read_file"}:
@@ -524,12 +535,7 @@ def chat():
                     {"role": "assistant", "content": answer},
                     {"role": "user", "content": f"ผลการใช้เครื่องมือ:\n{json.dumps(result, ensure_ascii=False)}"},
                 ])
-                if provider == "gemini":
-                    answer, usage = call_gemini(messages, settings)
-                elif provider == "anthropic":
-                    answer, usage = call_anthropic(messages, settings)
-                else:
-                    answer, usage = call_openai(messages, settings)
+                answer, usage = call_provider(messages, settings)
             else:
                 return jsonify({
                     "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
@@ -537,9 +543,10 @@ def chat():
                     "tool_request": tool_request,
                     "duration_ms": round((time.perf_counter() - started_at) * 1000),
                     "usage": usage,
+                    "model": settings["model"],
                 })
         duration_ms = round((time.perf_counter() - started_at) * 1000)
-        return jsonify({"answer": answer, "provider": provider, "duration_ms": duration_ms, "usage": usage})
+        return jsonify({"answer": answer, "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
         if exc.response is not None and exc.response.status_code in {429, 503}:
             return jsonify({"error": "Gemini กำลังมีผู้ใช้หนาแน่นหรือจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้งในอีกสักครู่ หรือเลือกโมเดล Gemini อื่น"}), 503
