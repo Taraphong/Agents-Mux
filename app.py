@@ -293,12 +293,17 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
             generation_config["thinkingConfig"] = {"thinkingBudget": {"low": 1024, "medium": 4096, "high": 8192}[thinking_level]}
         else:
             generation_config["thinkingConfig"] = {"thinkingLevel": thinking_level}
-    response = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-        params={"key": key},
-        json={"contents": contents, "generationConfig": generation_config},
-        timeout=90,
-    )
+    request_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    for attempt in range(3):
+        response = requests.post(
+            request_url,
+            params={"key": key},
+            json={"contents": contents, "generationConfig": generation_config},
+            timeout=90,
+        )
+        if response.status_code not in {429, 503} or attempt == 2:
+            break
+        time.sleep(1.5 * (2**attempt))
     response.raise_for_status()
     data = response.json()
     usage = data.get("usageMetadata", {})
@@ -532,6 +537,8 @@ def chat():
         duration_ms = round((time.perf_counter() - started_at) * 1000)
         return jsonify({"answer": answer, "provider": provider, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
+        if exc.response is not None and exc.response.status_code in {429, 503}:
+            return jsonify({"error": "Gemini กำลังมีผู้ใช้หนาแน่นหรือจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้งในอีกสักครู่ หรือเลือกโมเดล Gemini อื่น"}), 503
         detail = exc.response.text[:500] if exc.response is not None else str(exc)
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError) as exc:
