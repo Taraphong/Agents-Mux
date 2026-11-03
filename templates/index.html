@@ -980,11 +980,14 @@
           el.appendChild(approval);
           const args = meta.tool_request.arguments || {};
           const summary = args.command || args.path || "";
-          if (summary) {
+          if (summary || args.content) {
             const detail = document.createElement("small");
             detail.className = "tool-approval-detail";
-            detail.textContent =
-              summary + (args.content ? ` (${String(args.content).length} ตัวอักษร)` : "");
+            const content = String(args.content || "");
+            const preview = content
+              ? `เนื้อหา:\n${content.slice(0, 500)}${content.length > 500 ? "…" : ""}`
+              : "";
+            detail.textContent = [summary, preview].filter(Boolean).join("\n");
             el.appendChild(detail);
           }
         }
