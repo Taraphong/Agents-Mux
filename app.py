@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -117,7 +118,28 @@ def clean_messages(messages: list[dict[str, str]], settings: dict[str, Any]) -> 
     return result
 
 
-def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> str:
+def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: str, total_key: str | None) -> dict[str, int] | None:
+    """Map provider-specific usage fields to the fields shown in the UI."""
+    if not isinstance(usage, dict):
+        return None
+    input_tokens = usage.get(input_key)
+    output_tokens = usage.get(output_key)
+    total_tokens = usage.get(total_key) if total_key else None
+    if not isinstance(input_tokens, int) and not isinstance(output_tokens, int) and not isinstance(total_tokens, int):
+        return None
+    result = {}
+    if isinstance(input_tokens, int):
+        result["input_tokens"] = input_tokens
+    if isinstance(output_tokens, int):
+        result["output_tokens"] = output_tokens
+    if isinstance(total_tokens, int):
+        result["total_tokens"] = total_tokens
+    elif result:
+        result["total_tokens"] = result.get("input_tokens", 0) + result.get("output_tokens", 0)
+    return result
+
+
+def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     key = get_api_key(settings["provider"])
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key")
@@ -140,10 +162,10 @@ def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> str
     )
     response.raise_for_status()
     data = response.json()
-    return data["choices"][0]["message"]["content"]
+    return data["choices"][0]["message"]["content"], normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens")
 
 
-def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> str:
+def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     key = get_api_key("gemini")
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า Gemini API key")
@@ -175,10 +197,13 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> str
     )
     response.raise_for_status()
     data = response.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+    usage = data.get("usageMetadata", {})
+    return data["candidates"][0]["content"]["parts"][0]["text"], normalize_usage(
+        usage, "promptTokenCount", "candidatesTokenCount", "totalTokenCount"
+    )
 
 
-def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> str:
+def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     key = get_api_key("anthropic")
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า Anthropic API key")
@@ -196,7 +221,9 @@ def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> 
         timeout=90,
     )
     response.raise_for_status()
-    return response.json()["content"][0]["text"]
+    data = response.json()
+    usage = data.get("usage", {})
+    return data["content"][0]["text"], normalize_usage(usage, "input_tokens", "output_tokens", None)
 
 
 @app.get("/")
@@ -308,11 +335,11 @@ def settings_test():
         messages = clean_messages([{"role": "user", "content": "ตอบคำว่า OK สั้น ๆ"}], settings)
         provider = settings["provider"]
         if provider in {"gemini"}:
-            answer = call_gemini(messages, settings)
+            answer, _usage = call_gemini(messages, settings)
         elif provider == "anthropic":
-            answer = call_anthropic(messages, settings)
+            answer, _usage = call_anthropic(messages, settings)
         else:
-            answer = call_openai(messages, settings)
+            answer, _usage = call_openai(messages, settings)
         return jsonify({"ok": True, "answer": answer})
     except (requests.RequestException, KeyError, IndexError, RuntimeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 502
@@ -342,13 +369,15 @@ def chat():
             settings["model"] = requested_model.strip()
         provider = settings["provider"].lower()
         messages = clean_messages(messages, settings)
+        started_at = time.perf_counter()
         if provider == "gemini":
-            answer = call_gemini(messages, settings)
+            answer, usage = call_gemini(messages, settings)
         elif provider == "anthropic":
-            answer = call_anthropic(messages, settings)
+            answer, usage = call_anthropic(messages, settings)
         else:
-            answer = call_openai(messages, settings)
-        return jsonify({"answer": answer, "provider": provider})
+            answer, usage = call_openai(messages, settings)
+        duration_ms = round((time.perf_counter() - started_at) * 1000)
+        return jsonify({"answer": answer, "provider": provider, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
         detail = exc.response.text[:500] if exc.response is not None else str(exc)
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
