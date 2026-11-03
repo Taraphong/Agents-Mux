@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 import re
 import secrets
 import subprocess
@@ -9,6 +10,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from collections import deque
 
 import requests
 from dotenv import load_dotenv
@@ -17,6 +19,9 @@ from flask import Flask, jsonify, render_template, request
 load_dotenv()
 
 app = Flask(__name__)
+APP_LOGS: deque[dict[str, Any]] = deque(maxlen=300)
+APP_LOG_LOCK = threading.Lock()
+LOGGER = logging.getLogger("ai-web")
 SETTINGS_FILE = Path(os.getenv("AI_WEB_SETTINGS_FILE", ".app-settings.json"))
 HISTORY_ROOT = Path(os.getenv("AI_WEB_HISTORY_DIR", "history"))
 SCHEDULE_FILE = Path(os.getenv("AI_WEB_SCHEDULE_FILE", "scheduled-jobs.json"))
@@ -33,6 +38,24 @@ TOOL_INSTRUCTIONS = """
 หรือ <tool_call>{"name":"list_files","arguments":{"path":"."}}</tool_call>
 ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ หากต้องเขียนไฟล์หรือรันคำสั่ง ให้ร้องขอด้วย tool_call เช่นเดียวกัน ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
 """.strip()
+
+
+def log_event(event: str, message: str, **details: Any) -> None:
+    """Keep a small, UI-readable diagnostic trail without storing secrets."""
+    safe_details = {}
+    for key, value in details.items():
+        if key.lower() in {"api_key", "authorization", "token", "content"}:
+            continue
+        safe_details[key] = str(value)[:500]
+    record = {
+        "time": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "event": str(event)[:60],
+        "message": str(message)[:500],
+        "details": safe_details,
+    }
+    with APP_LOG_LOCK:
+        APP_LOGS.append(record)
+    LOGGER.info("%s: %s", event, message)
 
 DEFAULT_SETTINGS = {
     "provider": os.getenv("AI_PROVIDER", "openai"),
@@ -184,6 +207,7 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
 
 
 def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False) -> dict[str, Any]:
+    log_event("tool.start", f"เริ่มใช้ {name}", tool=name, approved=approved)
     if name == "list_files":
         root = resolve_project_path(arguments.get("path", "."), must_exist=True)
         if not root.is_dir():
@@ -196,7 +220,9 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             if any(part in PROTECTED_PARTS for part in relative.parts) or path.name in PROTECTED_NAMES:
                 continue
             files.append(str(relative))
-        return {"tool": name, "files": files[:500], "truncated": len(files) > 500}
+        result = {"tool": name, "files": files[:500], "truncated": len(files) > 500}
+        log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, count=len(files))
+        return result
 
     if name == "read_file":
         path = resolve_project_path(arguments.get("path", ""), must_exist=True)
@@ -204,7 +230,9 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             raise ValueError("path นี้ไม่ใช่ไฟล์")
         if path.stat().st_size > TOOL_MAX_READ_BYTES:
             raise ValueError("ไฟล์ใหญ่เกินขนาดที่อนุญาตให้อ่าน")
-        return {"tool": name, "path": str(path.relative_to(PROJECT_ROOT)), "content": path.read_text(encoding="utf-8")}
+        result = {"tool": name, "path": str(path.relative_to(PROJECT_ROOT)), "content": path.read_text(encoding="utf-8")}
+        log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, path=result["path"])
+        return result
 
     if name == "write_file":
         if not approved:
@@ -215,7 +243,9 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             raise ValueError("เนื้อหาไฟล์ใหญ่เกินขนาดที่อนุญาต")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        return {"tool": name, "path": str(path.relative_to(PROJECT_ROOT)), "bytes": len(content.encode("utf-8"))}
+        result = {"tool": name, "path": str(path.relative_to(PROJECT_ROOT)), "bytes": len(content.encode("utf-8"))}
+        log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, path=result["path"], bytes=result["bytes"])
+        return result
 
     if name == "run_command":
         if not approved:
@@ -236,22 +266,30 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         if parts[0] in {"python", "python3"} and parts[1:] != ["-m", "py_compile", "app.py"]:
             raise ValueError("อนุญาตเฉพาะการตรวจ syntax ของ app.py")
         completed = subprocess.run(command, cwd=PROJECT_ROOT, shell=True, capture_output=True, text=True, timeout=30)
-        return {"tool": name, "command": command, "returncode": completed.returncode, "stdout": completed.stdout[-20_000:], "stderr": completed.stderr[-20_000:]}
+        result = {"tool": name, "command": command, "returncode": completed.returncode, "stdout": completed.stdout[-20_000:], "stderr": completed.stderr[-20_000:]}
+        log_event("tool.success" if completed.returncode == 0 else "tool.failed", f"รันคำสั่งเสร็จ ({completed.returncode})", tool=name, command=command)
+        return result
 
     raise ValueError("ไม่รู้จักเครื่องมือนี้")
 
 
 def parse_tool_request(answer: str) -> dict[str, Any] | None:
-    match = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", answer, re.DOTALL)
+    if not isinstance(answer, str):
+        return None
+    match = re.search(r"<tool_call>\s*", answer, re.IGNORECASE)
     if not match:
         return None
+    decoder = json.JSONDecoder()
     try:
-        request = json.loads(match.group(1))
+        request, _ = decoder.raw_decode(answer[match.end():].lstrip())
     except json.JSONDecodeError as exc:
+        log_event("tool.parse_failed", "อ่าน tool_call ไม่สำเร็จ", error=str(exc))
         raise ValueError("รูปแบบ tool_call ไม่ถูกต้อง") from exc
     if not isinstance(request, dict) or not isinstance(request.get("name"), str) or not isinstance(request.get("arguments", {}), dict):
         raise ValueError("ข้อมูล tool_call ไม่ถูกต้อง")
-    return {"name": request["name"], "arguments": request.get("arguments", {})}
+    tool_request = {"name": request["name"], "arguments": request.get("arguments", {})}
+    log_event("tool.request", f"AI ขอใช้ {tool_request['name']}", tool=tool_request["name"])
+    return tool_request
 
 
 def find_history_file(conversation_id: str) -> Path | None:
@@ -472,11 +510,22 @@ def tools_execute():
     name = body.get("name")
     arguments = body.get("arguments", {})
     approved = bool(body.get("approved", False))
+    if not isinstance(name, str) or not isinstance(arguments, dict):
+        log_event("tool.invalid", "ข้อมูลเครื่องมือไม่ถูกต้อง")
+        return jsonify({"ok": False, "error": "ข้อมูลเครื่องมือไม่ถูกต้อง"}), 400
     try:
         result = run_local_tool(name, arguments, approved=approved)
         return jsonify({"ok": True, "result": result})
     except (FileNotFoundError, PermissionError, ValueError, OSError, subprocess.SubprocessError) as exc:
+        log_event("tool.error", f"ใช้ {name} ไม่สำเร็จ", tool=name, error=str(exc))
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.get("/api/logs")
+def logs_get():
+    with APP_LOG_LOCK:
+        items = list(APP_LOGS)
+    return jsonify({"items": items})
 
 
 @app.get("/api/schedules")
@@ -667,6 +716,7 @@ def chat():
         return jsonify({"error": "กรุณาส่งข้อความ"}), 400
 
     try:
+        log_event("chat.start", "เริ่มประมวลผลข้อความ", message_count=len(messages))
         settings = load_settings()
         requested_thinking = body.get("thinking_level")
         if requested_thinking in {"off", "low", "medium", "high"}:
@@ -709,13 +759,16 @@ def chat():
                     "model": settings["model"],
                 })
         duration_ms = round((time.perf_counter() - started_at) * 1000)
+        log_event("chat.success", "ตอบข้อความสำเร็จ", provider=provider, model=settings["model"], duration_ms=duration_ms)
         return jsonify({"answer": answer, "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
+        log_event("provider.error", "ผู้ให้บริการตอบกลับด้วย HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
         if exc.response is not None and exc.response.status_code in {429, 503}:
             return jsonify({"error": "Gemini กำลังมีผู้ใช้หนาแน่นหรือจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้งในอีกสักครู่ หรือเลือกโมเดล Gemini อื่น"}), 503
         detail = exc.response.text[:500] if exc.response is not None else str(exc)
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError) as exc:
+        log_event("chat.error", "ประมวลผลข้อความไม่สำเร็จ", error=str(exc))
         return jsonify({"error": str(exc)}), 500
 
 

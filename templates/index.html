@@ -229,6 +229,49 @@
       .view.active {
         display: block;
       }
+      #logs-view {
+        height: 100%;
+        overflow-y: auto;
+      }
+      .logs-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 14px;
+      }
+      .logs-list {
+        display: grid;
+        gap: 8px;
+      }
+      .log-row {
+        border: 1px solid #2b3958;
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #111a30;
+      }
+      .log-row.error,
+      .log-row.failed,
+      .log-row.parse_failed {
+        border-color: #9f3b55;
+      }
+      .log-row strong {
+        color: #bfdbfe;
+        margin-right: 8px;
+      }
+      .log-time {
+        color: #94a3b8;
+        font-size: 0.75rem;
+      }
+      .log-details {
+        display: block;
+        margin-top: 5px;
+        color: #a5b4fc;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+        font-size: 0.75rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
       #chat-view,
       #settings-view {
         height: 100%;
@@ -623,6 +666,7 @@
           <button class="active" data-view="chat">💬 แชต</button
           ><button data-view="settings">⚙️ Settings</button
           ><button data-view="schedule">⏰ งานตามเวลา</button
+          ><button data-view="logs">🧾 Log ระบบ</button
           ><button data-view="about">ⓘ เกี่ยวกับ</button>
         </nav>
         <button class="new-chat" id="new-chat">＋ แชตใหม่</button>
@@ -844,6 +888,18 @@
               <div id="schedule-list" class="schedule-list"></div>
             </div>
           </section>
+          <section id="logs-view" class="view">
+            <div class="card">
+              <div class="logs-toolbar">
+                <div>
+                  <h2>Log ระบบ</h2>
+                  <p class="hint">ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง API key หรือเนื้อหาไฟล์</p>
+                </div>
+                <button id="refresh-logs" type="button">รีเฟรช</button>
+              </div>
+              <div id="logs-list" class="logs-list"><p class="hint">กำลังโหลด...</p></div>
+            </div>
+          </section>
           <section id="about-view" class="view">
             <div class="card">
               <h2>เกี่ยวกับระบบ</h2>
@@ -961,12 +1017,39 @@
                 ? "ตั้งค่าระบบ"
                 : button.dataset.view === "schedule"
                   ? "งานตามเวลา"
-                  : "เกี่ยวกับระบบ";
+                  : button.dataset.view === "logs"
+                    ? "Log ระบบ"
+                    : "เกี่ยวกับระบบ";
           if (button.dataset.view === "settings") loadSettings();
           if (button.dataset.view === "schedule") loadSchedules();
+          if (button.dataset.view === "logs") loadLogs();
           closeSidebar();
         }),
       );
+      async function loadLogs() {
+        const list = $("logs-list");
+        try {
+          const response = await fetch("/api/logs");
+          const data = await response.json();
+          if (!data.items?.length) {
+            list.innerHTML = '<p class="hint">ยังไม่มี log</p>';
+            return;
+          }
+          list.innerHTML = data.items.slice().reverse().map((item) => {
+            const details = Object.entries(item.details || {})
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(" · ");
+            return `<div class="log-row ${escapeHtml(item.event || "")}">
+              <div><strong>${escapeHtml(item.event || "event")}</strong><span class="log-time">${escapeHtml(item.time || "")}</span></div>
+              <div>${escapeHtml(item.message || "")}</div>
+              ${details ? `<span class="log-details">${escapeHtml(details)}</span>` : ""}
+            </div>`;
+          }).join("");
+        } catch (error) {
+          list.innerHTML = `<p class="hint">โหลด log ไม่สำเร็จ: ${escapeHtml(error.message)}</p>`;
+        }
+      }
+      $("refresh-logs").addEventListener("click", loadLogs);
       function resizeInput() {
         const el = $("input");
         el.style.height = "auto";
