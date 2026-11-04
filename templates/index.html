@@ -502,6 +502,10 @@
         font-size: 0.86rem;
         margin: 0 0 18px;
       }
+      .model-status {
+        color: var(--muted);
+        font-weight: normal;
+      }
       .grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -908,7 +912,7 @@
         --mint: #34d399;
         --text: #f8fafc;
         --muted: #94a3b8;
-        --dim: #64748b;
+        --dim: #7a89a0;
       }
       body {
         background: var(--void);
@@ -952,7 +956,7 @@
       }
       header h1 { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1.08rem; }
       .status { color: var(--mint); font-size: .74rem; letter-spacing: .04em; }
-      .status.offline { color: #64748b; }
+      .status.offline { color: #94a3b8; }
       .content { width: min(1120px, 100%); padding: 26px 30px 30px; height: calc(100vh - 58px); }
       #chat-view { max-width: 900px; margin: 0 auto; }
       #messages { padding: 12px 0 26px; }
@@ -988,7 +992,7 @@
       .header-divider { width: 1px; height: 18px; background: var(--line-soft); }
       .header-icon { padding: 3px 6px; background: transparent; color: var(--muted); font-size: 1.1rem; }
       .header-icon:hover { color: var(--text); background: rgba(255,255,255,.05); box-shadow: none; }
-      body.light-theme { --void: #eef2f7; --surface: #ffffff; --panel: #ffffff; --panel-hi: #e7edf5; --line: #cbd5e1; --line-soft: #d9e1eb; --text: #172033; --muted: #40516a; --dim: #607089; background: var(--void); color: var(--text); }
+      body.light-theme { color-scheme: light; --void: #eef2f7; --surface: #ffffff; --panel: #ffffff; --panel-hi: #e7edf5; --line: #cbd5e1; --line-soft: #d9e1eb; --text: #172033; --muted: #40516a; --dim: #607089; background: var(--void); color: var(--text); }
       body.light-theme aside { background: #f7f9fc; border-color: #d4dce7; }
       body.light-theme header { background: rgba(255,255,255,.96); border-color: #d4dce7; }
       body.light-theme nav button { background: transparent !important; color: #40516a !important; border: 1px solid transparent; }
@@ -1019,7 +1023,115 @@
       body.light-theme .notice.error { background: #fff7e6; color: #7a5b16; border: 1px solid #ead7a5; }
       body.light-theme .tool-approval { background: #fff7e6; color: #7a5b16; border: 1px solid #ead7a5; }
       body.light-theme .quick-actions span:first-child { color: #176b9a; }
-      .session-divider { display: flex; align-items: center; gap: 12px; color: #56627a; font: 600 .65rem ui-monospace, monospace; letter-spacing: .08em; margin: 18px 0 28px; text-align: center; }
+      /* Light theme: dark-only surfaces that need a readable light palette */
+      body.light-theme .modal {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+      }
+      body.light-theme .modal p {
+        color: #52627a;
+      }
+      body.light-theme .modal-cancel,
+      body.light-theme .secondary {
+        background: #eef2f8;
+        color: #27327f;
+        border: 1px solid #cbd5e1;
+      }
+      body.light-theme .modal-cancel:hover,
+      body.light-theme .secondary:hover {
+        background: #e2e8f3;
+        color: #1b2a4a;
+      }
+      body.light-theme .mobile-menu-toggle {
+        background: #eef2f8;
+        color: #27327f;
+        border: 1px solid #cbd5e1;
+      }
+      body.light-theme .mobile-menu-toggle:hover {
+        background: #e2e8f3;
+        color: #172033;
+      }
+      body.light-theme .new-chat:hover {
+        background: #eef2f8;
+        border-color: #9da6ef;
+      }
+      body.light-theme nav button em {
+        color: #4f46e5;
+      }
+      body.light-theme .history-row:hover,
+      body.light-theme .history-row.active {
+        background: #e9eaff;
+      }
+      body.light-theme .history-row:hover .history-item,
+      body.light-theme .history-row.active .history-item {
+        background: transparent;
+        color: #1b2a4a;
+      }
+      body.light-theme .history-action:hover {
+        background: #e2e8f3;
+        color: #1b2a4a;
+      }
+      body.light-theme .header-icon:hover {
+        background: #e9edf5;
+        color: #172033;
+      }
+      body.light-theme .attach-button {
+        color: #52627a;
+      }
+      body.light-theme .attach-button:hover {
+        background: #e9edf5;
+        color: #172033;
+      }
+      body.light-theme .attachment-chip {
+        color: #1d4ed8;
+      }
+      body.light-theme .log-row strong {
+        color: #1d4ed8;
+      }
+      body.light-theme .log-details,
+      body.light-theme .tool-approval-detail {
+        color: #3d4a5f;
+      }
+      body.light-theme .schedule-item strong {
+        color: #172033;
+      }
+      body.light-theme .schedule-item small {
+        color: #52627a;
+      }
+      body.light-theme .cron-help summary {
+        color: #1d4ed8;
+      }
+      body.light-theme .cron-help code {
+        color: #0a6b52;
+        background: #e8f6f0;
+      }
+      body.light-theme .range-value {
+        color: #27327f;
+      }
+      body.light-theme .notice {
+        background: #e7f8f0;
+        color: #0a6b52;
+        border: 1px solid #9fdcc4;
+      }
+      body.light-theme .assistant-mark {
+        color: #4338ca;
+        background: #eef0ff;
+        border-color: #c2c9f5;
+        box-shadow: none;
+      }
+      body.light-theme .session-divider {
+        color: #4a5768;
+      }
+      body.light-theme .session-divider::before,
+      body.light-theme .session-divider::after {
+        background: #d9e1eb;
+      }
+      body.light-theme select option {
+        background: #ffffff;
+        color: #172033;
+      }
+      .session-divider { display: flex; align-items: center; gap: 12px; color: #7f8da3; font: 600 .65rem ui-monospace, monospace; letter-spacing: .08em; margin: 18px 0 28px; text-align: center; }
       .session-divider::before, .session-divider::after { content: ""; height: 1px; flex: 1; background: rgba(255,255,255,.06); }
       .assistant-shell { display: flex; align-items: flex-start; gap: 14px; margin: 12px 0; }
       .assistant-shell .message { margin: 0; max-width: none; flex: 1; }
@@ -1037,6 +1149,41 @@
         .header-model { max-width: 145px; overflow: hidden; white-space: nowrap; }
         .header-divider, .header-icon { display: none; }
         .assistant-shell { gap: 8px; }
+      }
+
+      /* Dark theme: secondary controls must stay readable while hovered,
+         the generic primary button hover paints a light indigo background. */
+      body:not(.light-theme) nav button:hover {
+        background: rgba(129, 140, 248, 0.13);
+        color: #ffffff;
+        border-color: rgba(129, 140, 248, 0.38);
+      }
+      body:not(.light-theme) button.secondary:hover,
+      body:not(.light-theme) button.modal-cancel:hover {
+        background: #334155;
+        color: var(--text);
+      }
+      body:not(.light-theme) button.danger:hover,
+      body:not(.light-theme) button.modal-danger:hover {
+        background: #4b2431;
+        color: #fecdd3;
+      }
+      body:not(.light-theme) button.mobile-menu-toggle:hover {
+        background: #334155;
+        color: var(--text);
+      }
+      body:not(.light-theme) .header-tools .header-icon:hover {
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text);
+      }
+      body:not(.light-theme) .history-row:hover .history-item,
+      body:not(.light-theme) .history-row.active .history-item {
+        background: transparent;
+        color: #ffffff;
+      }
+      body:not(.light-theme) .history-actions .history-action:hover {
+        background: transparent;
+        color: #ffffff;
       }
     </style>
   </head>
@@ -1156,7 +1303,7 @@
                     >Model
                     <small
                       id="model_status"
-                      style="color: #94a3b8; font-weight: normal"
+                      class="model-status"
                       >ยังไม่ได้ดึงจาก API</small
                     ></span
                   ><select id="model_select"></select
