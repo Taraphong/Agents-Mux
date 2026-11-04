@@ -894,6 +894,94 @@
           grid-column: auto;
         }
       }
+
+      /* Cyber Command Center redesign */
+      :root {
+        --void: #0b0f17;
+        --surface: #0f131c;
+        --panel: #111827;
+        --panel-hi: #1e293b;
+        --line: rgba(148, 163, 184, 0.18);
+        --line-soft: rgba(255, 255, 255, 0.07);
+        --indigo: #818cf8;
+        --cyan: #38bdf8;
+        --mint: #34d399;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --dim: #64748b;
+      }
+      body {
+        background: var(--void);
+        color: var(--text);
+        font-family: Geist, system-ui, sans-serif;
+      }
+      .app { grid-template-columns: 272px 1fr; background: var(--surface); }
+      aside {
+        padding: 18px 14px;
+        background: #0a0e16;
+        border-right: 1px solid var(--line-soft);
+        box-shadow: none;
+      }
+      .brand { padding: 2px 8px 22px; gap: 11px; }
+      .brand-mark {
+        width: 34px; height: 34px; border-radius: 6px;
+        background: linear-gradient(135deg, var(--indigo), var(--cyan));
+        color: #090d18; box-shadow: 0 0 20px rgba(129,140,248,.28);
+      }
+      .brand span:last-child { font-family: "Space Grotesk", system-ui, sans-serif; letter-spacing: -.02em; }
+      .new-chat {
+        margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--line);
+        border-radius: 4px; background: #181c24; color: var(--text); text-align: left;
+      }
+      .new-chat:hover { background: #262a33; border-color: rgba(129,140,248,.55); }
+      nav button { margin: 2px 0; padding: 10px 11px; border-radius: 4px; color: var(--muted); }
+      nav button.active, nav button:hover {
+        color: #fff; background: rgba(129,140,248,.13); border: 1px solid rgba(129,140,248,.38);
+      }
+      .history-title { margin-top: 14px; color: var(--dim); font-size: .68rem; letter-spacing: .1em; }
+      .history-row { border-radius: 4px; }
+      .history-row:hover, .history-row.active { background: rgba(255,255,255,.05); }
+      .history-item { color: var(--muted); padding: 8px 6px 8px 10px; }
+      header {
+        height: 58px; padding: 0 26px; background: rgba(15,19,28,.9);
+        border-bottom: 1px solid var(--line-soft); backdrop-filter: blur(12px);
+      }
+      header h1 { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1.08rem; }
+      .status { color: var(--mint); font-size: .74rem; letter-spacing: .04em; }
+      .content { width: min(1120px, 100%); padding: 26px 30px 30px; height: calc(100vh - 58px); }
+      #chat-view { max-width: 900px; margin: 0 auto; }
+      #messages { padding: 12px 0 26px; }
+      .message { border-radius: 7px; margin: 12px 0; padding: 13px 16px; max-width: 78%; line-height: 1.65; }
+      .assistant { background: #111827; border: 1px solid var(--line-soft); }
+      .user { background: #131b2e; color: #eef2ff; border: 1px solid rgba(129,140,248,.28); }
+      .message-meta { color: var(--dim); }
+      .chat-form {
+        padding: 12px 14px 9px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px;
+        background: rgba(17,24,39,.88); box-shadow: 0 0 24px rgba(0,0,0,.2); backdrop-filter: blur(14px);
+      }
+      .chat-form textarea { color: var(--text); min-height: 46px; }
+      .chat-tools { border-top: 1px solid var(--line-soft); padding-top: 8px; }
+      .chat-tools select { border: 1px solid var(--line-soft); border-radius: 4px; background: #111827; color: var(--muted); }
+      .attach-button { border-radius: 4px; }
+      .send-round { border-radius: 4px; background: var(--indigo); color: #101426; box-shadow: 0 0 16px rgba(129,140,248,.22); animation: none; }
+      .send-round:hover { background: #a5b4fc; }
+      .card { background: rgba(17,24,39,.78); border: 1px solid var(--line-soft); border-radius: 6px; padding: 20px; }
+      .card h2 { font-family: "Space Grotesk", system-ui, sans-serif; }
+      .hint, label, .cron-help { color: var(--muted); }
+      input, textarea, select { border-color: var(--line); border-radius: 4px; background: #0d1421; }
+      input:focus, textarea:focus, select:focus { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(129,140,248,.14); }
+      button { border-radius: 4px; background: var(--indigo); color: #101426; }
+      button:hover:not(:disabled) { background: #a5b4fc; box-shadow: 0 0 16px rgba(129,140,248,.16); }
+      .secondary, .modal-cancel { background: #1e293b; color: var(--text); }
+      .danger, .modal-danger { background: #3b1d29; color: #fecdd3; }
+      .notice { border-radius: 4px; background: rgba(52,211,153,.12); color: #a7f3d0; }
+      .log-row, .schedule-item { background: #111827; border-color: var(--line-soft); border-radius: 5px; }
+      @media (max-width: 700px) {
+        .app { display: block; }
+        header { height: 58px; padding: 0 14px; }
+        .content { padding: 14px 12px 16px; height: calc(100dvh - 58px); }
+        .message { max-width: 90%; }
+      }
     </style>
   </head>
   <body>
