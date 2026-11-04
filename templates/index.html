@@ -1253,6 +1253,17 @@
         height: 18px;
         background: var(--line-soft);
       }
+      .header-icon {
+        padding: 3px 6px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 1.1rem;
+      }
+      .header-icon:hover {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.05);
+        box-shadow: none;
+      }
       body.light-theme {
         color-scheme: light;
         --void: #eef2f7;
@@ -1455,6 +1466,10 @@
         background: #e9edf5;
         color: #172033;
       }
+      body.light-theme .header-icon:hover {
+        background: #e9edf5;
+        color: #172033;
+      }
       body.light-theme .attachment-chip {
         color: #1d4ed8;
       }
@@ -1590,6 +1605,7 @@
           white-space: nowrap;
         }
         .header-divider,
+        .header-icon {
           display: none;
         }
         .assistant-shell {
@@ -1616,6 +1632,10 @@
       }
       body:not(.light-theme) button.mobile-menu-toggle:hover {
         background: #334155;
+        color: var(--text);
+      }
+      body:not(.light-theme) .header-tools .header-icon:hover {
+        background: rgba(255, 255, 255, 0.05);
         color: var(--text);
       }
       body:not(.light-theme) .history-row:hover .history-item,
@@ -1686,7 +1706,15 @@
               ><b>⌁</b></span
             >
             <span class="header-divider"></span>
-            
+            <button
+              type="button"
+              class="header-icon theme-toggle"
+              id="theme-toggle"
+              title="สลับธีม"
+            >
+              ☼
+            </button>
+          </div>
         </header>
         <div class="content">
           <section id="chat-view" class="view active">
@@ -1799,7 +1827,8 @@
                     id="api_key"
                     type="password"
                     placeholder="เว้นว่างเพื่อใช้คีย์เดิม"
-                /></label>
+                  /><small class="hint" id="api_key_hint"></small
+                ></label>
               </div>
             </div>
             <div class="card">
@@ -1976,7 +2005,7 @@
         );
       });
       const messages = [];
-      let hasApiKey = false;
+      let keyProviders = [];
       let conversationId = null;
       let conversationCreatedAt = null;
       let conversationTitle = null;
@@ -2281,6 +2310,7 @@
           messages.push(errorMessage);
           addMessage("assistant", errorMessage.content);
           await saveConversation();
+          await refreshConnectionState();
         } finally {
           $("send").disabled = false;
           $("send").textContent = "↑";
@@ -2446,15 +2476,21 @@
             `/api/models?provider=${encodeURIComponent(provider)}`,
           );
           const data = await r.json();
-          if (!r.ok) throw new Error(data.error || "ดึงรายการโมเดลไม่สำเร็จ");
+          if (!r.ok) {
+            if (Array.isArray(data.models) && data.models.length) {
+              updateModelOptions(provider, selected, data.models);
+              updateChatModelOptions(data.models, selected);
+              updateScheduleModelOptions(data.models, "");
+              updateFallbackModelOptions(data.models, fallbackSelected);
+            }
+            throw new Error(data.error || "ดึงรายการโมเดลไม่สำเร็จ");
+          }
           updateModelOptions(provider, selected, data.models);
           updateChatModelOptions(data.models, selected);
           updateScheduleModelOptions(data.models, "");
           updateFallbackModelOptions(data.models, fallbackSelected);
           $("model_status").textContent =
             `ดึงจาก API แล้ว ${data.models.length} รายการ`;
-          if (hasApiKey)
-            setConnectionState(true, selected || data.models[0]?.id || "");
         } catch (e) {
           updateModelOptions(provider, selected);
           updateChatModelOptions(
@@ -2467,7 +2503,7 @@
             fallbackSelected,
           );
           $("model_status").textContent = "API ใช้งานไม่ได้ — ใช้รายการสำรอง";
-          setConnectionState(false, selected || "ยังไม่ได้เชื่อมต่อ");
+          $("model_status").title = e.message;
         }
       }
       function updateFallbackModelOptions(models, selected = "") {
@@ -2504,6 +2540,8 @@
         else if (provider === "anthropic")
           $("base_url").value = "https://api.anthropic.com";
         else $("base_url").value = "https://api.openai.com/v1";
+        $("api_key").value = "";
+        updateApiKeyHint(provider);
         fetchModels(provider);
       });
       $("model_select").addEventListener("change", () => {
@@ -2532,7 +2570,7 @@
         )
           select.value = selected;
       }
-      function setConnectionState(connected, model = "") {
+      function setConnectionState(connected, model = "", reason = "") {
         const status = document.querySelector(".status");
         const label = $("header-model-name");
         const modelName = model || "ยังไม่ได้เลือกโมเดล";
@@ -2541,21 +2579,34 @@
           ? "● พร้อมใช้งาน"
           : "● ยังไม่พร้อมใช้งาน";
         status.classList.toggle("offline", !connected);
+        status.title = connected
+          ? `เชื่อมต่อ ${modelName} พร้อมใช้งาน`
+          : reason || "ยังเชื่อมต่อผู้ให้บริการไม่ได้";
         $("input").disabled = false;
         $("input").placeholder = connected
           ? "ส่งข้อความถึง AI..."
-          : "ใส่ API key และเลือกโมเดลใน Settings ก่อนใช้งาน";
+          : reason || "ใส่ API key และเลือกโมเดลใน Settings ก่อนใช้งาน";
         $("send").disabled = !connected;
         $("chat-model-select").disabled = !connected;
       }
+      async function refreshConnectionState() {
+        try {
+          const r = await fetch("/api/status");
+          const data = await r.json();
+          setConnectionState(
+            !!data.ready,
+            data.model || "",
+            data.reason || "",
+          );
+          return data;
+        } catch (e) {
+          setConnectionState(false, "", "ตรวจสอบสถานะการเชื่อมต่อไม่สำเร็จ");
+          return null;
+        }
+      }
       function applyChatMeta(settings) {
-        hasApiKey = !!settings.has_api_key;
         $("chat-thinking-level").value = settings.thinking_level ?? "off";
         updateChatModelOptions([], settings.model ?? "");
-        setConnectionState(
-          !!settings.has_api_key && !!settings.model,
-          settings.model ?? "",
-        );
       }
       async function loadChatMeta() {
         try {
@@ -2563,16 +2614,29 @@
           const s = await r.json();
           applyChatMeta(s);
           await fetchModels(s.provider ?? "openai", s.model ?? "", "");
-          if (!s.has_api_key) setConnectionState(false, s.model ?? "");
+          await refreshConnectionState();
         } catch (e) {
           updateChatModelOptions([], "ยังไม่ได้เชื่อมต่อ");
-          setConnectionState(false, "ยังไม่ได้เชื่อมต่อ");
+          setConnectionState(false, "ยังไม่ได้เชื่อมต่อ", "โหลดการตั้งค่าไม่สำเร็จ");
         }
+      }
+      function updateApiKeyHint(provider) {
+        const label =
+          { openai: "OpenAI", gemini: "Gemini", anthropic: "Anthropic" }[
+            provider
+          ] || provider;
+        const has = keyProviders.includes(provider);
+        $("api_key").placeholder = has
+          ? `มีคีย์ของ ${label} แล้ว — เว้นว่างเพื่อคงเดิม`
+          : `ยังไม่มีคีย์ของ ${label} — ใส่ API key`;
+        $("api_key_hint").textContent = has
+          ? `บันทึกคีย์ของ ${label} ไว้แล้ว`
+          : `ยังไม่มีคีย์ของ ${label} — ถ้าเว้นว่าง สถานะจะยังไม่พร้อมใช้งาน`;
       }
       async function loadSettings() {
         const r = await fetch("/api/settings");
         const s = await r.json();
-        hasApiKey = !!s.has_api_key;
+        keyProviders = Array.isArray(s.key_providers) ? s.key_providers : [];
         $("provider").value = s.provider ?? "openai";
         $("base_url").value = s.base_url ?? "";
         $("system_prompt").value = s.system_prompt ?? "";
@@ -2585,9 +2649,7 @@
         $("fallback_enabled").checked = !!s.fallback_enabled;
         updateFallbackModelOptions([], s.fallback_model ?? "");
         $("api_key").value = "";
-        $("api_key").placeholder = s.has_api_key
-          ? "มีคีย์เดิมอยู่แล้ว — เว้นว่างเพื่อคงเดิม"
-          : "ใส่ API key";
+        updateApiKeyHint($("provider").value);
         await fetchModels(
           $("provider").value,
           s.model ?? "",
@@ -2625,8 +2687,14 @@
         });
         showNotice(r.ok ? "บันทึกการตั้งค่าแล้ว" : "บันทึกไม่สำเร็จ", !r.ok);
         if (r.ok) {
-          applyChatMeta(body);
-          await fetchModels(body.provider, body.model, body.fallback_model);
+          await loadSettings();
+          applyChatMeta({
+            thinking_level: $("thinking_level").value,
+            model: $("model_select").value === "__custom__"
+              ? $("model_custom").value.trim()
+              : $("model_select").value,
+          });
+          await refreshConnectionState();
         }
       });
       $("test").addEventListener("click", async () => {
@@ -2642,6 +2710,7 @@
         );
         $("test").disabled = false;
         $("test").textContent = "ทดสอบการเชื่อมต่อ";
+        await refreshConnectionState();
       });
       function escapeHtml(value) {
         return String(value).replace(
