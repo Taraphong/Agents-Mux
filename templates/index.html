@@ -976,11 +976,31 @@
       .danger, .modal-danger { background: #3b1d29; color: #fecdd3; }
       .notice { border-radius: 4px; background: rgba(52,211,153,.12); color: #a7f3d0; }
       .log-row, .schedule-item { background: #111827; border-color: var(--line-soft); border-radius: 5px; }
+      .header-tools { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+      .header-model { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border: 1px solid var(--line-soft); border-radius: 999px; color: #dbeafe; font-size: .74rem; }
+      .header-model i { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+      .header-model b { color: var(--muted); font-size: .9rem; font-weight: 400; }
+      .header-divider { width: 1px; height: 18px; background: var(--line-soft); }
+      .header-icon { padding: 3px 6px; background: transparent; color: var(--muted); font-size: 1.1rem; }
+      .header-icon:hover { color: var(--text); background: rgba(255,255,255,.05); box-shadow: none; }
+      .session-divider { display: flex; align-items: center; gap: 12px; color: #56627a; font: 600 .65rem ui-monospace, monospace; letter-spacing: .08em; margin: 18px 0 28px; text-align: center; }
+      .session-divider::before, .session-divider::after { content: ""; height: 1px; flex: 1; background: rgba(255,255,255,.06); }
+      .assistant-shell { display: flex; align-items: flex-start; gap: 14px; margin: 12px 0; }
+      .assistant-shell .message { margin: 0; max-width: none; flex: 1; }
+      .assistant-mark { flex: 0 0 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(129,140,248,.28); border-radius: 5px; color: var(--indigo); background: rgba(129,140,248,.1); box-shadow: 0 0 14px rgba(129,140,248,.16); }
+      .quick-actions { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line-soft); margin-top: 16px; padding-top: 10px; }
+      .quick-actions span { padding: 6px 9px; border: 1px solid var(--line-soft); border-radius: 4px; color: #cbd5e1; font-size: .72rem; background: rgba(255,255,255,.025); }
+      .quick-actions span:first-child { color: var(--cyan); }
+      .message.user { padding: 10px 15px; }
       @media (max-width: 700px) {
         .app { display: block; }
         header { height: 58px; padding: 0 14px; }
         .content { padding: 14px 12px 16px; height: calc(100dvh - 58px); }
         .message { max-width: 90%; }
+        .header-tools { gap: 4px; }
+        .header-model { max-width: 145px; overflow: hidden; white-space: nowrap; }
+        .header-divider, .header-icon { display: none; }
+        .assistant-shell { gap: 8px; }
       }
     </style>
   </head>
@@ -1032,12 +1052,23 @@
           </button>
           <h1 id="page-title">แชตกับ AI</h1>
           <span class="status">● พร้อมใช้งาน</span>
+          <div class="header-tools" aria-label="เครื่องมือแชต">
+            <span class="header-model"><i></i><span id="header-model-name">Gemini 3.6 Flash</span><b>⌁</b></span>
+            <span class="header-divider"></span>
+            <button type="button" class="header-icon" title="ตั้งค่า">☷</button>
+            <button type="button" class="header-icon" title="เพิ่มเติม">⋮</button>
+          </div>
         </header>
         <div class="content">
           <section id="chat-view" class="view active">
             <div class="messages">
               <div id="messages">
-                <div class="message assistant"><div>สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div></div>
+                <div class="session-divider"><span>2026-11-03 · SESSION READY #T-098</span></div>
+                <div class="message user"><div>สวัสดีครับ</div></div>
+                <div class="assistant-shell">
+                  <div class="assistant-mark">✦</div>
+                  <div class="message assistant"><div><strong>สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</strong><br><br>ระบบเชื่อมต่อกับ Gemini 3.6 Flash อย่างสมบูรณ์ ค่าความหน่วงเครือข่ายอยู่ที่ 42ms พร้อมดำเนินการจัดสรรงานอัตโนมัติ รันคำสั่งสคริปต์ และวิเคราะห์ log ตรวจสอบคำสั่งด้านล่างได้ทันที:</div><div class="quick-actions"><span>⌘ ช่วยเขียนสคริปต์อัตโนมัติ</span><span>▤ สรุป Log ล่าสุด</span><span>◷ ตั้งเวลางานระบบ (Cron)</span></div></div>
+                </div>
               </div>
               <form class="chat-form" id="chat-form">
                 <textarea
