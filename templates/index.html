@@ -923,6 +923,9 @@
         box-shadow: none;
       }
       .brand { padding: 2px 8px 22px; gap: 11px; }
+      .brand-copy { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+      .brand-copy strong { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1rem; letter-spacing: -.02em; }
+      .brand-copy small { color: var(--muted); font: 600 .63rem ui-monospace, monospace; letter-spacing: .04em; margin-top: 4px; }
       .brand-mark {
         width: 34px; height: 34px; border-radius: 6px;
         background: linear-gradient(135deg, var(--indigo), var(--cyan));
@@ -938,6 +941,7 @@
       nav button.active, nav button:hover {
         color: #fff; background: rgba(129,140,248,.13); border: 1px solid rgba(129,140,248,.38);
       }
+      nav button em { margin-left: auto; color: var(--indigo); font-style: normal; font-size: .68rem; }
       .history-title { margin-top: 14px; color: var(--dim); font-size: .68rem; letter-spacing: .1em; }
       .history-row { border-radius: 4px; }
       .history-row:hover, .history-row.active { background: rgba(255,255,255,.05); }
@@ -1010,16 +1014,16 @@
       <aside>
         <div class="brand">
           <div class="brand-mark">✦</div>
-          <span>AI Control Center</span>
+          <div class="brand-copy"><strong>AI Control Center</strong><small>Operational Terminal v3.6</small></div>
         </div>
+        <button class="new-chat" id="new-chat">＋ แชตใหม่</button>
         <nav>
-          <button class="active" data-view="chat">💬 แชต</button
-          ><button data-view="settings">⚙️ Settings</button
-          ><button data-view="schedule">⏰ งานตามเวลา</button
-          ><button data-view="logs">🧾 Log ระบบ</button
+          <button class="active" data-view="chat">▰ แชต <em>●</em></button
+          ><button data-view="settings">⚙ Settings</button
+          ><button data-view="schedule">◷ งานตามเวลา</button
+          ><button data-view="logs">▤ Log ระบบ</button
           ><button data-view="about">ⓘ เกี่ยวกับ</button>
         </nav>
-        <button class="new-chat" id="new-chat">＋ แชตใหม่</button>
         <div class="history-title">ประวัติการพูดคุย</div>
         <div id="history-list"></div>
         <div class="modal-backdrop" id="history-modal">
