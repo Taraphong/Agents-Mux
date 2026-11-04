@@ -937,7 +937,7 @@
         border-radius: 4px; background: #181c24; color: var(--text); text-align: left;
       }
       .new-chat:hover { background: #262a33; border-color: rgba(129,140,248,.55); }
-      nav button { margin: 2px 0; padding: 10px 11px; border-radius: 4px; color: var(--muted); }
+      nav button { margin: 2px 0; padding: 10px 11px; border-radius: 4px; color: var(--muted); border: 1px solid transparent; }
       nav button.active, nav button:hover {
         color: #fff; background: rgba(129,140,248,.13); border: 1px solid rgba(129,140,248,.38);
       }
@@ -1101,11 +1101,6 @@
             <div class="messages">
               <div id="messages">
                 <div class="session-divider"><span>2026-11-03 · SESSION READY #T-098</span></div>
-                <div class="message user"><div>สวัสดีครับ</div></div>
-                <div class="assistant-shell">
-                  <div class="assistant-mark">✦</div>
-                  <div class="message assistant"><div><strong>สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</strong><br><br>ระบบเชื่อมต่อกับ Gemini 3.6 Flash อย่างสมบูรณ์ ค่าความหน่วงเครือข่ายอยู่ที่ 42ms พร้อมดำเนินการจัดสรรงานอัตโนมัติ รันคำสั่งสคริปต์ และวิเคราะห์ log ตรวจสอบคำสั่งด้านล่างได้ทันที:</div><div class="quick-actions"><span>⌘ ช่วยเขียนสคริปต์อัตโนมัติ</span><span>▤ สรุป Log ล่าสุด</span><span>◷ ตั้งเวลางานระบบ (Cron)</span></div></div>
-                </div>
               </div>
               <form class="chat-form" id="chat-form">
                 <textarea
@@ -2115,8 +2110,7 @@
         conversationCreatedAt = null;
         conversationTitle = null;
         messages.splice(0, messages.length);
-        $("messages").innerHTML =
-          '<div class="message assistant"><div>สวัสดีครับ ผมพร้อมช่วยคุณแล้ว</div></div>';
+        $("messages").innerHTML = '<div class="session-divider"><span>เริ่มการสนทนาใหม่</span></div>';
         document.querySelector('[data-view="chat"]').click();
         closeSidebar();
         $("input").focus();
