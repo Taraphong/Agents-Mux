@@ -84,8 +84,7 @@
         align-items: center;
         border-radius: 8px;
       }
-      .history-row:hover,
-      .history-row.active {
+      .history-row:hover {
         background: #202b49;
       }
       .history-item {
@@ -103,8 +102,7 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .history-row:hover .history-item,
-      .history-row.active .history-item {
+      .history-row:hover .history-item {
         color: white;
       }
       .history-actions {
@@ -680,7 +678,6 @@
       nav button.active,
       nav button:hover,
       .history-row:hover,
-      .history-row.active,
       .new-chat:hover,
       .secondary:hover {
         color: #fff;
@@ -1061,9 +1058,9 @@
       }
       .history-row {
         border-radius: 4px;
+        background: transparent;
       }
-      .history-row:hover,
-      .history-row.active {
+      .history-row:hover {
         background: rgba(255, 255, 255, 0.05);
       }
       .history-item {
@@ -1434,12 +1431,10 @@
       body.light-theme nav button em {
         color: #4f46e5;
       }
-      body.light-theme .history-row:hover,
-      body.light-theme .history-row.active {
+      body.light-theme .history-row:hover {
         background: #e9eaff;
       }
-      body.light-theme .history-row:hover .history-item,
-      body.light-theme .history-row.active .history-item {
+      body.light-theme .history-row:hover .history-item {
         background: transparent;
         color: #1b2a4a;
       }
@@ -1626,8 +1621,7 @@
         background: rgba(255, 255, 255, 0.05);
         color: var(--text);
       }
-      body:not(.light-theme) .history-row:hover .history-item,
-      body:not(.light-theme) .history-row.active .history-item {
+      body:not(.light-theme) .history-row:hover .history-item {
         background: transparent;
         color: #ffffff;
       }
