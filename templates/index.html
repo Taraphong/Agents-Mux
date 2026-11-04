@@ -987,6 +987,18 @@
       .header-divider { width: 1px; height: 18px; background: var(--line-soft); }
       .header-icon { padding: 3px 6px; background: transparent; color: var(--muted); font-size: 1.1rem; }
       .header-icon:hover { color: var(--text); background: rgba(255,255,255,.05); box-shadow: none; }
+      body.light-theme { --void: #f4f7fb; --surface: #f8fafc; --panel: #ffffff; --panel-hi: #e8edf5; --line: rgba(15,23,42,.16); --line-soft: rgba(15,23,42,.1); --text: #172033; --muted: #526176; --dim: #718096; background: var(--void); color: var(--text); }
+      body.light-theme aside { background: #eef2f8; border-color: rgba(15,23,42,.12); }
+      body.light-theme header { background: rgba(248,250,252,.9); border-color: rgba(15,23,42,.1); }
+      body.light-theme .new-chat, body.light-theme .chat-form, body.light-theme .card, body.light-theme .assistant, body.light-theme .log-row, body.light-theme .schedule-item { background: #fff; border-color: rgba(15,23,42,.12); }
+      body.light-theme .new-chat { color: #172033; }
+      body.light-theme nav button { color: #526176; }
+      body.light-theme nav button.active, body.light-theme nav button:hover { color: #27327f; background: rgba(99,102,241,.12); border-color: rgba(99,102,241,.35); }
+      body.light-theme .user { background: #eef0ff; color: #27327f; border-color: rgba(99,102,241,.3); }
+      body.light-theme input, body.light-theme textarea, body.light-theme select, body.light-theme .chat-tools select { background: #f8fafc; color: #172033; border-color: rgba(15,23,42,.16); }
+      body.light-theme .header-model { color: #27327f; background: rgba(99,102,241,.08); }
+      body.light-theme .quick-actions span { color: #526176; background: #f8fafc; border-color: rgba(15,23,42,.12); }
+      body.light-theme .quick-actions span:first-child { color: #176b9a; }
       .session-divider { display: flex; align-items: center; gap: 12px; color: #56627a; font: 600 .65rem ui-monospace, monospace; letter-spacing: .08em; margin: 18px 0 28px; text-align: center; }
       .session-divider::before, .session-divider::after { content: ""; height: 1px; flex: 1; background: rgba(255,255,255,.06); }
       .assistant-shell { display: flex; align-items: flex-start; gap: 14px; margin: 12px 0; }
@@ -1059,6 +1071,7 @@
           <div class="header-tools" aria-label="เครื่องมือแชต">
             <span class="header-model"><i></i><span id="header-model-name">Gemini 3.6 Flash</span><b>⌁</b></span>
             <span class="header-divider"></span>
+            <button type="button" class="header-icon theme-toggle" id="theme-toggle" title="สลับธีม">☼</button>
             <button type="button" class="header-icon" title="ตั้งค่า">☷</button>
             <button type="button" class="header-icon" title="เพิ่มเติม">⋮</button>
           </div>
@@ -1284,6 +1297,12 @@
     </div>
     <script>
       const $ = (id) => document.getElementById(id);
+      const savedTheme = localStorage.getItem("ai-control-center-theme");
+      if (savedTheme === "light") document.body.classList.add("light-theme");
+      $("theme-toggle").addEventListener("click", () => {
+        const light = document.body.classList.toggle("light-theme");
+        localStorage.setItem("ai-control-center-theme", light ? "light" : "dark");
+      });
       const messages = [];
       let conversationId = null;
       let conversationCreatedAt = null;
