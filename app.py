@@ -1,5 +1,6 @@
 import os
 import fcntl
+import hashlib
 import json
 import logging
 import re
@@ -92,6 +93,44 @@ FALLBACK_MODELS = {
     "anthropic": ["claude-sonnet-4-5", "claude-opus-4-1", "claude-3-7-sonnet-latest"],
 }
 
+PROVIDERS = ("openai", "gemini", "anthropic")
+PROVIDER_LABELS = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}
+PROVIDER_ENV_KEYS = {
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+STATUS_CACHE_TTL = 300
+STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def normalize_provider(value: Any) -> str:
+    provider = str(value or "openai").strip().lower()
+    return provider if provider in PROVIDERS else "openai"
+
+
+def stored_api_keys(settings: dict[str, Any]) -> dict[str, str]:
+    raw = settings.get("api_keys")
+    keys = raw if isinstance(raw, dict) else {}
+    return {provider: str(keys.get(provider) or "").strip() for provider in PROVIDERS}
+
+
+def migrate_legacy_api_key(settings: dict[str, Any]) -> dict[str, Any]:
+    """Move the old single api_key slot into the per-provider map, once."""
+    if "api_keys" in settings:
+        settings.pop("api_key", None)
+        return settings
+    legacy = str(settings.get("api_key") or "").strip()
+    settings.pop("api_key", None)
+    settings["api_keys"] = {}
+    if legacy:
+        settings["api_keys"][normalize_provider(settings.get("provider"))] = legacy
+        try:
+            save_settings(settings)
+        except OSError:
+            pass
+    return settings
+
 
 def load_settings() -> dict[str, Any]:
     settings = DEFAULT_SETTINGS.copy()
@@ -100,7 +139,7 @@ def load_settings() -> dict[str, Any]:
             settings.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError):
             pass
-    return settings
+    return migrate_legacy_api_key(settings)
 
 
 def save_settings(settings: dict[str, Any]) -> None:
@@ -479,7 +518,8 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]:
-    key = get_api_key(provider)
+    provider = normalize_provider(provider)
+    key = get_api_key(provider, settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key จึงดึงรายการโมเดลไม่ได้")
     if provider == "gemini":
@@ -488,7 +528,25 @@ def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]
         models = response.json().get("models", [])
         return [{"id": item["name"].removeprefix("models/"), "name": item.get("displayName", item["name"])} for item in models if "generateContent" in item.get("supportedGenerationMethods", [])]
     if provider == "anthropic":
-        return [{"id": model, "name": model} for model in FALLBACK_MODELS["anthropic"]]
+        try:
+            response = requests.get(
+                "https://api.anthropic.com/v1/models",
+                headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+                timeout=30,
+            )
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else "?"
+            raise RuntimeError(f"Anthropic ตอบกลับ HTTP {status} — ตรวจสอบ API key อีกครั้ง") from exc
+        data = response.json().get("data", [])
+        models = [
+            {"id": item["id"], "name": item.get("display_name") or item["id"]}
+            for item in data
+            if isinstance(item, dict) and item.get("id")
+        ]
+        if models:
+            return models
+        raise RuntimeError("Anthropic ไม่ส่งรายการโมเดลกลับมา")
     base_url = settings.get("base_url", "https://api.openai.com/v1").rstrip("/")
     response = requests.get(f"{base_url}/models", headers={"Authorization": f"Bearer {key}"}, timeout=30)
     response.raise_for_status()
@@ -496,12 +554,117 @@ def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]
     return [{"id": item["id"], "name": item["id"]} for item in sorted(models, key=lambda item: item.get("id", ""))]
 
 
-def get_api_key(provider: str) -> str:
-    settings = load_settings()
-    stored = settings.get("api_key", "")
-    if stored:
-        return stored
-    return os.getenv({"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}.get(provider, "OPENAI_API_KEY"), "")
+def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
+    provider = normalize_provider(provider)
+    settings = settings if settings is not None else load_settings()
+    key = stored_api_keys(settings).get(provider, "")
+    if not key:
+        key = str(os.getenv(PROVIDER_ENV_KEYS.get(provider, "OPENAI_API_KEY"), "")).strip()
+    return key
+
+
+def key_is_configured(provider: str, settings: dict[str, Any] | None = None) -> bool:
+    return bool(get_api_key(provider, settings))
+
+
+def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") -> bool:
+    """Reject placeholders such as '000' or a leftover masked value."""
+    key = str(key or "").strip()
+    if not key or "•" in key or " " in key:
+        return False
+    if provider in {"gemini", "anthropic"}:
+        return len(key) >= 20
+    official = base_url.rstrip("/") in {"https://api.openai.com/v1", "https://api.openai.com"}
+    # Self-hosted OpenAI-compatible servers may accept short local keys.
+    return len(key) >= 20 if official else True
+
+
+def key_fingerprint(key: str) -> str:
+    return hashlib.sha256(str(key).encode("utf-8")).hexdigest()[:16]
+
+
+def provider_key_check(provider: str, settings: dict[str, Any]) -> dict[str, Any]:
+    """Check credentials and, for Anthropic, the selected model's real usability."""
+    provider = normalize_provider(provider)
+    label = PROVIDER_LABELS[provider]
+    key = get_api_key(provider, settings)
+    base_url = str(settings.get("base_url") or "").rstrip("/")
+    model = str(settings.get("model") or "").strip()
+    cache_key = f"{provider}|{base_url}|{model}|{key_fingerprint(key)}"
+    cached = STATUS_CACHE.get(cache_key)
+    if cached and time.time() - cached[0] < STATUS_CACHE_TTL:
+        return {**cached[1], "cached": True}
+    result: dict[str, Any]
+    try:
+        if provider == "gemini":
+            response = requests.get(
+                "https://generativelanguage.googleapis.com/v1beta/models",
+                params={"key": key},
+                timeout=20,
+            )
+        elif provider == "anthropic":
+            response = requests.get(
+                "https://api.anthropic.com/v1/models",
+                headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+                timeout=20,
+            )
+        else:
+            response = requests.get(
+                f"{base_url or 'https://api.openai.com/v1'}/models",
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=20,
+            )
+        if response.status_code in {401, 403}:
+            result = {"ready": False, "reason": f"API key ของ {label} ไม่ถูกต้องหรือหมดสิทธิ์ใช้งาน", "status": response.status_code}
+        elif response.status_code == 404:
+            result = {"ready": False, "reason": f"ตรวจไม่พบ endpoint ของ {label} — ตรวจสอบ Base URL อีกครั้ง", "status": 404}
+        elif response.ok and provider == "anthropic":
+            probe = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "max_tokens": 1,
+                    "messages": [{"role": "user", "content": "OK"}],
+                },
+                timeout=20,
+            )
+            if probe.status_code in {401, 403}:
+                result = {"ready": False, "reason": f"API key ของ {label} ไม่ถูกต้องหรือหมดสิทธิ์ใช้งาน", "status": probe.status_code}
+            elif probe.status_code == 404:
+                result = {"ready": False, "reason": f"ไม่พบโมเดล Anthropic ที่เลือก หรือโมเดลนี้ไม่เปิดให้ใช้งาน", "status": 404}
+            elif probe.ok:
+                result = {"ready": True, "reason": "", "status": probe.status_code}
+            else:
+                result = {"ready": False, "reason": f"Anthropic เรียกโมเดลที่เลือกไม่ได้ (HTTP {probe.status_code})", "status": probe.status_code}
+        elif response.ok:
+            result = {"ready": True, "reason": "", "status": response.status_code}
+        else:
+            result = {"ready": False, "reason": f"{label} ตอบกลับ HTTP {response.status_code}", "status": response.status_code}
+    except requests.RequestException as exc:
+        result = {"ready": False, "reason": f"เชื่อมต่อ {label} ไม่ได้: {exc.__class__.__name__}", "status": None}
+    STATUS_CACHE[cache_key] = (time.time(), result)
+    return {**result, "cached": False}
+
+
+def provider_readiness(settings: dict[str, Any]) -> dict[str, Any]:
+    provider = normalize_provider(settings.get("provider"))
+    model = str(settings.get("model") or "").strip()
+    label = PROVIDER_LABELS[provider]
+    key = get_api_key(provider, settings)
+    base = {"provider": provider, "model": model}
+    if not key:
+        return {**base, "ready": False, "reason": f"ยังไม่ได้ตั้งค่า API key ของ {label}", "checked": "local"}
+    if not model:
+        return {**base, "ready": False, "reason": f"ยังไม่ได้เลือกโมเดลของ {label}", "checked": "local"}
+    if not key_looks_plausible(key, provider, str(settings.get("base_url") or "")):
+        return {**base, "ready": False, "reason": f"API key ของ {label} ดูไม่ถูกต้อง (สั้นเกินไปหรือเป็นค่าตัวอย่าง)", "checked": "local"}
+    check = provider_key_check(provider, settings)
+    return {**base, "ready": check["ready"], "reason": check["reason"], "checked": "api", "cached": check.get("cached", False)}
 
 
 def clean_messages(messages: list[dict[str, str]], settings: dict[str, Any]) -> list[dict[str, str]]:
@@ -537,7 +700,7 @@ def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: st
 
 
 def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
-    key = get_api_key(settings["provider"])
+    key = get_api_key(settings["provider"], settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key")
 
@@ -563,7 +726,7 @@ def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
 
 
 def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
-    key = get_api_key("gemini")
+    key = get_api_key("gemini", settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า Gemini API key")
 
@@ -610,7 +773,7 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
 
 
 def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
-    key = get_api_key("anthropic")
+    key = get_api_key("anthropic", settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า Anthropic API key")
     system = next((m["content"] for m in messages if m["role"] == "system"), "")
@@ -754,10 +917,21 @@ def index():
 @app.get("/api/settings")
 def settings_get():
     settings = load_settings()
-    key = get_api_key(settings["provider"])
-    safe = {**settings, "api_key": "" if not key else "••••••••"}
+    provider = normalize_provider(settings.get("provider"))
+    key = get_api_key(provider, settings)
+    safe = {key_: value for key_, value in settings.items() if key_ not in {"api_keys", "api_key"}}
+    safe["provider"] = provider
+    safe["api_key"] = "" if not key else "••••••••"
     safe["has_api_key"] = bool(key)
+    safe["key_providers"] = [name for name in PROVIDERS if key_is_configured(name, settings)]
     return jsonify(safe)
+
+
+@app.get("/api/status")
+def status_get():
+    """Report whether the selected provider/model is actually usable."""
+    settings = load_settings()
+    return jsonify(provider_readiness(settings))
 
 
 @app.get("/api/history")
@@ -826,12 +1000,13 @@ def history_save():
 @app.get("/api/models")
 def models_get():
     settings = load_settings()
-    provider = request.args.get("provider", settings.get("provider", "openai")).lower()
+    provider = normalize_provider(request.args.get("provider", settings.get("provider", "openai")))
     try:
         models = list_models(provider, settings)
         return jsonify({"provider": provider, "models": models, "source": "api"})
     except (requests.RequestException, RuntimeError, KeyError, TypeError) as exc:
-        return jsonify({"provider": provider, "models": [], "source": "error", "error": str(exc)}), 502
+        fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
+        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": str(exc)}), 502
 
 
 @app.put("/api/settings")
@@ -842,29 +1017,49 @@ def settings_put():
     for key in allowed:
         if key in body:
             current[key] = body[key]
+    current["provider"] = normalize_provider(current.get("provider"))
     current["fallback_enabled"] = bool(current.get("fallback_enabled"))
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
-    if body.get("api_key") and body["api_key"] != "••••••••":
-        current["api_key"] = body["api_key"]
+    new_key = body.get("api_key")
+    if isinstance(new_key, str) and new_key.strip() and new_key != "••••••••":
+        keys = stored_api_keys(current)
+        keys[current["provider"]] = new_key.strip()
+        current["api_keys"] = keys
+    current.pop("api_key", None)
     save_settings(current)
-    return jsonify({"ok": True})
+    STATUS_CACHE.clear()
+    return jsonify({"ok": True, "provider": current["provider"], "has_api_key": key_is_configured(current["provider"], current)})
 
 
 @app.post("/api/settings/test")
 def settings_test():
     settings = load_settings()
+    provider = normalize_provider(settings.get("provider"))
+    STATUS_CACHE.clear()
     try:
         messages = clean_messages([{"role": "user", "content": "ตอบคำว่า OK สั้น ๆ"}], settings)
         answer, _usage = call_provider(messages, settings)
-        return jsonify({"ok": True, "answer": answer})
+        STATUS_CACHE.clear()
+        return jsonify({"ok": True, "answer": answer, "provider": provider})
+    except requests.HTTPError as exc:
+        detail = ""
+        if exc.response is not None:
+            try:
+                payload = exc.response.json()
+                detail = str((payload.get("error") or {}).get("message") or payload.get("message") or "")[:300]
+            except ValueError:
+                detail = exc.response.text[:300]
+        message = detail or str(exc)
+        return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: {message}"}), 502
     except (requests.RequestException, KeyError, IndexError, RuntimeError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 502
+        return jsonify({"ok": False, "provider": provider, "error": str(exc)}), 502
 
 
 @app.post("/api/settings/reset")
 def settings_reset():
     if SETTINGS_FILE.exists():
         SETTINGS_FILE.unlink()
+    STATUS_CACHE.clear()
     return jsonify({"ok": True})
 
 
