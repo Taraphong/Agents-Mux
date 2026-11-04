@@ -571,17 +571,53 @@
         width: auto;
         accent-color: #6366f1;
       }
-      .schedule-form { display: grid; gap: 10px; }
-      .schedule-list { display: grid; gap: 8px; margin-top: 18px; }
-      .schedule-item { display: grid; gap: 5px; padding: 12px; border: 1px solid #34415f; border-radius: 10px; background: #111a30; }
-      .schedule-item strong { color: #e5e7eb; }
-      .schedule-item small { color: #94a3b8; }
-      .schedule-item-actions { display: flex; gap: 6px; margin-top: 4px; }
-      .schedule-item-actions button { padding: 6px 10px; font-size: .78rem; }
-      .cron-help { margin: 12px 0 16px; color: #cbd5e1; font-size: .84rem; }
-      .cron-help summary { cursor: pointer; color: #93c5fd; }
-      .cron-help p { margin: 8px 0; }
-      .cron-help code { color: #a7f3d0; }
+      .schedule-form {
+        display: grid;
+        gap: 10px;
+      }
+      .schedule-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 18px;
+      }
+      .schedule-item {
+        display: grid;
+        gap: 5px;
+        padding: 12px;
+        border: 1px solid #34415f;
+        border-radius: 10px;
+        background: #111a30;
+      }
+      .schedule-item strong {
+        color: #e5e7eb;
+      }
+      .schedule-item small {
+        color: #94a3b8;
+      }
+      .schedule-item-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 4px;
+      }
+      .schedule-item-actions button {
+        padding: 6px 10px;
+        font-size: 0.78rem;
+      }
+      .cron-help {
+        margin: 12px 0 16px;
+        color: #cbd5e1;
+        font-size: 0.84rem;
+      }
+      .cron-help summary {
+        cursor: pointer;
+        color: #93c5fd;
+      }
+      .cron-help p {
+        margin: 8px 0;
+      }
+      .cron-help code {
+        color: #a7f3d0;
+      }
       .fallback-row {
         display: flex;
         gap: 12px;
@@ -606,7 +642,11 @@
         --white: #f5f5f5;
       }
       body {
-        background: radial-gradient(circle at 85% 0%, #252525 0, var(--black) 42%);
+        background: radial-gradient(
+          circle at 85% 0%,
+          #252525 0,
+          var(--black) 42%
+        );
         color: var(--white);
       }
       aside,
@@ -653,7 +693,10 @@
       button {
         background: var(--white);
         color: #080808;
-        transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+        transition:
+          transform 0.18s ease,
+          box-shadow 0.18s ease,
+          background 0.18s ease;
       }
       button:hover:not(:disabled) {
         background: #fff;
@@ -669,7 +712,9 @@
         background: #111;
         border-color: #444;
         color: #f5f5f5;
-        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        transition:
+          border-color 0.2s ease,
+          box-shadow 0.2s ease;
       }
       textarea:focus,
       input:focus,
@@ -693,7 +738,9 @@
       .schedule-item {
         background: #171717;
         border-color: #3a3a3a;
-        transition: transform 0.18s ease, border-color 0.18s ease;
+        transition:
+          transform 0.18s ease,
+          border-color 0.18s ease;
       }
       .log-row:hover,
       .schedule-item:hover {
@@ -786,19 +833,37 @@
         color: #dedede;
       }
       @keyframes message-in {
-        from { opacity: 0; transform: translateY(6px); }
-        to { opacity: 1; transform: translateY(0); }
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
       @keyframes monochrome-pulse {
-        0%, 100% { box-shadow: 0 0 18px #fff2; }
-        50% { box-shadow: 0 0 30px #fff5; }
+        0%,
+        100% {
+          box-shadow: 0 0 18px #fff2;
+        }
+        50% {
+          box-shadow: 0 0 30px #fff5;
+        }
       }
       @keyframes float-button {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-2px); }
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-2px);
+        }
       }
       @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after {
+        *,
+        *::before,
+        *::after {
           animation-duration: 0.01ms !important;
           transition-duration: 0.01ms !important;
         }
@@ -919,110 +984,421 @@
         color: var(--text);
         font-family: Geist, system-ui, sans-serif;
       }
-      .app { grid-template-columns: 272px 1fr; background: var(--surface); }
+      .app {
+        grid-template-columns: 272px 1fr;
+        background: var(--surface);
+      }
       aside {
         padding: 18px 14px;
         background: #0a0e16;
         border-right: 1px solid var(--line-soft);
         box-shadow: none;
       }
-      .brand { padding: 2px 8px 22px; gap: 11px; }
-      .brand-copy { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
-      .brand-copy strong { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1rem; letter-spacing: -.02em; }
-      .brand-copy small { color: var(--muted); font: 600 .63rem ui-monospace, monospace; letter-spacing: .04em; margin-top: 4px; }
+      .brand {
+        padding: 2px 8px 22px;
+        gap: 11px;
+      }
+      .brand-copy {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        line-height: 1.15;
+      }
+      .brand-copy strong {
+        font-family: "Space Grotesk", system-ui, sans-serif;
+        font-size: 1rem;
+        letter-spacing: -0.02em;
+      }
+      .brand-copy small {
+        color: var(--muted);
+        font:
+          600 0.63rem ui-monospace,
+          monospace;
+        letter-spacing: 0.04em;
+        margin-top: 4px;
+      }
       .brand-mark {
-        width: 34px; height: 34px; border-radius: 6px;
+        width: 34px;
+        height: 34px;
+        border-radius: 6px;
         background: linear-gradient(135deg, var(--indigo), var(--cyan));
-        color: #090d18; box-shadow: 0 0 20px rgba(129,140,248,.28);
+        color: #090d18;
+        box-shadow: 0 0 20px rgba(129, 140, 248, 0.28);
       }
-      .brand span:last-child { font-family: "Space Grotesk", system-ui, sans-serif; letter-spacing: -.02em; }
+      .brand span:last-child {
+        font-family: "Space Grotesk", system-ui, sans-serif;
+        letter-spacing: -0.02em;
+      }
       .new-chat {
-        margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--line);
-        border-radius: 4px; background: #181c24; color: var(--text); text-align: left;
+        margin-bottom: 14px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: #181c24;
+        color: var(--text);
+        text-align: left;
       }
-      .new-chat:hover { background: #262a33; border-color: rgba(129,140,248,.55); }
-      nav button { margin: 2px 0; padding: 10px 11px; border-radius: 4px; color: var(--muted); border: 1px solid transparent; }
-      nav button.active, nav button:hover {
-        color: #fff; background: rgba(129,140,248,.13); border: 1px solid rgba(129,140,248,.38);
+      .new-chat:hover {
+        background: #262a33;
+        border-color: rgba(129, 140, 248, 0.55);
       }
-      nav button em { margin-left: auto; color: var(--indigo); font-style: normal; font-size: .68rem; }
-      .history-title { margin-top: 14px; color: var(--dim); font-size: .68rem; letter-spacing: .1em; }
-      .history-row { border-radius: 4px; }
-      .history-row:hover, .history-row.active { background: rgba(255,255,255,.05); }
-      .history-item { color: var(--muted); padding: 8px 6px 8px 10px; }
+      nav button {
+        margin: 2px 0;
+        padding: 10px 11px;
+        border-radius: 4px;
+        color: var(--muted);
+        border: 1px solid transparent;
+      }
+      nav button.active,
+      nav button:hover {
+        color: #fff;
+        background: rgba(129, 140, 248, 0.13);
+        border: 1px solid rgba(129, 140, 248, 0.38);
+      }
+      nav button em {
+        margin-left: auto;
+        color: var(--indigo);
+        font-style: normal;
+        font-size: 0.68rem;
+      }
+      .history-title {
+        margin-top: 14px;
+        color: var(--dim);
+        font-size: 0.68rem;
+        letter-spacing: 0.1em;
+      }
+      .history-row {
+        border-radius: 4px;
+      }
+      .history-row:hover,
+      .history-row.active {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .history-item {
+        color: var(--muted);
+        padding: 8px 6px 8px 10px;
+      }
       header {
-        height: 58px; padding: 0 26px; background: rgba(15,19,28,.9);
-        border-bottom: 1px solid var(--line-soft); backdrop-filter: blur(12px);
+        height: 58px;
+        padding: 0 26px;
+        background: rgba(15, 19, 28, 0.9);
+        border-bottom: 1px solid var(--line-soft);
+        backdrop-filter: blur(12px);
       }
-      header h1 { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1.08rem; }
-      .status { color: var(--mint); font-size: .74rem; letter-spacing: .04em; }
-      .status.offline { color: #94a3b8; }
-      .content { width: min(1120px, 100%); padding: 26px 30px 30px; height: calc(100vh - 58px); }
-      #chat-view { max-width: 900px; margin: 0 auto; }
-      #messages { padding: 12px 0 26px; }
-      .message { border-radius: 7px; margin: 12px 0; padding: 13px 16px; max-width: 78%; line-height: 1.65; }
-      .assistant { background: #111827; border: 1px solid var(--line-soft); }
-      .user { background: #131b2e; color: #eef2ff; border: 1px solid rgba(129,140,248,.28); }
-      .message-meta { color: var(--dim); }
+      header h1 {
+        font-family: "Space Grotesk", system-ui, sans-serif;
+        font-size: 1.08rem;
+      }
+      .status {
+        color: var(--mint);
+        font-size: 0.74rem;
+        letter-spacing: 0.04em;
+      }
+      .status.offline {
+        color: #94a3b8;
+      }
+      .content {
+        width: min(1120px, 100%);
+        padding: 26px 30px 30px;
+        height: calc(100vh - 58px);
+      }
+      #chat-view {
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      #messages {
+        padding: 12px 0 26px;
+      }
+      .message {
+        border-radius: 7px;
+        margin: 12px 0;
+        padding: 13px 16px;
+        max-width: 78%;
+        line-height: 1.65;
+      }
+      .assistant {
+        background: #111827;
+        border: 1px solid var(--line-soft);
+      }
+      .user {
+        background: #131b2e;
+        color: #eef2ff;
+        border: 1px solid rgba(129, 140, 248, 0.28);
+      }
+      .message-meta {
+        color: var(--dim);
+      }
       .chat-form {
-        padding: 12px 14px 9px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px;
-        background: rgba(17,24,39,.88); box-shadow: 0 0 24px rgba(0,0,0,.2); backdrop-filter: blur(14px);
+        padding: 12px 14px 9px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        background: rgba(17, 24, 39, 0.88);
+        box-shadow: 0 0 24px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(14px);
       }
-      .chat-form textarea { color: var(--text); min-height: 46px; }
-      .chat-tools { border-top: 1px solid var(--line-soft); padding-top: 8px; }
-      .chat-tools select { border: 1px solid var(--line-soft); border-radius: 4px; background: #111827; color: var(--muted); }
-      .attach-button { border-radius: 4px; }
-      .send-round { border-radius: 4px; background: var(--indigo); color: #101426; box-shadow: 0 0 16px rgba(129,140,248,.22); animation: none; }
-      .send-round:hover { background: #a5b4fc; }
-      .card { background: rgba(17,24,39,.78); border: 1px solid var(--line-soft); border-radius: 6px; padding: 20px; }
-      .card h2 { font-family: "Space Grotesk", system-ui, sans-serif; }
-      .hint, label, .cron-help { color: var(--muted); }
-      input, textarea, select { border-color: var(--line); border-radius: 4px; background: #0d1421; }
-      input:focus, textarea:focus, select:focus { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(129,140,248,.14); }
-      button { border-radius: 4px; background: var(--indigo); color: #101426; }
-      button:hover:not(:disabled) { background: #a5b4fc; box-shadow: 0 0 16px rgba(129,140,248,.16); }
-      .secondary, .modal-cancel { background: #1e293b; color: var(--text); }
-      .danger, .modal-danger { background: #3b1d29; color: #fecdd3; }
-      .notice { border-radius: 4px; background: rgba(52,211,153,.12); color: #a7f3d0; }
-      .log-row, .schedule-item { background: #111827; border-color: var(--line-soft); border-radius: 5px; }
-      .header-tools { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-      .header-model { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border: 1px solid var(--line-soft); border-radius: 999px; color: #dbeafe; font-size: .74rem; }
-      .header-model i { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
-      .header-model b { color: var(--muted); font-size: .9rem; font-weight: 400; }
-      .header-divider { width: 1px; height: 18px; background: var(--line-soft); }
-      .header-icon { padding: 3px 6px; background: transparent; color: var(--muted); font-size: 1.1rem; }
-      .header-icon:hover { color: var(--text); background: rgba(255,255,255,.05); box-shadow: none; }
-      body.light-theme { color-scheme: light; --void: #eef2f7; --surface: #ffffff; --panel: #ffffff; --panel-hi: #e7edf5; --line: #cbd5e1; --line-soft: #d9e1eb; --text: #172033; --muted: #40516a; --dim: #607089; background: var(--void); color: var(--text); }
-      body.light-theme aside { background: #f7f9fc; border-color: #d4dce7; }
-      body.light-theme header { background: rgba(255,255,255,.96); border-color: #d4dce7; }
-      body.light-theme nav button { background: transparent !important; color: #40516a !important; border: 1px solid transparent; }
-      body.light-theme nav button:hover { background: #eef2f8 !important; color: #27327f !important; }
-      body.light-theme nav button.active { background: #e9eaff !important; color: #27327f !important; border-color: #9da6ef; }
-      body.light-theme .new-chat, body.light-theme .chat-form, body.light-theme .card, body.light-theme .assistant, body.light-theme .log-row, body.light-theme .schedule-item { background: #ffffff; border-color: #cbd5e1; box-shadow: 0 2px 10px rgba(30,41,59,.06); }
-      body.light-theme .new-chat { color: #172033; }
-      body.light-theme .assistant, body.light-theme .assistant strong, body.light-theme .assistant div { color: #172033; }
-      body.light-theme .assistant-shell .assistant { background: #ffffff; }
-      body.light-theme .message-meta, body.light-theme .message-attachment { color: #607089; }
-      body.light-theme .history-title, body.light-theme .history-day { color: #607089; }
-      body.light-theme .history-item, body.light-theme .history-action { color: #40516a; }
-      body.light-theme .user { background: #eef0ff; color: #202b66; border-color: #aeb7f2; }
-      body.light-theme input, body.light-theme textarea, body.light-theme select, body.light-theme .chat-tools select { background: #fbfdff; color: #172033; border-color: #b9c5d4; }
-      body.light-theme input::placeholder, body.light-theme textarea::placeholder { color: #687991; }
-      body.light-theme .header-model { color: #27327f; background: #eef0ff; border-color: #c2c9f5; }
-      body.light-theme .quick-actions span { color: #40516a; background: #f8fafc; border-color: #cbd5e1; }
-      body.light-theme .quick-actions span:first-child { color: #176b9a; }
-      body.light-theme .chat-form textarea, body.light-theme .chat-form textarea:focus { background: transparent; }
-      .chat-form textarea:disabled { cursor: not-allowed; opacity: .7; }
+      .chat-form textarea {
+        color: var(--text);
+        min-height: 46px;
+      }
+      .chat-tools {
+        border-top: 1px solid var(--line-soft);
+        padding-top: 8px;
+      }
+      .chat-tools select {
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+        background: #111827;
+        color: var(--muted);
+      }
+      .attach-button {
+        border-radius: 4px;
+      }
+      .send-round {
+        border-radius: 4px;
+        background: var(--indigo);
+        color: #101426;
+        box-shadow: 0 0 16px rgba(129, 140, 248, 0.22);
+        animation: none;
+      }
+      .send-round:hover {
+        background: #a5b4fc;
+      }
+      .card {
+        background: rgba(17, 24, 39, 0.78);
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        padding: 20px;
+      }
+      .card h2 {
+        font-family: "Space Grotesk", system-ui, sans-serif;
+      }
+      .hint,
+      label,
+      .cron-help {
+        color: var(--muted);
+      }
+      input,
+      textarea,
+      select {
+        border-color: var(--line);
+        border-radius: 4px;
+        background: #0d1421;
+      }
+      input:focus,
+      textarea:focus,
+      select:focus {
+        border-color: var(--indigo);
+        box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.14);
+      }
+      button {
+        border-radius: 4px;
+        background: var(--indigo);
+        color: #101426;
+      }
+      button:hover:not(:disabled) {
+        background: #a5b4fc;
+        box-shadow: 0 0 16px rgba(129, 140, 248, 0.16);
+      }
+      .secondary,
+      .modal-cancel {
+        background: #1e293b;
+        color: var(--text);
+      }
+      .danger,
+      .modal-danger {
+        background: #3b1d29;
+        color: #fecdd3;
+      }
+      .notice {
+        border-radius: 4px;
+        background: rgba(52, 211, 153, 0.12);
+        color: #a7f3d0;
+      }
+      .log-row,
+      .schedule-item {
+        background: #111827;
+        border-color: var(--line-soft);
+        border-radius: 5px;
+      }
+      .header-tools {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .header-model {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px;
+        border: 1px solid var(--line-soft);
+        border-radius: 999px;
+        color: #dbeafe;
+        font-size: 0.74rem;
+      }
+      .header-model i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--cyan);
+        box-shadow: 0 0 8px var(--cyan);
+      }
+      .header-model b {
+        color: var(--muted);
+        font-size: 0.9rem;
+        font-weight: 400;
+      }
+      .header-divider {
+        width: 1px;
+        height: 18px;
+        background: var(--line-soft);
+      }
+      body.light-theme {
+        color-scheme: light;
+        --void: #eef2f7;
+        --surface: #ffffff;
+        --panel: #ffffff;
+        --panel-hi: #e7edf5;
+        --line: #cbd5e1;
+        --line-soft: #d9e1eb;
+        --text: #172033;
+        --muted: #40516a;
+        --dim: #607089;
+        background: var(--void);
+        color: var(--text);
+      }
+      body.light-theme aside {
+        background: #f7f9fc;
+        border-color: #d4dce7;
+      }
+      body.light-theme header {
+        background: rgba(255, 255, 255, 0.96);
+        border-color: #d4dce7;
+      }
+      body.light-theme nav button {
+        background: transparent !important;
+        color: #40516a !important;
+        border: 1px solid transparent;
+      }
+      body.light-theme nav button:hover {
+        background: #eef2f8 !important;
+        color: #27327f !important;
+      }
+      body.light-theme nav button.active {
+        background: #e9eaff !important;
+        color: #27327f !important;
+        border-color: #9da6ef;
+      }
+      body.light-theme .new-chat,
+      body.light-theme .chat-form,
+      body.light-theme .card,
+      body.light-theme .assistant,
+      body.light-theme .log-row,
+      body.light-theme .schedule-item {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        box-shadow: 0 2px 10px rgba(30, 41, 59, 0.06);
+      }
+      body.light-theme .new-chat {
+        color: #172033;
+      }
+      body.light-theme .assistant,
+      body.light-theme .assistant strong,
+      body.light-theme .assistant div {
+        color: #172033;
+      }
+      body.light-theme .assistant-shell .assistant {
+        background: #ffffff;
+      }
+      body.light-theme .message-meta,
+      body.light-theme .message-attachment {
+        color: #607089;
+      }
+      body.light-theme .history-title,
+      body.light-theme .history-day {
+        color: #607089;
+      }
+      body.light-theme .history-item,
+      body.light-theme .history-action {
+        color: #40516a;
+      }
+      body.light-theme .user {
+        background: #eef0ff;
+        color: #202b66;
+        border-color: #aeb7f2;
+      }
+      body.light-theme input,
+      body.light-theme textarea,
+      body.light-theme select,
+      body.light-theme .chat-tools select {
+        background: #fbfdff;
+        color: #172033;
+        border-color: #b9c5d4;
+      }
+      body.light-theme input::placeholder,
+      body.light-theme textarea::placeholder {
+        color: #687991;
+      }
+      body.light-theme .header-model {
+        color: #27327f;
+        background: #eef0ff;
+        border-color: #c2c9f5;
+      }
+      body.light-theme .quick-actions span {
+        color: #40516a;
+        background: #f8fafc;
+        border-color: #cbd5e1;
+      }
+      body.light-theme .quick-actions span:first-child {
+        color: #176b9a;
+      }
+      body.light-theme .chat-form textarea,
+      body.light-theme .chat-form textarea:focus {
+        background: transparent;
+      }
+      .chat-form textarea:disabled {
+        cursor: not-allowed;
+        opacity: 0.7;
+      }
       /* Light theme status palette: green = ready, cyan = model, neutral = destructive actions */
-      body.light-theme .status { color: #087f5b; }
-      body.light-theme .status.offline { color: #64748b; }
-      body.light-theme .header-model { color: #176b9a; background: #e9f8ff; border-color: #9ed8ee; }
-      body.light-theme .header-model i { background: #16a085; box-shadow: 0 0 7px rgba(22,160,133,.35); }
-      body.light-theme .send-round { background: #7c6af2; color: #fff; }
-      body.light-theme .danger, body.light-theme .modal-danger { background: #e8edf3; color: #344054; border: 1px solid #cbd5e1; }
-      body.light-theme .notice.error { background: #fff7e6; color: #7a5b16; border: 1px solid #ead7a5; }
-      body.light-theme .tool-approval { background: #fff7e6; color: #7a5b16; border: 1px solid #ead7a5; }
-      body.light-theme .quick-actions span:first-child { color: #176b9a; }
+      body.light-theme .status {
+        color: #087f5b;
+      }
+      body.light-theme .status.offline {
+        color: #64748b;
+      }
+      body.light-theme .header-model {
+        color: #176b9a;
+        background: #e9f8ff;
+        border-color: #9ed8ee;
+      }
+      body.light-theme .header-model i {
+        background: #16a085;
+        box-shadow: 0 0 7px rgba(22, 160, 133, 0.35);
+      }
+      body.light-theme .send-round {
+        background: #7c6af2;
+        color: #fff;
+      }
+      body.light-theme .danger,
+      body.light-theme .modal-danger {
+        background: #e8edf3;
+        color: #344054;
+        border: 1px solid #cbd5e1;
+      }
+      body.light-theme .notice.error {
+        background: #fff7e6;
+        color: #7a5b16;
+        border: 1px solid #ead7a5;
+      }
+      body.light-theme .tool-approval {
+        background: #fff7e6;
+        color: #7a5b16;
+        border: 1px solid #ead7a5;
+      }
+      body.light-theme .quick-actions span:first-child {
+        color: #176b9a;
+      }
       /* Light theme: dark-only surfaces that need a readable light palette */
       body.light-theme .modal {
         background: #ffffff;
@@ -1071,10 +1447,6 @@
       body.light-theme .history-action:hover {
         background: #e2e8f3;
         color: #1b2a4a;
-      }
-      body.light-theme .header-icon:hover {
-        background: #e9edf5;
-        color: #172033;
       }
       body.light-theme .attach-button {
         color: #52627a;
@@ -1131,24 +1503,98 @@
         background: #ffffff;
         color: #172033;
       }
-      .session-divider { display: flex; align-items: center; gap: 12px; color: #7f8da3; font: 600 .65rem ui-monospace, monospace; letter-spacing: .08em; margin: 18px 0 28px; text-align: center; }
-      .session-divider::before, .session-divider::after { content: ""; height: 1px; flex: 1; background: rgba(255,255,255,.06); }
-      .assistant-shell { display: flex; align-items: flex-start; gap: 14px; margin: 12px 0; }
-      .assistant-shell .message { margin: 0; max-width: none; flex: 1; }
-      .assistant-mark { flex: 0 0 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(129,140,248,.28); border-radius: 5px; color: var(--indigo); background: rgba(129,140,248,.1); box-shadow: 0 0 14px rgba(129,140,248,.16); }
-      .quick-actions { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line-soft); margin-top: 16px; padding-top: 10px; }
-      .quick-actions span { padding: 6px 9px; border: 1px solid var(--line-soft); border-radius: 4px; color: #cbd5e1; font-size: .72rem; background: rgba(255,255,255,.025); }
-      .quick-actions span:first-child { color: var(--cyan); }
-      .message.user { padding: 10px 15px; }
+      .session-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #7f8da3;
+        font:
+          600 0.65rem ui-monospace,
+          monospace;
+        letter-spacing: 0.08em;
+        margin: 18px 0 28px;
+        text-align: center;
+      }
+      .session-divider::before,
+      .session-divider::after {
+        content: "";
+        height: 1px;
+        flex: 1;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .assistant-shell {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        margin: 12px 0;
+      }
+      .assistant-shell .message {
+        margin: 0;
+        max-width: none;
+        flex: 1;
+      }
+      .assistant-mark {
+        flex: 0 0 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(129, 140, 248, 0.28);
+        border-radius: 5px;
+        color: var(--indigo);
+        background: rgba(129, 140, 248, 0.1);
+        box-shadow: 0 0 14px rgba(129, 140, 248, 0.16);
+      }
+      .quick-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        border-top: 1px solid var(--line-soft);
+        margin-top: 16px;
+        padding-top: 10px;
+      }
+      .quick-actions span {
+        padding: 6px 9px;
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+        color: #cbd5e1;
+        font-size: 0.72rem;
+        background: rgba(255, 255, 255, 0.025);
+      }
+      .quick-actions span:first-child {
+        color: var(--cyan);
+      }
+      .message.user {
+        padding: 10px 15px;
+      }
       @media (max-width: 700px) {
-        .app { display: block; }
-        header { height: 58px; padding: 0 14px; }
-        .content { padding: 14px 12px 16px; height: calc(100dvh - 58px); }
-        .message { max-width: 90%; }
-        .header-tools { gap: 4px; }
-        .header-model { max-width: 145px; overflow: hidden; white-space: nowrap; }
-        .header-divider, .header-icon { display: none; }
-        .assistant-shell { gap: 8px; }
+        .app {
+          display: block;
+        }
+        header {
+          height: 58px;
+          padding: 0 14px;
+        }
+        .content {
+          padding: 14px 12px 16px;
+          height: calc(100dvh - 58px);
+        }
+        .message {
+          max-width: 90%;
+        }
+        .header-tools {
+          gap: 4px;
+        }
+        .header-model {
+          max-width: 145px;
+          overflow: hidden;
+          white-space: nowrap;
+        }
+        .header-divider,
+          display: none;
+        }
+        .assistant-shell {
+          gap: 8px;
+        }
       }
 
       /* Dark theme: secondary controls must stay readable while hovered,
@@ -1172,10 +1618,6 @@
         background: #334155;
         color: var(--text);
       }
-      body:not(.light-theme) .header-tools .header-icon:hover {
-        background: rgba(255, 255, 255, 0.05);
-        color: var(--text);
-      }
       body:not(.light-theme) .history-row:hover .history-item,
       body:not(.light-theme) .history-row.active .history-item {
         background: transparent;
@@ -1193,7 +1635,10 @@
       <aside>
         <div class="brand">
           <div class="brand-mark">✦</div>
-          <div class="brand-copy"><strong>AI Control Center</strong><small>Operational Terminal</small></div>
+          <div class="brand-copy">
+            <strong>AI Control Center</strong
+            ><small>Operational Terminal</small>
+          </div>
         </div>
         <button class="new-chat" id="new-chat">＋ แชตใหม่</button>
         <nav>
@@ -1236,18 +1681,20 @@
           <h1 id="page-title">แชตกับ AI</h1>
           <span class="status">● กำลังตรวจสอบการเชื่อมต่อ</span>
           <div class="header-tools" aria-label="เครื่องมือแชต">
-            <span class="header-model"><i></i><span id="header-model-name">กำลังตรวจสอบ...</span><b>⌁</b></span>
+            <span class="header-model"
+              ><i></i><span id="header-model-name">กำลังตรวจสอบ...</span
+              ><b>⌁</b></span
+            >
             <span class="header-divider"></span>
-            <button type="button" class="header-icon theme-toggle" id="theme-toggle" title="สลับธีม">☼</button>
-            <button type="button" class="header-icon" title="ตั้งค่า">☷</button>
-            <button type="button" class="header-icon" title="เพิ่มเติม">⋮</button>
-          </div>
+            
         </header>
         <div class="content">
           <section id="chat-view" class="view active">
             <div class="messages">
               <div id="messages">
-                <div class="session-divider"><span>2026-11-03 · SESSION READY #T-098</span></div>
+                <div class="session-divider">
+                  <span>2026-11-03 · SESSION READY #T-098</span>
+                </div>
               </div>
               <form class="chat-form" id="chat-form">
                 <textarea
@@ -1257,9 +1704,23 @@
                 ></textarea>
                 <div class="chat-tools">
                   <div class="chat-tools-left">
-                    <label class="attach-button" for="file-input" title="แนบไฟล์">📎</label>
-                    <input id="file-input" type="file" hidden accept=".txt,.md,.csv,.json,.py,.js,.ts,.tsx,.jsx,.html,.css,.xml,.yaml,.yml,.sql,.sh,.log" />
-                    <span id="attachment-chip" class="attachment-chip" hidden></span>
+                    <label
+                      class="attach-button"
+                      for="file-input"
+                      title="แนบไฟล์"
+                      >📎</label
+                    >
+                    <input
+                      id="file-input"
+                      type="file"
+                      hidden
+                      accept=".txt,.md,.csv,.json,.py,.js,.ts,.tsx,.jsx,.html,.css,.xml,.yaml,.yml,.sql,.sh,.log"
+                    />
+                    <span
+                      id="attachment-chip"
+                      class="attachment-chip"
+                      hidden
+                    ></span>
                     <select id="chat-thinking-level" title="ระดับการคิด">
                       <option value="off">คิด: ปิด</option>
                       <option value="low">คิด: ต่ำ</option>
@@ -1323,7 +1784,10 @@
                       <option value="">ไม่ใช้ fallback</option>
                     </select>
                   </div>
-                  <small class="hint">จะลองใช้เมื่อ API ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา</small>
+                  <small class="hint"
+                    >จะลองใช้เมื่อ API
+                    ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา</small
+                  >
                 </label>
                 <label class="full"
                   ><span>Base URL (สำหรับ OpenAI-compatible)</span
@@ -1400,27 +1864,65 @@
           <section id="schedule-view" class="view">
             <div class="card">
               <h2>งานตามเวลา (Cron jobs)</h2>
-              <p class="hint">ตั้ง prompt ให้ AI ทำงานซ้ำตามเวลา ระบบจะทำงานเมื่อ server กำลังเปิดอยู่ · Timezone: <b id="schedule-timezone">กำลังโหลด...</b></p>
+              <p class="hint">
+                ตั้ง prompt ให้ AI ทำงานซ้ำตามเวลา ระบบจะทำงานเมื่อ server
+                กำลังเปิดอยู่ · Timezone:
+                <b id="schedule-timezone">กำลังโหลด...</b>
+              </p>
               <details class="cron-help">
                 <summary>วิธีตั้งค่า Cron jobs</summary>
-                <p>รูปแบบมี 5 ช่อง: <code>นาที ชั่วโมง วันที่ เดือน วันในสัปดาห์</code></p>
-                <p><code>*</code> = ทุกค่า · <code>*/5</code> = ทุก 5 หน่วย · <code>1-5</code> = ช่วง · <code>1,15</code> = หลายค่า</p>
-                <p>ตัวอย่าง: <code>*/5 * * * *</code> ทุก 5 นาที · <code>0 9 * * 1-5</code> จันทร์-ศุกร์ 09:00 · <code>0 0 * * *</code> ทุกวันเที่ยงคืน</p>
-                <p class="hint">งานจะใช้โมเดลตามที่เลือก และบันทึกผลลัพธ์เป็นประวัติการสนทนา งานที่มีการรันคำสั่งระบบจะไม่ทำงานอัตโนมัติ</p>
+                <p>
+                  รูปแบบมี 5 ช่อง:
+                  <code>นาที ชั่วโมง วันที่ เดือน วันในสัปดาห์</code>
+                </p>
+                <p>
+                  <code>*</code> = ทุกค่า · <code>*/5</code> = ทุก 5 หน่วย ·
+                  <code>1-5</code> = ช่วง · <code>1,15</code> = หลายค่า
+                </p>
+                <p>
+                  ตัวอย่าง: <code>*/5 * * * *</code> ทุก 5 นาที ·
+                  <code>0 9 * * 1-5</code> จันทร์-ศุกร์ 09:00 ·
+                  <code>0 0 * * *</code> ทุกวันเที่ยงคืน
+                </p>
+                <p class="hint">
+                  งานจะใช้โมเดลตามที่เลือก และบันทึกผลลัพธ์เป็นประวัติการสนทนา
+                  งานที่มีการรันคำสั่งระบบจะไม่ทำงานอัตโนมัติ
+                </p>
               </details>
               <form id="schedule-form" class="schedule-form">
-                <input id="schedule-name" placeholder="ชื่องาน เช่น สรุปข่าวประจำวัน" required />
+                <input
+                  id="schedule-name"
+                  placeholder="ชื่องาน เช่น สรุปข่าวประจำวัน"
+                  required
+                />
                 <select id="schedule-preset" title="ตัวอย่างเวลา">
-                  <option value="">เลือกตัวอย่างเวลา หรือพิมพ์เองด้านล่าง</option>
+                  <option value="">
+                    เลือกตัวอย่างเวลา หรือพิมพ์เองด้านล่าง
+                  </option>
                   <option value="*/5 * * * *">ทุก 5 นาที</option>
                   <option value="0 * * * *">ทุกชั่วโมง</option>
                   <option value="0 9 * * 1-5">จันทร์-ศุกร์ เวลา 09:00</option>
                   <option value="0 0 * * *">ทุกวัน เวลา 00:00</option>
                 </select>
-                <input id="schedule-expression" placeholder="Cron เช่น 0 9 * * 1-5" required />
-                <select id="schedule-model" title="โมเดลสำหรับงาน"><option value="">ใช้โมเดลหลักจาก Settings</option></select>
-                <textarea id="schedule-prompt" rows="3" placeholder="Prompt ที่ต้องการให้ AI ทำงาน" required></textarea>
-                <label class="toggle"><input id="schedule-enabled" type="checkbox" checked /><span>เปิดใช้งานทันที</span></label>
+                <input
+                  id="schedule-expression"
+                  placeholder="Cron เช่น 0 9 * * 1-5"
+                  required
+                />
+                <select id="schedule-model" title="โมเดลสำหรับงาน">
+                  <option value="">ใช้โมเดลหลักจาก Settings</option>
+                </select>
+                <textarea
+                  id="schedule-prompt"
+                  rows="3"
+                  placeholder="Prompt ที่ต้องการให้ AI ทำงาน"
+                  required
+                ></textarea>
+                <label class="toggle"
+                  ><input id="schedule-enabled" type="checkbox" checked /><span
+                    >เปิดใช้งานทันที</span
+                  ></label
+                >
                 <button type="submit">เพิ่มงานตามเวลา</button>
               </form>
               <div id="schedule-list" class="schedule-list"></div>
@@ -1431,14 +1933,19 @@
               <div class="logs-toolbar">
                 <div>
                   <h2>Log ระบบ</h2>
-                  <p class="hint">ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง API key หรือเนื้อหาไฟล์</p>
+                  <p class="hint">
+                    ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง
+                    API key หรือเนื้อหาไฟล์
+                  </p>
                 </div>
                 <div class="logs-actions">
                   <button id="save-logs" type="button">บันทึกไฟล์</button>
                   <button id="refresh-logs" type="button">รีเฟรช</button>
                 </div>
               </div>
-              <div id="logs-list" class="logs-list"><p class="hint">กำลังโหลด...</p></div>
+              <div id="logs-list" class="logs-list">
+                <p class="hint">กำลังโหลด...</p>
+              </div>
             </div>
           </section>
           <section id="about-view" class="view">
@@ -1463,7 +1970,10 @@
       if (savedTheme === "light") document.body.classList.add("light-theme");
       $("theme-toggle").addEventListener("click", () => {
         const light = document.body.classList.toggle("light-theme");
-        localStorage.setItem("ai-control-center-theme", light ? "light" : "dark");
+        localStorage.setItem(
+          "ai-control-center-theme",
+          light ? "light" : "dark",
+        );
       });
       const messages = [];
       let hasApiKey = false;
@@ -1472,7 +1982,11 @@
       let conversationTitle = null;
       let pendingAttachment = null;
       function setConversationTitle(title) {
-        conversationTitle = String(title || "").replace(/\s+/g, " ").trim().slice(0, 80) || null;
+        conversationTitle =
+          String(title || "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 80) || null;
         $("page-title").textContent = conversationTitle || "แชตกับ AI";
       }
       function closeSidebar() {
@@ -1561,7 +2075,8 @@
             throw error;
           }
           button.textContent = "ทำงานแล้ว";
-          $("input").value = `ผลการใช้เครื่องมือ:\n${JSON.stringify(data.result, null, 2)}`;
+          $("input").value =
+            `ผลการใช้เครื่องมือ:\n${JSON.stringify(data.result, null, 2)}`;
           resizeInput();
           $("chat-form").requestSubmit();
         } catch (error) {
@@ -1608,16 +2123,20 @@
             list.innerHTML = '<p class="hint">ยังไม่มี log</p>';
             return;
           }
-          list.innerHTML = currentLogs.slice().reverse().map((item) => {
-            const details = Object.entries(item.details || {})
-              .map(([key, value]) => `${key}: ${value}`)
-              .join(" · ");
-            return `<div class="log-row ${escapeHtml(item.event || "")}">
+          list.innerHTML = currentLogs
+            .slice()
+            .reverse()
+            .map((item) => {
+              const details = Object.entries(item.details || {})
+                .map(([key, value]) => `${key}: ${value}`)
+                .join(" · ");
+              return `<div class="log-row ${escapeHtml(item.event || "")}">
               <div><strong>${escapeHtml(item.event || "event")}</strong><span class="log-time">${escapeHtml(item.time || "")}</span></div>
               <div>${escapeHtml(item.message || "")}</div>
               ${details ? `<span class="log-details">${escapeHtml(details)}</span>` : ""}
             </div>`;
-          }).join("");
+            })
+            .join("");
         } catch (error) {
           list.innerHTML = `<p class="hint">โหลด log ไม่สำเร็จ: ${escapeHtml(error.message)}</p>`;
         }
@@ -1628,7 +2147,9 @@
           const response = await fetch("/api/logs");
           const data = await response.json();
           const items = Array.isArray(data.items) ? data.items : currentLogs;
-          const blob = new Blob([JSON.stringify(items, null, 2)], { type: "application/json" });
+          const blob = new Blob([JSON.stringify(items, null, 2)], {
+            type: "application/json",
+          });
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url;
@@ -1640,7 +2161,9 @@
         } catch (error) {
           const button = $("save-logs");
           button.textContent = "บันทึกไม่สำเร็จ";
-          setTimeout(() => { button.textContent = "บันทึกไฟล์"; }, 2500);
+          setTimeout(() => {
+            button.textContent = "บันทึกไฟล์";
+          }, 2500);
         }
       });
       function resizeInput() {
@@ -1688,7 +2211,9 @@
             id: conversationId,
             created_at: conversationCreatedAt,
             title,
-            messages: messages.map(({ tool_request, approval_id, ...rest }) => rest),
+            messages: messages.map(
+              ({ tool_request, approval_id, ...rest }) => rest,
+            ),
           };
           const response = await fetch("/api/history", {
             method: "POST",
@@ -1768,7 +2293,9 @@
           list.innerHTML = '<p class="hint">ยังไม่มีงานตามเวลา</p>';
           return;
         }
-        list.innerHTML = items.map((job) => `
+        list.innerHTML = items
+          .map(
+            (job) => `
           <div class="schedule-item" data-schedule-id="${escapeHtml(job.id)}">
             <strong>${escapeHtml(job.name)}</strong>
             <small>${escapeHtml(job.schedule)} · ${job.model ? `โมเดล: ${escapeHtml(job.model)} · ` : ""}${job.enabled ? "เปิดใช้งาน" : "ปิดใช้งาน"} · ${escapeHtml(job.last_status || "ยังไม่เคยทำงาน")}</small>
@@ -1777,22 +2304,33 @@
               <button type="button" data-schedule-action="toggle">${job.enabled ? "ปิดใช้งาน" : "เปิดใช้งาน"}</button>
               <button type="button" class="danger" data-schedule-action="delete">ลบ</button>
             </div>
-          </div>`).join("");
+          </div>`,
+          )
+          .join("");
       }
       async function loadSchedules() {
         const response = await fetch("/api/schedules");
         if (response.ok) {
           const data = await response.json();
-          $("schedule-timezone").textContent = data.timezone || "เวลาของเครื่อง Server";
+          $("schedule-timezone").textContent =
+            data.timezone || "เวลาของเครื่อง Server";
           renderSchedules(data.items || []);
         }
       }
       $("schedule-preset").addEventListener("change", () => {
-        if ($("schedule-preset").value) $("schedule-expression").value = $("schedule-preset").value;
+        if ($("schedule-preset").value)
+          $("schedule-expression").value = $("schedule-preset").value;
       });
       function updateScheduleModelOptions(models, selected = "") {
         const select = $("schedule-model");
-        const options = '<option value="">ใช้โมเดลหลักจาก Settings</option>' + (models || []).map((model) => `<option value="${escapeHtml(model.id || model)}">${escapeHtml(model.name || model.id || model)}</option>`).join("");
+        const options =
+          '<option value="">ใช้โมเดลหลักจาก Settings</option>' +
+          (models || [])
+            .map(
+              (model) =>
+                `<option value="${escapeHtml(model.id || model)}">${escapeHtml(model.name || model.id || model)}</option>`,
+            )
+            .join("");
         select.innerHTML = options;
         select.value = selected || "";
       }
@@ -1810,7 +2348,8 @@
           }),
         });
         const data = await response.json();
-        if (!response.ok) return showNotice(data.error || "เพิ่มงานไม่สำเร็จ", true);
+        if (!response.ok)
+          return showNotice(data.error || "เพิ่มงานไม่สำเร็จ", true);
         $("schedule-form").reset();
         await loadSchedules();
         showNotice("เพิ่มงานตามเวลาแล้ว");
@@ -1825,7 +2364,9 @@
           await fetch(`/api/schedules/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ enabled: button.textContent === "ปิดใช้งาน" ? false : true }),
+            body: JSON.stringify({
+              enabled: button.textContent === "ปิดใช้งาน" ? false : true,
+            }),
           });
         }
         await loadSchedules();
@@ -1894,7 +2435,11 @@
           $("model_custom").style.display = choices.length ? "none" : "block";
         }
       }
-      async function fetchModels(provider, selected = "", fallbackSelected = "") {
+      async function fetchModels(
+        provider,
+        selected = "",
+        fallbackSelected = "",
+      ) {
         $("model_status").textContent = "กำลังดึงจาก API...";
         try {
           const r = await fetch(
@@ -1908,7 +2453,8 @@
           updateFallbackModelOptions(data.models, fallbackSelected);
           $("model_status").textContent =
             `ดึงจาก API แล้ว ${data.models.length} รายการ`;
-          if (hasApiKey) setConnectionState(true, selected || data.models[0]?.id || "");
+          if (hasApiKey)
+            setConnectionState(true, selected || data.models[0]?.id || "");
         } catch (e) {
           updateModelOptions(provider, selected);
           updateChatModelOptions(
@@ -1916,7 +2462,10 @@
             selected,
           );
           updateScheduleModelOptions(MODEL_OPTIONS[provider]?.models || [], "");
-          updateFallbackModelOptions(MODEL_OPTIONS[provider]?.models || [], fallbackSelected);
+          updateFallbackModelOptions(
+            MODEL_OPTIONS[provider]?.models || [],
+            fallbackSelected,
+          );
           $("model_status").textContent = "API ใช้งานไม่ได้ — ใช้รายการสำรอง";
           setConnectionState(false, selected || "ยังไม่ได้เชื่อมต่อ");
         }
@@ -1932,8 +2481,14 @@
                 `<option value="${escapeHtml(model.id || model)}">${escapeHtml(model.name || model.id || model)}</option>`,
             )
             .join("");
-        if (selected && !choices.some((model) => (model.id || model) === selected)) {
-          select.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(selected)}">${escapeHtml(selected)}</option>`);
+        if (
+          selected &&
+          !choices.some((model) => (model.id || model) === selected)
+        ) {
+          select.insertAdjacentHTML(
+            "beforeend",
+            `<option value="${escapeHtml(selected)}">${escapeHtml(selected)}</option>`,
+          );
         }
         select.value = selected || "";
       }
@@ -1957,7 +2512,8 @@
         if ($("model_select").value === "__custom__") $("model_custom").focus();
       });
       $("chat-model-select").addEventListener("change", (event) => {
-        $("header-model-name").textContent = event.target.value || "ยังไม่ได้เลือกโมเดล";
+        $("header-model-name").textContent =
+          event.target.value || "ยังไม่ได้เลือกโมเดล";
       });
       function updateChatModelOptions(models, selected = "") {
         const select = $("chat-model-select");
@@ -1981,10 +2537,14 @@
         const label = $("header-model-name");
         const modelName = model || "ยังไม่ได้เลือกโมเดล";
         label.textContent = modelName;
-        status.textContent = connected ? "● พร้อมใช้งาน" : "● ยังไม่พร้อมใช้งาน";
+        status.textContent = connected
+          ? "● พร้อมใช้งาน"
+          : "● ยังไม่พร้อมใช้งาน";
         status.classList.toggle("offline", !connected);
         $("input").disabled = false;
-        $("input").placeholder = connected ? "ส่งข้อความถึง AI..." : "ใส่ API key และเลือกโมเดลใน Settings ก่อนใช้งาน";
+        $("input").placeholder = connected
+          ? "ส่งข้อความถึง AI..."
+          : "ใส่ API key และเลือกโมเดลใน Settings ก่อนใช้งาน";
         $("send").disabled = !connected;
         $("chat-model-select").disabled = !connected;
       }
@@ -1992,7 +2552,10 @@
         hasApiKey = !!settings.has_api_key;
         $("chat-thinking-level").value = settings.thinking_level ?? "off";
         updateChatModelOptions([], settings.model ?? "");
-        setConnectionState(!!settings.has_api_key && !!settings.model, settings.model ?? "");
+        setConnectionState(
+          !!settings.has_api_key && !!settings.model,
+          settings.model ?? "",
+        );
       }
       async function loadChatMeta() {
         try {
@@ -2025,7 +2588,11 @@
         $("api_key").placeholder = s.has_api_key
           ? "มีคีย์เดิมอยู่แล้ว — เว้นว่างเพื่อคงเดิม"
           : "ใส่ API key";
-        await fetchModels($("provider").value, s.model ?? "", s.fallback_model ?? "");
+        await fetchModels(
+          $("provider").value,
+          s.model ?? "",
+          s.fallback_model ?? "",
+        );
         updateRanges();
       }
       function updateRanges() {
@@ -2129,7 +2696,11 @@
         const record = await response.json();
         conversationId = record.id;
         conversationCreatedAt = record.created_at;
-        setConversationTitle(record.title || record.messages?.find((message) => message.role === "user")?.content);
+        setConversationTitle(
+          record.title ||
+            record.messages?.find((message) => message.role === "user")
+              ?.content,
+        );
         messages.splice(0, messages.length, ...(record.messages || []));
         $("messages").innerHTML = "";
         messages.forEach((message) =>
@@ -2255,7 +2826,8 @@
         conversationCreatedAt = null;
         conversationTitle = null;
         messages.splice(0, messages.length);
-        $("messages").innerHTML = '<div class="session-divider"><span>เริ่มการสนทนาใหม่</span></div>';
+        $("messages").innerHTML =
+          '<div class="session-divider"><span>เริ่มการสนทนาใหม่</span></div>';
         document.querySelector('[data-view="chat"]').click();
         closeSidebar();
         $("input").focus();
