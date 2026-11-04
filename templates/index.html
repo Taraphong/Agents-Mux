@@ -952,6 +952,7 @@
       }
       header h1 { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1.08rem; }
       .status { color: var(--mint); font-size: .74rem; letter-spacing: .04em; }
+      .status.offline { color: #64748b; }
       .content { width: min(1120px, 100%); padding: 26px 30px 30px; height: calc(100vh - 58px); }
       #chat-view { max-width: 900px; margin: 0 auto; }
       #messages { padding: 12px 0 26px; }
@@ -1006,8 +1007,11 @@
       body.light-theme .header-model { color: #27327f; background: #eef0ff; border-color: #c2c9f5; }
       body.light-theme .quick-actions span { color: #40516a; background: #f8fafc; border-color: #cbd5e1; }
       body.light-theme .quick-actions span:first-child { color: #176b9a; }
+      body.light-theme .chat-form textarea, body.light-theme .chat-form textarea:focus { background: transparent; }
+      .chat-form textarea:disabled { cursor: not-allowed; opacity: .7; }
       /* Light theme status palette: green = ready, cyan = model, neutral = destructive actions */
       body.light-theme .status { color: #087f5b; }
+      body.light-theme .status.offline { color: #64748b; }
       body.light-theme .header-model { color: #176b9a; background: #e9f8ff; border-color: #9ed8ee; }
       body.light-theme .header-model i { background: #16a085; box-shadow: 0 0 7px rgba(22,160,133,.35); }
       body.light-theme .send-round { background: #7c6af2; color: #fff; }
@@ -1042,7 +1046,7 @@
       <aside>
         <div class="brand">
           <div class="brand-mark">✦</div>
-          <div class="brand-copy"><strong>AI Control Center</strong><small>Operational Terminal v3.6</small></div>
+          <div class="brand-copy"><strong>AI Control Center</strong><small>Operational Terminal</small></div>
         </div>
         <button class="new-chat" id="new-chat">＋ แชตใหม่</button>
         <nav>
@@ -1083,9 +1087,9 @@
             ☰
           </button>
           <h1 id="page-title">แชตกับ AI</h1>
-          <span class="status">● พร้อมใช้งาน</span>
+          <span class="status">● กำลังตรวจสอบการเชื่อมต่อ</span>
           <div class="header-tools" aria-label="เครื่องมือแชต">
-            <span class="header-model"><i></i><span id="header-model-name">Gemini 3.6 Flash</span><b>⌁</b></span>
+            <span class="header-model"><i></i><span id="header-model-name">กำลังตรวจสอบ...</span><b>⌁</b></span>
             <span class="header-divider"></span>
             <button type="button" class="header-icon theme-toggle" id="theme-toggle" title="สลับธีม">☼</button>
             <button type="button" class="header-icon" title="ตั้งค่า">☷</button>
@@ -1320,6 +1324,7 @@
         localStorage.setItem("ai-control-center-theme", light ? "light" : "dark");
       });
       const messages = [];
+      let hasApiKey = false;
       let conversationId = null;
       let conversationCreatedAt = null;
       let conversationTitle = null;
@@ -1761,6 +1766,7 @@
           updateFallbackModelOptions(data.models, fallbackSelected);
           $("model_status").textContent =
             `ดึงจาก API แล้ว ${data.models.length} รายการ`;
+          if (hasApiKey) setConnectionState(true, selected || data.models[0]?.id || "");
         } catch (e) {
           updateModelOptions(provider, selected);
           updateChatModelOptions(
@@ -1770,6 +1776,7 @@
           updateScheduleModelOptions(MODEL_OPTIONS[provider]?.models || [], "");
           updateFallbackModelOptions(MODEL_OPTIONS[provider]?.models || [], fallbackSelected);
           $("model_status").textContent = "API ใช้งานไม่ได้ — ใช้รายการสำรอง";
+          setConnectionState(false, selected || "ยังไม่ได้เชื่อมต่อ");
         }
       }
       function updateFallbackModelOptions(models, selected = "") {
@@ -1807,6 +1814,9 @@
           $("model_select").value === "__custom__" ? "block" : "none";
         if ($("model_select").value === "__custom__") $("model_custom").focus();
       });
+      $("chat-model-select").addEventListener("change", (event) => {
+        $("header-model-name").textContent = event.target.value || "ยังไม่ได้เลือกโมเดล";
+      });
       function updateChatModelOptions(models, selected = "") {
         const select = $("chat-model-select");
         const choices = models?.length
@@ -1824,9 +1834,25 @@
         )
           select.value = selected;
       }
+      function setConnectionState(connected, model = "") {
+        const status = $(".status");
+        const label = $("header-model-name");
+        const input = $("input");
+        const send = $("send");
+        const modelName = model || "ยังไม่ได้เลือกโมเดล";
+        label.textContent = modelName;
+        status.textContent = connected ? "● พร้อมใช้งาน" : "● ยังไม่พร้อมใช้งาน";
+        status.classList.toggle("offline", !connected);
+        $("input").disabled = false;
+        $("input").placeholder = connected ? "ส่งข้อความถึง AI..." : "ใส่ API key และเลือกโมเดลใน Settings ก่อนใช้งาน";
+        $("send").disabled = !connected;
+        $("chat-model-select").disabled = !connected;
+      }
       function applyChatMeta(settings) {
+        hasApiKey = !!settings.has_api_key;
         $("chat-thinking-level").value = settings.thinking_level ?? "off";
         updateChatModelOptions([], settings.model ?? "");
+        setConnectionState(!!settings.has_api_key && !!settings.model, settings.model ?? "");
       }
       async function loadChatMeta() {
         try {
@@ -1834,13 +1860,16 @@
           const s = await r.json();
           applyChatMeta(s);
           await fetchModels(s.provider ?? "openai", s.model ?? "", "");
+          if (!s.has_api_key) setConnectionState(false, s.model ?? "");
         } catch (e) {
           updateChatModelOptions([], "ยังไม่ได้เชื่อมต่อ");
+          setConnectionState(false, "ยังไม่ได้เชื่อมต่อ");
         }
       }
       async function loadSettings() {
         const r = await fetch("/api/settings");
         const s = await r.json();
+        hasApiKey = !!s.has_api_key;
         $("provider").value = s.provider ?? "openai";
         $("base_url").value = s.base_url ?? "";
         $("system_prompt").value = s.system_prompt ?? "";
