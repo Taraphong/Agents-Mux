@@ -1830,10 +1830,8 @@
           select.value = selected;
       }
       function setConnectionState(connected, model = "") {
-        const status = $(".status");
+        const status = document.querySelector(".status");
         const label = $("header-model-name");
-        const input = $("input");
-        const send = $("send");
         const modelName = model || "ยังไม่ได้เลือกโมเดล";
         label.textContent = modelName;
         status.textContent = connected ? "● พร้อมใช้งาน" : "● ยังไม่พร้อมใช้งาน";
