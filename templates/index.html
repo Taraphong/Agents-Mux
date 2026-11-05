@@ -1249,6 +1249,21 @@
         background: rgba(255, 255, 255, 0.05);
         box-shadow: none;
       }
+      .language-select {
+        width: auto;
+        padding: 3px 6px;
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.74rem;
+        cursor: pointer;
+      }
+      .language-select:hover,
+      .language-select:focus {
+        color: var(--text);
+      }
       body.light-theme {
         color-scheme: light;
         --void: #eef2f7;
@@ -1583,9 +1598,7 @@
           gap: 4px;
         }
         .header-model {
-          max-width: 145px;
-          overflow: hidden;
-          white-space: nowrap;
+          display: none;
         }
         .header-divider,
         .header-icon {
@@ -1642,29 +1655,50 @@
             ><small>Operational Terminal</small>
           </div>
         </div>
-        <button class="new-chat" id="new-chat">＋ แชตใหม่</button>
+        <button class="new-chat" id="new-chat" data-i18n="sidebar.newChat">
+          ＋ แชตใหม่
+        </button>
         <nav>
-          <button class="active" data-view="chat">▰ แชต</button
-          ><button data-view="settings">⚙ Settings</button
-          ><button data-view="schedule">◷ งานตามเวลา</button
-          ><button data-view="logs">▤ Log ระบบ</button
-          ><button data-view="about">ⓘ เกี่ยวกับ</button>
+          <button class="active" data-view="chat" data-i18n="nav.chat">
+            ▰ แชต</button
+          ><button data-view="settings" data-i18n="nav.settings">
+            ⚙ Settings</button
+          ><button data-view="schedule" data-i18n="nav.schedule">
+            ◷ งานตามเวลา</button
+          ><button data-view="logs" data-i18n="nav.logs">
+            ▤ Log ระบบ</button
+          ><button data-view="about" data-i18n="nav.about">ⓘ เกี่ยวกับ</button>
         </nav>
-        <div class="history-title">ประวัติการพูดคุย</div>
+        <div class="history-title" data-i18n="sidebar.history">
+          ประวัติการพูดคุย
+        </div>
         <div id="history-list"></div>
         <div class="modal-backdrop" id="history-modal">
           <div class="modal">
-            <h3 id="history-modal-title">เปลี่ยนชื่อประวัติ</h3>
+            <h3 id="history-modal-title" data-i18n="history.renameTitle">
+              เปลี่ยนชื่อประวัติ
+            </h3>
             <p id="history-modal-text"></p>
-            <input id="history-modal-input" placeholder="ชื่อประวัติใหม่" />
+            <input
+              id="history-modal-input"
+              placeholder="ชื่อประวัติใหม่"
+              data-i18n-placeholder="history.renamePlaceholder"
+            />
             <div class="modal-actions">
               <button
                 class="modal-cancel"
                 id="history-modal-cancel"
                 type="button"
+                data-i18n="common.cancel"
               >
                 ยกเลิก</button
-              ><button id="history-modal-confirm" type="button">บันทึก</button>
+              ><button
+                id="history-modal-confirm"
+                type="button"
+                data-i18n="common.save"
+              >
+                บันทึก
+              </button>
             </div>
           </div>
         </div>
@@ -1676,23 +1710,42 @@
             id="mobile-menu-toggle"
             type="button"
             aria-label="เปิดเมนู"
+            data-i18n-aria-label="header.openMenu"
             aria-expanded="false"
           >
             ☰
           </button>
-          <h1 id="page-title">แชตกับ AI</h1>
-          <span class="status">● กำลังตรวจสอบการเชื่อมต่อ</span>
-          <div class="header-tools" aria-label="เครื่องมือแชต">
+          <h1 id="page-title" data-i18n="chat.title">แชตกับ AI</h1>
+          <span class="status" data-i18n="status.checking"
+            >● กำลังตรวจสอบการเชื่อมต่อ</span
+          >
+          <div
+            class="header-tools"
+            aria-label="เครื่องมือแชต"
+            data-i18n-aria-label="header.toolsAria"
+          >
             <span class="header-model"
-              ><i></i><span id="header-model-name">กำลังตรวจสอบ...</span
+              ><i></i
+              ><span id="header-model-name" data-i18n="status.checkingModel"
+                >กำลังตรวจสอบ...</span
               ><b>⌁</b></span
             >
             <span class="header-divider"></span>
+            <select
+              id="language-select"
+              class="language-select"
+              title="ภาษา"
+              data-i18n-title="language.title"
+            >
+              <option value="th">ไทย</option>
+              <option value="en">English</option>
+            </select>
             <button
               type="button"
               class="header-icon theme-toggle"
               id="theme-toggle"
               title="สลับธีม"
+              data-i18n-title="header.themeTitle"
             >
               ☼
             </button>
@@ -1710,6 +1763,7 @@
                 <textarea
                   id="input"
                   placeholder="ส่งข้อความถึง AI..."
+                  data-i18n-placeholder="chat.placeholder"
                   required
                 ></textarea>
                 <div class="chat-tools">
@@ -1718,6 +1772,7 @@
                       class="attach-button"
                       for="file-input"
                       title="แนบไฟล์"
+                      data-i18n-title="chat.attach"
                       >📎</label
                     >
                     <input
@@ -1731,13 +1786,31 @@
                       class="attachment-chip"
                       hidden
                     ></span>
-                    <select id="chat-thinking-level" title="ระดับการคิด">
-                      <option value="off">คิด: ปิด</option>
-                      <option value="low">คิด: ต่ำ</option>
-                      <option value="medium">คิด: กลาง</option>
-                      <option value="high">คิด: สูง</option></select
-                    ><select id="chat-model-select" title="เลือกโมเดล">
-                      <option value="">กำลังโหลดโมเดล...</option>
+                    <select
+                      id="chat-thinking-level"
+                      title="ระดับการคิด"
+                      data-i18n-title="chat.thinkingTitle"
+                    >
+                      <option value="off" data-i18n="chat.thinkingOff">
+                        คิด: ปิด
+                      </option>
+                      <option value="low" data-i18n="chat.thinkingLow">
+                        คิด: ต่ำ
+                      </option>
+                      <option value="medium" data-i18n="chat.thinkingMedium">
+                        คิด: กลาง
+                      </option>
+                      <option value="high" data-i18n="chat.thinkingHigh">
+                        คิด: สูง
+                      </option></select
+                    ><select
+                      id="chat-model-select"
+                      title="เลือกโมเดล"
+                      data-i18n-title="chat.modelTitle"
+                    >
+                      <option value="" data-i18n="chat.modelLoading">
+                        กำลังโหลดโมเดล...
+                      </option>
                     </select>
                   </div>
                   <button
@@ -1745,6 +1818,7 @@
                     id="send"
                     type="submit"
                     title="ส่ง"
+                    data-i18n-title="chat.send"
                   >
                     ↑
                   </button>
@@ -1755,8 +1829,8 @@
           <section id="settings-view" class="view">
             <div id="notice" class="notice"></div>
             <div class="card">
-              <h2>ผู้ให้บริการและโมเดล</h2>
-              <p class="hint">
+              <h2 data-i18n="settings.providerTitle">ผู้ให้บริการและโมเดล</h2>
+              <p class="hint" data-i18n="settings.providerHint">
                 เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ
                 OpenAI-compatible API
               </p>
@@ -1775,32 +1849,40 @@
                     <small
                       id="model_status"
                       class="model-status"
+                      data-i18n="settings.modelNotFetched"
                       >ยังไม่ได้ดึงจาก API</small
                     ></span
                   ><select id="model_select"></select
                   ><input
                     id="model_custom"
                     placeholder="พิมพ์ชื่อโมเดลเอง"
+                    data-i18n-placeholder="settings.modelCustomPlaceholder"
                     style="display: none; margin-top: 8px"
                 /></label>
                 <label class="full fallback-setting"
-                  ><span>Fallback model เมื่อโมเดลหลักใช้ไม่ได้</span>
+                  ><span data-i18n="settings.fallbackTitle"
+                    >Fallback model เมื่อโมเดลหลักใช้ไม่ได้</span
+                  >
                   <div class="fallback-row">
                     <label class="toggle"
                       ><input id="fallback_enabled" type="checkbox" /><span
+                        data-i18n="settings.fallbackEnable"
                         >เปิดใช้งาน</span
                       ></label
                     ><select id="fallback_model_select">
-                      <option value="">ไม่ใช้ fallback</option>
+                      <option value="" data-i18n="settings.fallbackNone">
+                        ไม่ใช้ fallback
+                      </option>
                     </select>
                   </div>
-                  <small class="hint"
+                  <small class="hint" data-i18n="settings.fallbackHint"
                     >จะลองใช้เมื่อ API
                     ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา</small
                   >
                 </label>
                 <label class="full"
-                  ><span>Base URL (สำหรับ OpenAI-compatible)</span
+                  ><span data-i18n="settings.baseUrl"
+                    >Base URL (สำหรับ OpenAI-compatible)</span
                   ><input id="base_url" placeholder="https://api.openai.com/v1"
                 /></label>
                 <label class="full"
@@ -1809,13 +1891,16 @@
                     id="api_key"
                     type="password"
                     placeholder="เว้นว่างเพื่อใช้คีย์เดิม"
+                    data-i18n-placeholder="settings.apiKeyPlaceholder"
                   /><small class="hint" id="api_key_hint"></small
                 ></label>
               </div>
             </div>
             <div class="card">
-              <h2>พฤติกรรมของผู้ช่วย</h2>
-              <p class="hint">ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ</p>
+              <h2 data-i18n="settings.assistantTitle">พฤติกรรมของผู้ช่วย</h2>
+              <p class="hint" data-i18n="settings.assistantHint">
+                ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ
+              </p>
               <div class="grid">
                 <label class="full"
                   ><span>System prompt</span
@@ -1850,52 +1935,95 @@
                   ><input id="max_tokens" type="number" min="1" max="100000"
                 /></label>
                 <label
-                  ><span>ระดับการคิด</span
+                  ><span data-i18n="settings.thinkingLevel">ระดับการคิด</span
                   ><select id="thinking_level">
-                    <option value="off">ปิด</option>
-                    <option value="low">ต่ำ</option>
-                    <option value="medium">กลาง</option>
-                    <option value="high">สูง</option>
+                    <option value="off" data-i18n="settings.thinkingOff">
+                      ปิด
+                    </option>
+                    <option value="low" data-i18n="settings.thinkingLow">
+                      ต่ำ
+                    </option>
+                    <option value="medium" data-i18n="settings.thinkingMedium">
+                      กลาง
+                    </option>
+                    <option value="high" data-i18n="settings.thinkingHigh">
+                      สูง
+                    </option>
                   </select></label
                 >
                 <label class="toggle"
                   ><input id="stream" type="checkbox" /><span
+                    data-i18n="settings.stream"
                     >เปิดการตอบแบบ streaming (เตรียมรองรับ)</span
                   ></label
                 >
               </div>
               <div class="actions">
-                <button id="save">บันทึกการตั้งค่า</button
-                ><button class="secondary" id="test" type="button">
+                <button id="save" data-i18n="settings.save">
+                  บันทึกการตั้งค่า</button
+                ><button
+                  class="secondary"
+                  id="test"
+                  type="button"
+                  data-i18n="settings.test"
+                >
                   ทดสอบการเชื่อมต่อ</button
-                ><button class="danger" id="reset" type="button">รีเซ็ต</button>
+                ><button
+                  class="danger"
+                  id="reset"
+                  type="button"
+                  data-i18n="settings.reset"
+                >
+                  รีเซ็ต
+                </button>
               </div>
             </div>
           </section>
           <section id="schedule-view" class="view">
             <div class="card">
-              <h2>งานตามเวลา (Cron jobs)</h2>
+              <h2 data-i18n="schedule.title">งานตามเวลา (Cron jobs)</h2>
               <p class="hint">
-                ตั้ง prompt ให้ AI ทำงานซ้ำตามเวลา ระบบจะทำงานเมื่อ server
-                กำลังเปิดอยู่ · Timezone:
-                <b id="schedule-timezone">กำลังโหลด...</b>
+                <span data-i18n="schedule.hint"
+                  >ตั้ง prompt ให้ AI ทำงานซ้ำตามเวลา ระบบจะทำงานเมื่อ server
+                  กำลังเปิดอยู่</span
+                >
+                · Timezone:
+                <b id="schedule-timezone" data-i18n="schedule.loading"
+                  >กำลังโหลด...</b
+                >
               </p>
               <details class="cron-help">
-                <summary>วิธีตั้งค่า Cron jobs</summary>
+                <summary data-i18n="schedule.cronSummary">
+                  วิธีตั้งค่า Cron jobs
+                </summary>
                 <p>
-                  รูปแบบมี 5 ช่อง:
-                  <code>นาที ชั่วโมง วันที่ เดือน วันในสัปดาห์</code>
+                  <span data-i18n="schedule.cronFieldsText"
+                    >รูปแบบมี 5 ช่อง:</span
+                  >
+                  <code data-i18n="schedule.cronFieldsCode"
+                    >นาที ชั่วโมง วันที่ เดือน วันในสัปดาห์</code
+                  >
                 </p>
                 <p>
-                  <code>*</code> = ทุกค่า · <code>*/5</code> = ทุก 5 หน่วย ·
-                  <code>1-5</code> = ช่วง · <code>1,15</code> = หลายค่า
+                  <code>*</code>
+                  <span data-i18n="schedule.cronEvery">= ทุกค่า</span> ·
+                  <code>*/5</code>
+                  <span data-i18n="schedule.cronStep">= ทุก 5 หน่วย</span> ·
+                  <code>1-5</code>
+                  <span data-i18n="schedule.cronRange">= ช่วง</span> ·
+                  <code>1,15</code>
+                  <span data-i18n="schedule.cronList">= หลายค่า</span>
                 </p>
                 <p>
-                  ตัวอย่าง: <code>*/5 * * * *</code> ทุก 5 นาที ·
-                  <code>0 9 * * 1-5</code> จันทร์-ศุกร์ 09:00 ·
-                  <code>0 0 * * *</code> ทุกวันเที่ยงคืน
+                  <span data-i18n="schedule.cronExamplesText">ตัวอย่าง:</span>
+                  <code>*/5 * * * *</code>
+                  <span data-i18n="schedule.cronEvery5">ทุก 5 นาที</span> ·
+                  <code>0 9 * * 1-5</code>
+                  <span data-i18n="schedule.cronWeekdays">จันทร์-ศุกร์ 09:00</span>
+                  · <code>0 0 * * *</code>
+                  <span data-i18n="schedule.cronMidnight">ทุกวันเที่ยงคืน</span>
                 </p>
-                <p class="hint">
+                <p class="hint" data-i18n="schedule.cronNote">
                   งานจะใช้โมเดลตามที่เลือก และบันทึกผลลัพธ์เป็นประวัติการสนทนา
                   งานที่มีการรันคำสั่งระบบจะไม่ทำงานอัตโนมัติ
                 </p>
@@ -1904,37 +2032,61 @@
                 <input
                   id="schedule-name"
                   placeholder="ชื่องาน เช่น สรุปข่าวประจำวัน"
+                  data-i18n-placeholder="schedule.namePlaceholder"
                   required
                 />
-                <select id="schedule-preset" title="ตัวอย่างเวลา">
-                  <option value="">
+                <select
+                  id="schedule-preset"
+                  title="ตัวอย่างเวลา"
+                  data-i18n-title="schedule.presetTitle"
+                >
+                  <option value="" data-i18n="schedule.presetPlaceholder">
                     เลือกตัวอย่างเวลา หรือพิมพ์เองด้านล่าง
                   </option>
-                  <option value="*/5 * * * *">ทุก 5 นาที</option>
-                  <option value="0 * * * *">ทุกชั่วโมง</option>
-                  <option value="0 9 * * 1-5">จันทร์-ศุกร์ เวลา 09:00</option>
-                  <option value="0 0 * * *">ทุกวัน เวลา 00:00</option>
+                  <option value="*/5 * * * *" data-i18n="schedule.every5">
+                    ทุก 5 นาที
+                  </option>
+                  <option value="0 * * * *" data-i18n="schedule.hourly">
+                    ทุกชั่วโมง
+                  </option>
+                  <option value="0 9 * * 1-5" data-i18n="schedule.weekdays9">
+                    จันทร์-ศุกร์ เวลา 09:00
+                  </option>
+                  <option value="0 0 * * *" data-i18n="schedule.dailyMidnight">
+                    ทุกวัน เวลา 00:00
+                  </option>
                 </select>
                 <input
                   id="schedule-expression"
                   placeholder="Cron เช่น 0 9 * * 1-5"
+                  data-i18n-placeholder="schedule.expressionPlaceholder"
                   required
                 />
-                <select id="schedule-model" title="โมเดลสำหรับงาน">
-                  <option value="">ใช้โมเดลหลักจาก Settings</option>
+                <select
+                  id="schedule-model"
+                  title="โมเดลสำหรับงาน"
+                  data-i18n-title="schedule.modelTitle"
+                >
+                  <option value="" data-i18n="schedule.useMainModel">
+                    ใช้โมเดลหลักจาก Settings
+                  </option>
                 </select>
                 <textarea
                   id="schedule-prompt"
                   rows="3"
                   placeholder="Prompt ที่ต้องการให้ AI ทำงาน"
+                  data-i18n-placeholder="schedule.promptPlaceholder"
                   required
                 ></textarea>
                 <label class="toggle"
                   ><input id="schedule-enabled" type="checkbox" checked /><span
+                    data-i18n="schedule.enableNow"
                     >เปิดใช้งานทันที</span
                   ></label
                 >
-                <button type="submit">เพิ่มงานตามเวลา</button>
+                <button type="submit" data-i18n="schedule.add">
+                  เพิ่มงานตามเวลา
+                </button>
               </form>
               <div id="schedule-list" class="schedule-list"></div>
             </div>
@@ -1943,30 +2095,42 @@
             <div class="card">
               <div class="logs-toolbar">
                 <div>
-                  <h2>Log ระบบ</h2>
-                  <p class="hint">
+                  <h2 data-i18n="logs.title">Log ระบบ</h2>
+                  <p class="hint" data-i18n="logs.hint">
                     ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง
                     API key หรือเนื้อหาไฟล์
                   </p>
                 </div>
                 <div class="logs-actions">
-                  <button id="save-logs" type="button">บันทึกไฟล์</button>
-                  <button id="refresh-logs" type="button">รีเฟรช</button>
+                  <button
+                    id="save-logs"
+                    type="button"
+                    data-i18n="logs.saveFile"
+                  >
+                    บันทึกไฟล์
+                  </button>
+                  <button
+                    id="refresh-logs"
+                    type="button"
+                    data-i18n="logs.refresh"
+                  >
+                    รีเฟรช
+                  </button>
                 </div>
               </div>
               <div id="logs-list" class="logs-list">
-                <p class="hint">กำลังโหลด...</p>
+                <p class="hint" data-i18n="logs.loading">กำลังโหลด...</p>
               </div>
             </div>
           </section>
           <section id="about-view" class="view">
             <div class="card">
-              <h2>เกี่ยวกับระบบ</h2>
-              <p class="hint">
+              <h2 data-i18n="about.title">เกี่ยวกับระบบ</h2>
+              <p class="hint" data-i18n="about.text1">
                 เว็บแชต AI ที่รันบน Termux พร้อมหน้า settings สำหรับควบคุม
                 provider, model, endpoint, prompt และพารามิเตอร์ต่าง ๆ
               </p>
-              <p class="hint">
+              <p class="hint" data-i18n="about.text2">
                 API key จะเก็บฝั่งเซิร์ฟเวอร์ในไฟล์ตั้งค่าที่ไม่ถูก commit เข้า
                 Git
               </p>
@@ -1977,6 +2141,399 @@
     </div>
     <script>
       const $ = (id) => document.getElementById(id);
+      const LANGUAGE_STORAGE_KEY = "ai-control-center-language";
+      const SUPPORTED_LANGUAGES = ["th", "en"];
+      const I18N = {
+        th: {
+          "app.title": "AI Control Center",
+          "sidebar.newChat": "＋ แชตใหม่",
+          "nav.chat": "▰ แชต",
+          "nav.settings": "⚙ ตั้งค่า",
+          "nav.schedule": "◷ งานตามเวลา",
+          "nav.logs": "▤ Log ระบบ",
+          "nav.about": "ⓘ เกี่ยวกับ",
+          "sidebar.history": "ประวัติการพูดคุย",
+          "history.renameTitle": "เปลี่ยนชื่อประวัติ",
+          "history.renamePlaceholder": "ชื่อประวัติใหม่",
+          "common.cancel": "ยกเลิก",
+          "common.save": "บันทึก",
+          "common.delete": "ลบ",
+          "header.openMenu": "เปิดเมนู",
+          "header.toolsAria": "เครื่องมือแชต",
+          "header.themeTitle": "สลับธีม",
+          "language.title": "ภาษา",
+          "status.checking": "● กำลังตรวจสอบการเชื่อมต่อ",
+          "status.checkingModel": "กำลังตรวจสอบ...",
+          "chat.title": "แชตกับ AI",
+          "chat.placeholder": "ส่งข้อความถึง AI...",
+          "chat.attach": "แนบไฟล์",
+          "chat.thinkingTitle": "ระดับการคิด",
+          "chat.thinkingOff": "คิด: ปิด",
+          "chat.thinkingLow": "คิด: ต่ำ",
+          "chat.thinkingMedium": "คิด: กลาง",
+          "chat.thinkingHigh": "คิด: สูง",
+          "chat.modelTitle": "เลือกโมเดล",
+          "chat.modelLoading": "กำลังโหลดโมเดล...",
+          "chat.send": "ส่ง",
+          "chat.newConversationTitle": "บทสนทนาใหม่",
+          "chat.defaultAttachmentPrompt": "ช่วยวิเคราะห์ไฟล์แนบนี้ให้หน่อย",
+          "chat.error": "เกิดข้อผิดพลาด",
+          "chat.errorPrefix": "ข้อผิดพลาด: {message}",
+          "chat.saveWarning": "บันทึกประวัติไม่สำเร็จ",
+          "settings.providerTitle": "ผู้ให้บริการและโมเดล",
+          "settings.providerHint":
+            "เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ OpenAI-compatible API",
+          "settings.modelNotFetched": "ยังไม่ได้ดึงจาก API",
+          "settings.modelCustomPlaceholder": "พิมพ์ชื่อโมเดลเอง",
+          "settings.fallbackTitle":
+            "Fallback model เมื่อโมเดลหลักใช้ไม่ได้",
+          "settings.fallbackEnable": "เปิดใช้งาน",
+          "settings.fallbackNone": "ไม่ใช้ fallback",
+          "settings.fallbackHint":
+            "จะลองใช้เมื่อ API ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา",
+          "settings.baseUrl": "Base URL (สำหรับ OpenAI-compatible)",
+          "settings.apiKeyPlaceholder": "เว้นว่างเพื่อใช้คีย์เดิม",
+          "settings.assistantTitle": "พฤติกรรมของผู้ช่วย",
+          "settings.assistantHint":
+            "ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ",
+          "settings.thinkingLevel": "ระดับการคิด",
+          "settings.thinkingOff": "ปิด",
+          "settings.thinkingLow": "ต่ำ",
+          "settings.thinkingMedium": "กลาง",
+          "settings.thinkingHigh": "สูง",
+          "settings.stream": "เปิดการตอบแบบ streaming (เตรียมรองรับ)",
+          "settings.save": "บันทึกการตั้งค่า",
+          "settings.test": "ทดสอบการเชื่อมต่อ",
+          "settings.reset": "รีเซ็ต",
+          "schedule.title": "งานตามเวลา (Cron jobs)",
+          "schedule.hint":
+            "ตั้ง prompt ให้ AI ทำงานซ้ำตามเวลา ระบบจะทำงานเมื่อ server กำลังเปิดอยู่",
+          "schedule.loading": "กำลังโหลด...",
+          "schedule.cronSummary": "วิธีตั้งค่า Cron jobs",
+          "schedule.cronFieldsText": "รูปแบบมี 5 ช่อง:",
+          "schedule.cronFieldsCode":
+            "นาที ชั่วโมง วันที่ เดือน วันในสัปดาห์",
+          "schedule.cronEvery": "= ทุกค่า",
+          "schedule.cronStep": "= ทุก 5 หน่วย",
+          "schedule.cronRange": "= ช่วง",
+          "schedule.cronList": "= หลายค่า",
+          "schedule.cronExamplesText": "ตัวอย่าง:",
+          "schedule.cronEvery5": "ทุก 5 นาที",
+          "schedule.cronWeekdays": "จันทร์-ศุกร์ 09:00",
+          "schedule.cronMidnight": "ทุกวันเที่ยงคืน",
+          "schedule.cronNote":
+            "งานจะใช้โมเดลตามที่เลือก และบันทึกผลลัพธ์เป็นประวัติการสนทนา งานที่มีการรันคำสั่งระบบจะไม่ทำงานอัตโนมัติ",
+          "schedule.namePlaceholder": "ชื่องาน เช่น สรุปข่าวประจำวัน",
+          "schedule.presetTitle": "ตัวอย่างเวลา",
+          "schedule.presetPlaceholder":
+            "เลือกตัวอย่างเวลา หรือพิมพ์เองด้านล่าง",
+          "schedule.every5": "ทุก 5 นาที",
+          "schedule.hourly": "ทุกชั่วโมง",
+          "schedule.weekdays9": "จันทร์-ศุกร์ เวลา 09:00",
+          "schedule.dailyMidnight": "ทุกวัน เวลา 00:00",
+          "schedule.expressionPlaceholder": "Cron เช่น 0 9 * * 1-5",
+          "schedule.modelTitle": "โมเดลสำหรับงาน",
+          "schedule.useMainModel": "ใช้โมเดลหลักจาก Settings",
+          "schedule.promptPlaceholder": "Prompt ที่ต้องการให้ AI ทำงาน",
+          "schedule.enableNow": "เปิดใช้งานทันที",
+          "schedule.add": "เพิ่มงานตามเวลา",
+          "schedule.empty": "ยังไม่มีงานตามเวลา",
+          "schedule.timezoneFallback": "เวลาของเครื่อง Server",
+          "schedule.modelLabel": "โมเดล: {model}",
+          "schedule.enabled": "เปิดใช้งาน",
+          "schedule.disabled": "ปิดใช้งาน",
+          "schedule.neverRun": "ยังไม่เคยทำงาน",
+          "schedule.success": "สำเร็จ",
+          "schedule.failed": "ล้มเหลว",
+          "schedule.toggleEnable": "เปิดใช้งาน",
+          "schedule.toggleDisable": "ปิดใช้งาน",
+          "schedule.added": "เพิ่มงานตามเวลาแล้ว",
+          "schedule.addFailed": "เพิ่มงานไม่สำเร็จ",
+          "logs.title": "Log ระบบ",
+          "logs.hint":
+            "ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง API key หรือเนื้อหาไฟล์",
+          "logs.saveFile": "บันทึกไฟล์",
+          "logs.refresh": "รีเฟรช",
+          "logs.loading": "กำลังโหลด...",
+          "logs.empty": "ยังไม่มี log",
+          "logs.loadError": "โหลด log ไม่สำเร็จ: {message}",
+          "logs.saveFailed": "บันทึกไม่สำเร็จ",
+          "about.title": "เกี่ยวกับระบบ",
+          "about.text1":
+            "เว็บแชต AI ที่รันบน Termux พร้อมหน้า settings สำหรับควบคุม provider, model, endpoint, prompt และพารามิเตอร์ต่าง ๆ",
+          "about.text2":
+            "API key จะเก็บฝั่งเซิร์ฟเวอร์ในไฟล์ตั้งค่าที่ไม่ถูก commit เข้า Git",
+          "page.settings": "ตั้งค่าระบบ",
+          "page.schedule": "งานตามเวลา",
+          "page.logs": "Log ระบบ",
+          "page.about": "เกี่ยวกับระบบ",
+          "usage.duration": "{duration} วินาที",
+          "usage.unknownDuration": "ไม่ทราบเวลา",
+          "usage.unknownTokens": "ไม่ทราบ token",
+          "usage.summary": "ใช้เวลา {duration} · {tokens}",
+          "usage.tokens": "{count} tokens",
+          "tool.approve": "อนุมัติใช้ {name}",
+          "tool.contentLabel": "เนื้อหา:",
+          "tool.working": "กำลังทำงาน...",
+          "tool.done": "ทำงานแล้ว",
+          "tool.error": "ใช้เครื่องมือไม่สำเร็จ",
+          "tool.expired": "คำขออนุมัติหมดอายุ กรุณาส่งข้อความใหม่",
+          "tool.retry": "ลองอีกครั้ง ({message})",
+          "tool.resultPrefix": "ผลการใช้เครื่องมือ:",
+          "attachment.tooLarge": "ไฟล์ใหญ่เกิน 1 MB",
+          "attachment.readFailed": "อ่านไฟล์ไม่สำเร็จ",
+          "model.custom": "กำหนดเอง...",
+          "model.fetching": "กำลังดึงจาก API...",
+          "model.fetched": "ดึงจาก API แล้ว {count} รายการ",
+          "model.fallback": "API ใช้งานไม่ได้ — ใช้รายการสำรอง",
+          "model.fetchError": "ดึงรายการโมเดลไม่สำเร็จ",
+          "model.none": "ยังไม่ได้เลือกโมเดล",
+          "chatModel.notConnected": "ยังไม่ได้เชื่อมต่อ",
+          "status.ready": "● พร้อมใช้งาน",
+          "status.notReady": "● ยังไม่พร้อมใช้งาน",
+          "status.connectedTitle": "เชื่อมต่อ {model} พร้อมใช้งาน",
+          "status.notConnectedReason": "ยังเชื่อมต่อผู้ให้บริการไม่ได้",
+          "status.inputDisabled":
+            "ใส่ API key และเลือกโมเดลใน Settings ก่อนใช้งาน",
+          "status.checkFailed": "ตรวจสอบสถานะการเชื่อมต่อไม่สำเร็จ",
+          "status.settingsLoadFailed": "โหลดการตั้งค่าไม่สำเร็จ",
+          "apiKey.hasPlaceholder":
+            "มีคีย์ของ {provider} แล้ว — เว้นว่างเพื่อคงเดิม",
+          "apiKey.missingPlaceholder":
+            "ยังไม่มีคีย์ของ {provider} — ใส่ API key",
+          "apiKey.hasHint": "บันทึกคีย์ของ {provider} ไว้แล้ว",
+          "apiKey.missingHint":
+            "ยังไม่มีคีย์ของ {provider} — ถ้าเว้นว่าง สถานะจะยังไม่พร้อมใช้งาน",
+          "notice.settingsSaved": "บันทึกการตั้งค่าแล้ว",
+          "notice.settingsSaveFailed": "บันทึกไม่สำเร็จ",
+          "notice.testing": "กำลังทดสอบ...",
+          "notice.testSuccess": "เชื่อมต่อสำเร็จ: {answer}",
+          "notice.testFailed": "เชื่อมต่อไม่สำเร็จ: {error}",
+          "notice.resetConfirm": "รีเซ็ตการตั้งค่าทั้งหมดหรือไม่?",
+          "notice.resetDone": "รีเซ็ตการตั้งค่าแล้ว",
+          "history.untitled": "บทสนทนาไม่มีชื่อ",
+          "history.rename": "เปลี่ยนชื่อ",
+          "history.pin": "ปักหมุด",
+          "history.unpin": "ถอนหมุด",
+          "history.lock": "ล็อก",
+          "history.unlock": "ปลดล็อก",
+          "history.delete": "ลบ",
+          "history.pinned": "📌 ปักหมุด",
+          "history.empty": "ยังไม่มีประวัติ",
+          "history.unknownDate": "ไม่ทราบวันที่",
+          "history.deleteTitle": "ลบประวัติ",
+          "history.deleteConfirm":
+            "ประวัตินี้จะถูกลบออกจากเครื่องและไม่สามารถกู้คืนได้",
+          "history.renameDescription": "กำหนดชื่อใหม่ให้ประวัติการสนทนา",
+          "history.actionFailed": "ดำเนินการไม่สำเร็จ",
+          "history.renameFailed": "แก้ไขประวัติไม่สำเร็จ",
+          "history.deleteFailed": "ลบประวัติไม่สำเร็จ",
+          "history.startedNew": "เริ่มบทสนทนาใหม่",
+          "history.emptyHint": "เริ่มบทสนทนาใหม่ได้เลยครับ",
+          "session.ready": "2026-11-03 · SESSION READY #T-098",
+        },
+        en: {
+          "app.title": "AI Control Center",
+          "sidebar.newChat": "+ New chat",
+          "nav.chat": "▰ Chat",
+          "nav.settings": "⚙ Settings",
+          "nav.schedule": "◷ Scheduled jobs",
+          "nav.logs": "▤ System logs",
+          "nav.about": "ⓘ About",
+          "sidebar.history": "Conversation history",
+          "history.renameTitle": "Rename conversation",
+          "history.renamePlaceholder": "New conversation name",
+          "common.cancel": "Cancel",
+          "common.save": "Save",
+          "common.delete": "Delete",
+          "header.openMenu": "Open menu",
+          "header.toolsAria": "Chat tools",
+          "header.themeTitle": "Toggle theme",
+          "language.title": "Language",
+          "status.checking": "● Checking connection",
+          "status.checkingModel": "Checking...",
+          "chat.title": "Chat with AI",
+          "chat.placeholder": "Message the AI...",
+          "chat.attach": "Attach file",
+          "chat.thinkingTitle": "Thinking level",
+          "chat.thinkingOff": "Thinking: Off",
+          "chat.thinkingLow": "Thinking: Low",
+          "chat.thinkingMedium": "Thinking: Medium",
+          "chat.thinkingHigh": "Thinking: High",
+          "chat.modelTitle": "Choose model",
+          "chat.modelLoading": "Loading models...",
+          "chat.send": "Send",
+          "chat.newConversationTitle": "New conversation",
+          "chat.defaultAttachmentPrompt": "Please analyze this attachment",
+          "chat.error": "Something went wrong",
+          "chat.errorPrefix": "Error: {message}",
+          "chat.saveWarning": "Could not save the conversation",
+          "settings.providerTitle": "Provider and model",
+          "settings.providerHint":
+            "Choose the provider used for chat and set a custom endpoint for OpenAI-compatible APIs.",
+          "settings.modelNotFetched": "Not fetched from API yet",
+          "settings.modelCustomPlaceholder": "Type a model name",
+          "settings.fallbackTitle":
+            "Fallback model when the primary model is unavailable",
+          "settings.fallbackEnable": "Enabled",
+          "settings.fallbackNone": "No fallback",
+          "settings.fallbackHint":
+            "Used when the API reports the model is unavailable or rate-limited.",
+          "settings.baseUrl": "Base URL (for OpenAI-compatible)",
+          "settings.apiKeyPlaceholder": "Leave blank to keep the current key",
+          "settings.assistantTitle": "Assistant behavior",
+          "settings.assistantHint":
+            "Set the system prompt and response parameters.",
+          "settings.thinkingLevel": "Thinking level",
+          "settings.thinkingOff": "Off",
+          "settings.thinkingLow": "Low",
+          "settings.thinkingMedium": "Medium",
+          "settings.thinkingHigh": "High",
+          "settings.stream": "Enable streaming responses (preview)",
+          "settings.save": "Save settings",
+          "settings.test": "Test connection",
+          "settings.reset": "Reset",
+          "schedule.title": "Scheduled jobs (Cron)",
+          "schedule.hint":
+            "Schedule prompts for the AI to run repeatedly. Jobs run while the server is up.",
+          "schedule.loading": "Loading...",
+          "schedule.cronSummary": "How to configure Cron jobs",
+          "schedule.cronFieldsText": "The format has 5 fields:",
+          "schedule.cronFieldsCode": "minute hour day month weekday",
+          "schedule.cronEvery": "= every value",
+          "schedule.cronStep": "= every 5 units",
+          "schedule.cronRange": "= range",
+          "schedule.cronList": "= list",
+          "schedule.cronExamplesText": "Examples:",
+          "schedule.cronEvery5": "every 5 minutes",
+          "schedule.cronWeekdays": "Monday-Friday 09:00",
+          "schedule.cronMidnight": "every day at midnight",
+          "schedule.cronNote":
+            "Jobs use the selected model and save results to conversation history. Jobs that run system commands are not executed automatically.",
+          "schedule.namePlaceholder": "Job name, e.g. Daily news summary",
+          "schedule.presetTitle": "Time presets",
+          "schedule.presetPlaceholder":
+            "Choose a preset or type your own below",
+          "schedule.every5": "Every 5 minutes",
+          "schedule.hourly": "Every hour",
+          "schedule.weekdays9": "Weekdays at 09:00",
+          "schedule.dailyMidnight": "Daily at 00:00",
+          "schedule.expressionPlaceholder": "Cron, e.g. 0 9 * * 1-5",
+          "schedule.modelTitle": "Model for jobs",
+          "schedule.useMainModel": "Use the main model from Settings",
+          "schedule.promptPlaceholder": "Prompt for the AI to run",
+          "schedule.enableNow": "Enable immediately",
+          "schedule.add": "Add scheduled job",
+          "schedule.empty": "No scheduled jobs yet",
+          "schedule.timezoneFallback": "Server timezone",
+          "schedule.modelLabel": "Model: {model}",
+          "schedule.enabled": "Enabled",
+          "schedule.disabled": "Disabled",
+          "schedule.neverRun": "Never run",
+          "schedule.success": "Success",
+          "schedule.failed": "Failed",
+          "schedule.toggleEnable": "Enable",
+          "schedule.toggleDisable": "Disable",
+          "schedule.added": "Scheduled job added",
+          "schedule.addFailed": "Could not add the scheduled job",
+          "logs.title": "System logs",
+          "logs.hint":
+            "Review recent AI and tool activity without exposing API keys or file contents.",
+          "logs.saveFile": "Save file",
+          "logs.refresh": "Refresh",
+          "logs.loading": "Loading...",
+          "logs.empty": "No logs yet",
+          "logs.loadError": "Could not load logs: {message}",
+          "logs.saveFailed": "Save failed",
+          "about.title": "About",
+          "about.text1":
+            "A self-hosted AI chat app running on Termux, with a settings page for provider, model, endpoint, prompt, and response parameters.",
+          "about.text2":
+            "API keys are stored only on the server in a settings file that is not committed to Git.",
+          "page.settings": "Settings",
+          "page.schedule": "Scheduled jobs",
+          "page.logs": "System logs",
+          "page.about": "About",
+          "usage.duration": "Took {duration}s",
+          "usage.unknownDuration": "unknown duration",
+          "usage.unknownTokens": "unknown tokens",
+          "usage.summary": "Took {duration} · {tokens}",
+          "usage.tokens": "{count} tokens",
+          "tool.approve": "Approve {name}",
+          "tool.contentLabel": "Content:",
+          "tool.working": "Working...",
+          "tool.done": "Done",
+          "tool.error": "The tool could not run",
+          "tool.expired": "Approval expired. Please send a new message.",
+          "tool.retry": "Try again ({message})",
+          "tool.resultPrefix": "Tool result:",
+          "attachment.tooLarge": "File is larger than 1 MB",
+          "attachment.readFailed": "Could not read the file",
+          "model.custom": "Custom...",
+          "model.fetching": "Fetching from API...",
+          "model.fetched": "Fetched {count} models from the API",
+          "model.fallback": "API unavailable — using the fallback list",
+          "model.fetchError": "Could not fetch the model list",
+          "model.none": "No model selected",
+          "chatModel.notConnected": "Not connected",
+          "status.ready": "● Ready",
+          "status.notReady": "● Not ready",
+          "status.connectedTitle": "Connected to {model}",
+          "status.notConnectedReason": "Cannot connect to the provider yet",
+          "status.inputDisabled":
+            "Add an API key and choose a model in Settings first",
+          "status.checkFailed": "Could not check the connection status",
+          "status.settingsLoadFailed": "Could not load settings",
+          "apiKey.hasPlaceholder":
+            "A {provider} key is already saved — leave blank to keep it",
+          "apiKey.missingPlaceholder":
+            "No {provider} key yet — enter an API key",
+          "apiKey.hasHint": "A {provider} key is saved",
+          "apiKey.missingHint":
+            "No {provider} key yet — leaving it blank keeps the app not ready",
+          "notice.settingsSaved": "Settings saved",
+          "notice.settingsSaveFailed": "Could not save",
+          "notice.testing": "Testing...",
+          "notice.testSuccess": "Connection successful: {answer}",
+          "notice.testFailed": "Connection failed: {error}",
+          "notice.resetConfirm": "Reset all settings?",
+          "notice.resetDone": "Settings reset",
+          "history.untitled": "Untitled conversation",
+          "history.rename": "Rename",
+          "history.pin": "Pin",
+          "history.unpin": "Unpin",
+          "history.lock": "Lock",
+          "history.unlock": "Unlock",
+          "history.delete": "Delete",
+          "history.pinned": "📌 Pinned",
+          "history.empty": "No history yet",
+          "history.unknownDate": "Unknown date",
+          "history.deleteTitle": "Delete conversation",
+          "history.deleteConfirm":
+            "This conversation will be deleted from this device and cannot be recovered.",
+          "history.renameDescription": "Set a new name for this conversation.",
+          "history.actionFailed": "Action failed",
+          "history.renameFailed": "Could not update the conversation",
+          "history.deleteFailed": "Could not delete the conversation",
+          "history.startedNew": "Started a new conversation",
+          "history.emptyHint": "You can start a new conversation.",
+          "session.ready": "2026-11-03 · SESSION READY #T-098",
+        },
+      };
+      function getSavedLanguage() {
+        const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+        return SUPPORTED_LANGUAGES.includes(saved) ? saved : "th";
+      }
+      let currentLanguage = getSavedLanguage();
+      function t(key, vars = {}) {
+        const dictionary = I18N[currentLanguage] || I18N.th;
+        const template = dictionary[key] ?? I18N.th[key] ?? key;
+        return String(template).replace(/\{(\w+)\}/g, (match, name) =>
+          vars[name] === undefined || vars[name] === null
+            ? match
+            : String(vars[name]),
+        );
+      }
       const savedTheme = localStorage.getItem("ai-control-center-theme");
       if (savedTheme === "light") document.body.classList.add("light-theme");
       $("theme-toggle").addEventListener("click", () => {
@@ -1992,13 +2549,50 @@
       let conversationCreatedAt = null;
       let conversationTitle = null;
       let pendingAttachment = null;
+      let connectionState = {
+        connected: false,
+        model: "",
+        reason: "",
+        known: false,
+      };
+      let currentHistoryItems = [];
+      let currentSchedules = [];
+      let currentScheduleTimezone = "";
+      let currentLogs = [];
+      let logsLoaded = false;
+      let logsError = "";
+      let emptyConversationMode = "ready";
+      let modelStatus = { key: "settings.modelNotFetched", vars: {}, title: "" };
+      let currentChatModels = [];
+      let currentChatSelected = "";
+      let currentScheduleModels = [];
+      let currentScheduleSelected = "";
+      let currentFallbackModels = [];
+      let currentFallbackSelected = "";
+      function setModelStatus(key, vars = {}, title = "") {
+        modelStatus = { key, vars, title };
+        $("model_status").textContent = t(key, vars);
+        $("model_status").title = title;
+      }
+      function activeView() {
+        return (
+          document.querySelector("nav button.active")?.dataset.view || "chat"
+        );
+      }
+      function updatePageTitle() {
+        const view = activeView();
+        $("page-title").textContent =
+          view === "chat"
+            ? conversationTitle || t("chat.title")
+            : t(`page.${view}`);
+      }
       function setConversationTitle(title) {
         conversationTitle =
           String(title || "")
             .replace(/\s+/g, " ")
             .trim()
             .slice(0, 80) || null;
-        $("page-title").textContent = conversationTitle || "แชตกับ AI";
+        updatePageTitle();
       }
       function closeSidebar() {
         document.querySelector("aside").classList.remove("open");
@@ -2013,13 +2607,17 @@
       $("sidebar-backdrop").addEventListener("click", closeSidebar);
       function formatUsage(durationMs, usage) {
         const duration = Number.isFinite(Number(durationMs))
-          ? `${(Number(durationMs) / 1000).toFixed(2)} วินาที`
-          : "ไม่ทราบเวลา";
+          ? t("usage.duration", {
+              duration: (Number(durationMs) / 1000).toFixed(2),
+            })
+          : t("usage.unknownDuration");
         const tokens =
           usage?.total_tokens != null
-            ? `${usage.total_tokens.toLocaleString()} tokens`
-            : "ไม่ทราบ token";
-        return `ใช้เวลา ${duration} · ${tokens}`;
+            ? t("usage.tokens", {
+                count: usage.total_tokens.toLocaleString(),
+              })
+            : t("usage.unknownTokens");
+        return t("usage.summary", { duration, tokens });
       }
       function addMessage(role, content, meta = null) {
         const el = document.createElement("div");
@@ -2037,7 +2635,9 @@
           const approval = document.createElement("button");
           approval.type = "button";
           approval.className = "tool-approval";
-          approval.textContent = `อนุมัติใช้ ${meta.tool_request.name}`;
+          approval.textContent = t("tool.approve", {
+            name: meta.tool_request.name,
+          });
           approval.toolRequest = meta.tool_request;
           approval.approvalId = meta.approval_id;
           approval.addEventListener("click", approveToolRequest);
@@ -2049,7 +2649,7 @@
             detail.className = "tool-approval-detail";
             const content = String(args.content || "");
             const preview = content
-              ? `เนื้อหา:\n${content.slice(0, 500)}${content.length > 500 ? "…" : ""}`
+              ? `${t("tool.contentLabel")}\n${content.slice(0, 500)}${content.length > 500 ? "…" : ""}`
               : "";
             detail.textContent = [summary, preview].filter(Boolean).join("\n");
             el.appendChild(detail);
@@ -2067,7 +2667,7 @@
       async function approveToolRequest(event) {
         const button = event.currentTarget;
         button.disabled = true;
-        button.textContent = "กำลังทำงาน...";
+        button.textContent = t("tool.working");
         try {
           const request = button.toolRequest;
           const response = await fetch("/api/tools/execute", {
@@ -2081,20 +2681,20 @@
           });
           const data = await response.json();
           if (!response.ok || !data.ok) {
-            const error = new Error(data.error || "ใช้เครื่องมือไม่สำเร็จ");
+            const error = new Error(data.error || t("tool.error"));
             error.fatal = response.status === 403;
             throw error;
           }
-          button.textContent = "ทำงานแล้ว";
+          button.textContent = t("tool.done");
           $("input").value =
-            `ผลการใช้เครื่องมือ:\n${JSON.stringify(data.result, null, 2)}`;
+            `${t("tool.resultPrefix")}\n${JSON.stringify(data.result, null, 2)}`;
           resizeInput();
           $("chat-form").requestSubmit();
         } catch (error) {
           button.disabled = Boolean(error.fatal);
           button.textContent = error.fatal
-            ? "คำขออนุมัติหมดอายุ กรุณาส่งข้อความใหม่"
-            : `ลองอีกครั้ง (${error.message})`;
+            ? t("tool.expired")
+            : t("tool.retry", { message: error.message });
         }
       }
       document.querySelectorAll("nav button").forEach((button) =>
@@ -2107,50 +2707,54 @@
             .querySelectorAll(".view")
             .forEach((v) => v.classList.remove("active"));
           $(`${button.dataset.view}-view`).classList.add("active");
-          $("page-title").textContent =
-            button.dataset.view === "chat"
-              ? conversationTitle || "แชตกับ AI"
-              : button.dataset.view === "settings"
-                ? "ตั้งค่าระบบ"
-                : button.dataset.view === "schedule"
-                  ? "งานตามเวลา"
-                  : button.dataset.view === "logs"
-                    ? "Log ระบบ"
-                    : "เกี่ยวกับระบบ";
+          updatePageTitle();
           if (button.dataset.view === "settings") loadSettings();
           if (button.dataset.view === "schedule") loadSchedules();
           if (button.dataset.view === "logs") loadLogs();
           closeSidebar();
         }),
       );
-      let currentLogs = [];
-      async function loadLogs() {
+      function renderLogs() {
         const list = $("logs-list");
-        try {
-          const response = await fetch("/api/logs");
-          const data = await response.json();
-          currentLogs = Array.isArray(data.items) ? data.items : [];
-          if (!currentLogs.length) {
-            list.innerHTML = '<p class="hint">ยังไม่มี log</p>';
-            return;
-          }
-          list.innerHTML = currentLogs
-            .slice()
-            .reverse()
-            .map((item) => {
-              const details = Object.entries(item.details || {})
-                .map(([key, value]) => `${key}: ${value}`)
-                .join(" · ");
-              return `<div class="log-row ${escapeHtml(item.event || "")}">
+        if (logsError) {
+          list.innerHTML = `<p class="hint">${escapeHtml(t("logs.loadError", { message: logsError }))}</p>`;
+          return;
+        }
+        if (!logsLoaded) {
+          list.innerHTML = `<p class="hint">${escapeHtml(t("logs.loading"))}</p>`;
+          return;
+        }
+        if (!currentLogs.length) {
+          list.innerHTML = `<p class="hint">${escapeHtml(t("logs.empty"))}</p>`;
+          return;
+        }
+        list.innerHTML = currentLogs
+          .slice()
+          .reverse()
+          .map((item) => {
+            const details = Object.entries(item.details || {})
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(" · ");
+            return `<div class="log-row ${escapeHtml(item.event || "")}">
               <div><strong>${escapeHtml(item.event || "event")}</strong><span class="log-time">${escapeHtml(item.time || "")}</span></div>
               <div>${escapeHtml(item.message || "")}</div>
               ${details ? `<span class="log-details">${escapeHtml(details)}</span>` : ""}
             </div>`;
-            })
-            .join("");
+          })
+          .join("");
+      }
+      async function loadLogs() {
+        logsError = "";
+        if (!logsLoaded) renderLogs();
+        try {
+          const response = await fetch("/api/logs");
+          const data = await response.json();
+          currentLogs = Array.isArray(data.items) ? data.items : [];
+          logsLoaded = true;
         } catch (error) {
-          list.innerHTML = `<p class="hint">โหลด log ไม่สำเร็จ: ${escapeHtml(error.message)}</p>`;
+          logsError = error.message;
         }
+        renderLogs();
       }
       $("refresh-logs").addEventListener("click", loadLogs);
       $("save-logs").addEventListener("click", async () => {
@@ -2171,9 +2775,9 @@
           URL.revokeObjectURL(url);
         } catch (error) {
           const button = $("save-logs");
-          button.textContent = "บันทึกไม่สำเร็จ";
+          button.textContent = t("logs.saveFailed");
           setTimeout(() => {
-            button.textContent = "บันทึกไฟล์";
+            button.textContent = t("logs.saveFile");
           }, 2500);
         }
       });
@@ -2195,7 +2799,7 @@
         if (!file) return;
         const maxBytes = 1024 * 1024;
         if (file.size > maxBytes) {
-          $("attachment-chip").textContent = "ไฟล์ใหญ่เกิน 1 MB";
+          $("attachment-chip").textContent = t("attachment.tooLarge");
           $("attachment-chip").hidden = false;
           event.target.value = "";
           pendingAttachment = null;
@@ -2208,7 +2812,7 @@
           $("attachment-chip").hidden = false;
         } catch (error) {
           pendingAttachment = null;
-          $("attachment-chip").textContent = "อ่านไฟล์ไม่สำเร็จ";
+          $("attachment-chip").textContent = t("attachment.readFailed");
           $("attachment-chip").hidden = false;
         }
       });
@@ -2216,7 +2820,7 @@
         if (!messages.length) return;
         try {
           const firstUser = messages.find((message) => message.role === "user");
-          const title = firstUser?.content || "บทสนทนาใหม่";
+          const title = firstUser?.content || t("chat.newConversationTitle");
           setConversationTitle(title);
           const body = {
             id: conversationId,
@@ -2238,7 +2842,7 @@
             await loadHistoryList();
           }
         } catch (error) {
-          console.warn("บันทึกประวัติไม่สำเร็จ", error);
+          console.warn(t("chat.saveWarning"), error);
         }
       }
       $("chat-form").addEventListener("submit", async (event) => {
@@ -2247,7 +2851,7 @@
         if ((!content && !pendingAttachment) || $("send").disabled) return;
         const userMessage = {
           role: "user",
-          content: content || "ช่วยวิเคราะห์ไฟล์แนบนี้ให้หน่อย",
+          content: content || t("chat.defaultAttachmentPrompt"),
         };
         if (pendingAttachment) userMessage.attachment = pendingAttachment;
         messages.push(userMessage);
@@ -2271,7 +2875,7 @@
             }),
           });
           const data = await r.json();
-          if (!r.ok) throw new Error(data.error || "เกิดข้อผิดพลาด");
+          if (!r.ok) throw new Error(data.error || t("chat.error"));
           const assistantMessage = {
             role: "assistant",
             content: data.answer,
@@ -2287,7 +2891,7 @@
         } catch (e) {
           const errorMessage = {
             role: "assistant",
-            content: `ข้อผิดพลาด: ${e.message}`,
+            content: t("chat.errorPrefix", { message: e.message }),
           };
           messages.push(errorMessage);
           addMessage("assistant", errorMessage.content);
@@ -2299,10 +2903,17 @@
           $("input").focus();
         }
       });
+      function scheduleStatusText(value) {
+        const status = String(value || "").trim();
+        if (!status) return t("schedule.neverRun");
+        if (status === "สำเร็จ") return t("schedule.success");
+        if (status === "ล้มเหลว") return t("schedule.failed");
+        return status;
+      }
       function renderSchedules(items) {
         const list = $("schedule-list");
         if (!items.length) {
-          list.innerHTML = '<p class="hint">ยังไม่มีงานตามเวลา</p>';
+          list.innerHTML = `<p class="hint">${escapeHtml(t("schedule.empty"))}</p>`;
           return;
         }
         list.innerHTML = items
@@ -2310,11 +2921,11 @@
             (job) => `
           <div class="schedule-item" data-schedule-id="${escapeHtml(job.id)}">
             <strong>${escapeHtml(job.name)}</strong>
-            <small>${escapeHtml(job.schedule)} · ${job.model ? `โมเดล: ${escapeHtml(job.model)} · ` : ""}${job.enabled ? "เปิดใช้งาน" : "ปิดใช้งาน"} · ${escapeHtml(job.last_status || "ยังไม่เคยทำงาน")}</small>
+            <small>${escapeHtml(job.schedule)} · ${job.model ? `${escapeHtml(t("schedule.modelLabel", { model: job.model }))} · ` : ""}${job.enabled ? t("schedule.enabled") : t("schedule.disabled")} · ${escapeHtml(scheduleStatusText(job.last_status))}</small>
             <small>${escapeHtml(job.prompt)}</small>
             <div class="schedule-item-actions">
-              <button type="button" data-schedule-action="toggle">${job.enabled ? "ปิดใช้งาน" : "เปิดใช้งาน"}</button>
-              <button type="button" class="danger" data-schedule-action="delete">ลบ</button>
+              <button type="button" data-schedule-action="toggle" data-enabled="${job.enabled ? "true" : "false"}">${job.enabled ? t("schedule.toggleDisable") : t("schedule.toggleEnable")}</button>
+              <button type="button" class="danger" data-schedule-action="delete">${t("common.delete")}</button>
             </div>
           </div>`,
           )
@@ -2324,19 +2935,24 @@
         const response = await fetch("/api/schedules");
         if (response.ok) {
           const data = await response.json();
-          $("schedule-timezone").textContent =
-            data.timezone || "เวลาของเครื่อง Server";
-          renderSchedules(data.items || []);
+          currentSchedules = data.items || [];
+          currentScheduleTimezone =
+            data.timezone || t("schedule.timezoneFallback");
+          $("schedule-timezone").textContent = currentScheduleTimezone;
+          renderSchedules(currentSchedules);
         }
       }
       $("schedule-preset").addEventListener("change", () => {
         if ($("schedule-preset").value)
           $("schedule-expression").value = $("schedule-preset").value;
       });
+      $("schedule-form").addEventListener("reset", () => {
+        currentScheduleSelected = "";
+      });
       function updateScheduleModelOptions(models, selected = "") {
         const select = $("schedule-model");
         const options =
-          '<option value="">ใช้โมเดลหลักจาก Settings</option>' +
+          `<option value="">${escapeHtml(t("schedule.useMainModel"))}</option>` +
           (models || [])
             .map(
               (model) =>
@@ -2345,6 +2961,8 @@
             .join("");
         select.innerHTML = options;
         select.value = selected || "";
+        currentScheduleModels = models || [];
+        currentScheduleSelected = select.value;
       }
       $("schedule-form").addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -2361,10 +2979,10 @@
         });
         const data = await response.json();
         if (!response.ok)
-          return showNotice(data.error || "เพิ่มงานไม่สำเร็จ", true);
+          return showNotice(data.error || t("schedule.addFailed"), true);
         $("schedule-form").reset();
         await loadSchedules();
-        showNotice("เพิ่มงานตามเวลาแล้ว");
+        showNotice(t("schedule.added"));
       });
       $("schedule-list").addEventListener("click", async (event) => {
         const button = event.target.closest("[data-schedule-action]");
@@ -2377,7 +2995,7 @@
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              enabled: button.textContent === "ปิดใช้งาน" ? false : true,
+              enabled: button.dataset.enabled !== "true",
             }),
           });
         }
@@ -2432,7 +3050,8 @@
               (model) =>
                 `<option value="${escapeHtml(model.id || model)}">${escapeHtml(model.name || model.id || model)}</option>`,
             )
-            .join("") + '<option value="__custom__">กำหนดเอง...</option>';
+            .join("") +
+          `<option value="__custom__">${escapeHtml(t("model.custom"))}</option>`;
         if (choices.some((model) => (model.id || model) === selected)) {
           select.value = selected;
           $("model_custom").style.display = "none";
@@ -2452,7 +3071,7 @@
         selected = "",
         fallbackSelected = "",
       ) {
-        $("model_status").textContent = "กำลังดึงจาก API...";
+        $("model_status").textContent = t("model.fetching");
         try {
           const r = await fetch(
             `/api/models?provider=${encodeURIComponent(provider)}`,
@@ -2465,14 +3084,13 @@
               updateScheduleModelOptions(data.models, "");
               updateFallbackModelOptions(data.models, fallbackSelected);
             }
-            throw new Error(data.error || "ดึงรายการโมเดลไม่สำเร็จ");
+            throw new Error(data.error || t("model.fetchError"));
           }
           updateModelOptions(provider, selected, data.models);
           updateChatModelOptions(data.models, selected);
           updateScheduleModelOptions(data.models, "");
           updateFallbackModelOptions(data.models, fallbackSelected);
-          $("model_status").textContent =
-            `ดึงจาก API แล้ว ${data.models.length} รายการ`;
+          setModelStatus("model.fetched", { count: data.models.length });
         } catch (e) {
           updateModelOptions(provider, selected);
           updateChatModelOptions(
@@ -2484,15 +3102,14 @@
             MODEL_OPTIONS[provider]?.models || [],
             fallbackSelected,
           );
-          $("model_status").textContent = "API ใช้งานไม่ได้ — ใช้รายการสำรอง";
-          $("model_status").title = e.message;
+          setModelStatus("model.fallback", {}, e.message);
         }
       }
       function updateFallbackModelOptions(models, selected = "") {
         const select = $("fallback_model_select");
         const choices = models?.length ? models : [];
         select.innerHTML =
-          '<option value="">ไม่ใช้ fallback</option>' +
+          `<option value="">${escapeHtml(t("settings.fallbackNone"))}</option>` +
           choices
             .map(
               (model) =>
@@ -2509,6 +3126,8 @@
           );
         }
         select.value = selected || "";
+        currentFallbackModels = choices;
+        currentFallbackSelected = select.value;
       }
       function currentModel() {
         return $("model_select").value === "__custom__"
@@ -2532,14 +3151,26 @@
         if ($("model_select").value === "__custom__") $("model_custom").focus();
       });
       $("chat-model-select").addEventListener("change", (event) => {
+        currentChatSelected = event.target.value;
         $("header-model-name").textContent =
-          event.target.value || "ยังไม่ได้เลือกโมเดล";
+          event.target.value || t("model.none");
+      });
+      $("schedule-model").addEventListener("change", (event) => {
+        currentScheduleSelected = event.target.value;
+      });
+      $("fallback_model_select").addEventListener("change", (event) => {
+        currentFallbackSelected = event.target.value;
       });
       function updateChatModelOptions(models, selected = "") {
         const select = $("chat-model-select");
-        const choices = models?.length
-          ? models
-          : [selected || "ยังไม่ได้เลือกโมเดล"];
+        const choices = models?.length ? models : [];
+        if (!choices.length) {
+          select.innerHTML = `<option value="${escapeHtml(selected)}">${escapeHtml(selected || t("model.none"))}</option>`;
+          select.value = selected;
+          currentChatModels = [];
+          currentChatSelected = selected;
+          return;
+        }
         select.innerHTML = choices
           .map(
             (model) =>
@@ -2551,29 +3182,42 @@
           choices.some((model) => (model.id || model) === selected)
         )
           select.value = selected;
+        currentChatModels = choices;
+        currentChatSelected = select.value;
       }
-      function setConnectionState(connected, model = "", reason = "") {
+      function updateConnectionUi() {
         const status = document.querySelector(".status");
         const label = $("header-model-name");
-        const modelName = model || "ยังไม่ได้เลือกโมเดล";
+        const modelName = connectionState.model || t("model.none");
         label.textContent = modelName;
-        status.textContent = connected
-          ? "● พร้อมใช้งาน"
-          : "● ยังไม่พร้อมใช้งาน";
-        status.classList.toggle("offline", !connected);
-        status.title = connected
-          ? `เชื่อมต่อ ${modelName} พร้อมใช้งาน`
-          : reason || "ยังเชื่อมต่อผู้ให้บริการไม่ได้";
+        status.textContent = connectionState.connected
+          ? t("status.ready")
+          : t("status.notReady");
+        status.classList.toggle("offline", !connectionState.connected);
+        status.title = connectionState.connected
+          ? t("status.connectedTitle", { model: modelName })
+          : connectionState.reason || t("status.notConnectedReason");
         $("input").disabled = false;
-        $("input").placeholder = connected
-          ? "ส่งข้อความถึง AI..."
-          : reason || "ใส่ API key และเลือกโมเดลใน Settings ก่อนใช้งาน";
-        $("send").disabled = !connected;
-        $("chat-model-select").disabled = !connected;
+        $("input").placeholder = connectionState.connected
+          ? t("chat.placeholder")
+          : connectionState.reason || t("status.inputDisabled");
+        $("send").disabled = !connectionState.connected;
+        $("chat-model-select").disabled = !connectionState.connected;
+      }
+      function setConnectionState(connected, model = "", reason = "") {
+        connectionState = {
+          connected: !!connected,
+          model,
+          reason,
+          known: true,
+        };
+        updateConnectionUi();
       }
       async function refreshConnectionState() {
         try {
-          const r = await fetch("/api/status");
+          const r = await fetch(
+            `/api/status?lang=${encodeURIComponent(currentLanguage)}`,
+          );
           const data = await r.json();
           setConnectionState(
             !!data.ready,
@@ -2582,7 +3226,7 @@
           );
           return data;
         } catch (e) {
-          setConnectionState(false, "", "ตรวจสอบสถานะการเชื่อมต่อไม่สำเร็จ");
+          setConnectionState(false, "", t("status.checkFailed"));
           return null;
         }
       }
@@ -2598,8 +3242,12 @@
           await fetchModels(s.provider ?? "openai", s.model ?? "", "");
           await refreshConnectionState();
         } catch (e) {
-          updateChatModelOptions([], "ยังไม่ได้เชื่อมต่อ");
-          setConnectionState(false, "ยังไม่ได้เชื่อมต่อ", "โหลดการตั้งค่าไม่สำเร็จ");
+          updateChatModelOptions([], t("chatModel.notConnected"));
+          setConnectionState(
+            false,
+            t("chatModel.notConnected"),
+            t("status.settingsLoadFailed"),
+          );
         }
       }
       function updateApiKeyHint(provider) {
@@ -2609,11 +3257,11 @@
           ] || provider;
         const has = keyProviders.includes(provider);
         $("api_key").placeholder = has
-          ? `มีคีย์ของ ${label} แล้ว — เว้นว่างเพื่อคงเดิม`
-          : `ยังไม่มีคีย์ของ ${label} — ใส่ API key`;
+          ? t("apiKey.hasPlaceholder", { provider: label })
+          : t("apiKey.missingPlaceholder", { provider: label });
         $("api_key_hint").textContent = has
-          ? `บันทึกคีย์ของ ${label} ไว้แล้ว`
-          : `ยังไม่มีคีย์ของ ${label} — ถ้าเว้นว่าง สถานะจะยังไม่พร้อมใช้งาน`;
+          ? t("apiKey.hasHint", { provider: label })
+          : t("apiKey.missingHint", { provider: label });
       }
       async function loadSettings() {
         const r = await fetch("/api/settings");
@@ -2667,7 +3315,10 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        showNotice(r.ok ? "บันทึกการตั้งค่าแล้ว" : "บันทึกไม่สำเร็จ", !r.ok);
+        showNotice(
+          r.ok ? t("notice.settingsSaved") : t("notice.settingsSaveFailed"),
+          !r.ok,
+        );
         if (r.ok) {
           await loadSettings();
           applyChatMeta({
@@ -2681,17 +3332,17 @@
       });
       $("test").addEventListener("click", async () => {
         $("test").disabled = true;
-        $("test").textContent = "กำลังทดสอบ...";
+        $("test").textContent = t("notice.testing");
         const r = await fetch("/api/settings/test", { method: "POST" });
         const data = await r.json();
         showNotice(
           data.ok
-            ? `เชื่อมต่อสำเร็จ: ${data.answer}`
-            : `เชื่อมต่อไม่สำเร็จ: ${data.error}`,
+            ? t("notice.testSuccess", { answer: data.answer })
+            : t("notice.testFailed", { error: data.error }),
           !data.ok,
         );
         $("test").disabled = false;
-        $("test").textContent = "ทดสอบการเชื่อมต่อ";
+        $("test").textContent = t("settings.test");
         await refreshConnectionState();
       });
       function escapeHtml(value) {
@@ -2711,21 +3362,23 @@
         return items
           .map(
             (item) =>
-              `<div class="history-row${item.id === conversationId ? " active" : ""}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.title || "")}">${item.locked ? "🔒 " : ""}${escapeHtml(item.title || "บทสนทนาไม่มีชื่อ")}</button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="เปลี่ยนชื่อ">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${item.pinned ? "ถอนหมุด" : "ปักหมุด"}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${item.locked ? "ปลดล็อก" : "ล็อก"}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="ลบ">×</button></div></div>`,
+              `<div class="history-row${item.id === conversationId ? " active" : ""}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.title || t("history.untitled"))}">${item.locked ? "🔒 " : ""}${escapeHtml(item.title || t("history.untitled"))}</button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.rename"))}">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.pinned ? t("history.unpin") : t("history.pin"))}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.locked ? t("history.unlock") : t("history.lock"))}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.delete"))}">×</button></div></div>`,
           )
           .join("");
       }
       function renderHistoryList(items) {
+        currentHistoryItems = items;
         const pinned = items.filter((item) => item.pinned);
         const grouped = {};
         items
           .filter((item) => !item.pinned)
           .forEach((item) => {
-            const day = (item.updated_at || "").slice(0, 10) || "ไม่ทราบวันที่";
+            const day =
+              (item.updated_at || "").slice(0, 10) || t("history.unknownDate");
             (grouped[day] ||= []).push(item);
           });
         const pinnedHtml = pinned.length
-          ? `<div class="history-day">📌 ปักหมุด</div>${historyRows(pinned)}`
+          ? `<div class="history-day">${escapeHtml(t("history.pinned"))}</div>${historyRows(pinned)}`
           : "";
         const daysHtml = Object.entries(grouped)
           .map(
@@ -2735,11 +3388,12 @@
           .join("");
         $("history-list").innerHTML =
           pinnedHtml + daysHtml ||
-          '<div class="history-day">ยังไม่มีประวัติ</div>';
+          `<div class="history-day">${escapeHtml(t("history.empty"))}</div>`;
       }
       async function loadHistoryList() {
         const response = await fetch("/api/history");
-        if (response.ok) renderHistoryList((await response.json()).items || []);
+        if (response.ok)
+          renderHistoryList((await response.json()).items || []);
       }
       async function openConversation(id) {
         const response = await fetch(`/api/history/${id}`);
@@ -2753,10 +3407,8 @@
               ?.content,
         );
         messages.splice(0, messages.length, ...(record.messages || []));
-        $("messages").innerHTML = "";
-        messages.forEach((message) =>
-          addMessage(message.role, message.content, message),
-        );
+        emptyConversationMode = "new";
+        renderMessages();
         renderHistoryList(
           (await (await fetch("/api/history")).json()).items || [],
         );
@@ -2770,7 +3422,7 @@
         });
         const data = await response.json();
         if (!response.ok)
-          throw new Error(data.error || "แก้ไขประวัติไม่สำเร็จ");
+          throw new Error(data.error || t("history.renameFailed"));
         await loadHistoryList();
         return data;
       }
@@ -2779,18 +3431,34 @@
           method: "DELETE",
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "ลบประวัติไม่สำเร็จ");
+        if (!response.ok)
+          throw new Error(data.error || t("history.deleteFailed"));
         if (id === conversationId) {
           conversationId = null;
           conversationCreatedAt = null;
           messages.splice(0, messages.length);
-          $("messages").innerHTML =
-            '<div class="message assistant"><div>เริ่มบทสนทนาใหม่ได้เลยครับ</div></div>';
+          emptyConversationMode = "deleted";
+          renderMessages();
         }
         await loadHistoryList();
       }
       let historyModalAction = null;
       let historyModalId = null;
+      function refreshHistoryModalText() {
+        $("history-modal-title").textContent =
+          historyModalAction === "rename"
+            ? t("history.renameTitle")
+            : t("history.deleteTitle");
+        $("history-modal-text").textContent =
+          historyModalAction === "rename"
+            ? t("history.renameDescription")
+            : t("history.deleteConfirm");
+        $("history-modal-confirm").textContent =
+          historyModalAction === "rename" ? t("common.save") : t("common.delete");
+        $("history-modal-confirm").className =
+          historyModalAction === "rename" ? "" : "modal-danger";
+        if (historyModalAction === "rename") $("history-modal-input").focus();
+      }
       function openHistoryModal(action, id, title = "") {
         historyModalAction = action;
         historyModalId = id;
@@ -2799,18 +3467,8 @@
           action === "rename" ? "block" : "none";
         $("history-modal-confirm").style.display =
           action === "error" ? "none" : "block";
-        $("history-modal-title").textContent =
-          action === "rename" ? "เปลี่ยนชื่อประวัติ" : "ลบประวัติ";
-        $("history-modal-text").textContent =
-          action === "rename"
-            ? "กำหนดชื่อใหม่ให้ประวัติการสนทนา"
-            : "ประวัตินี้จะถูกลบออกจากเครื่องและไม่สามารถกู้คืนได้";
         $("history-modal-input").value = title;
-        $("history-modal-confirm").textContent =
-          action === "rename" ? "บันทึก" : "ลบ";
-        $("history-modal-confirm").className =
-          action === "rename" ? "" : "modal-danger";
-        if (action === "rename") $("history-modal-input").focus();
+        refreshHistoryModalText();
       }
       function closeHistoryModal() {
         $("history-modal").classList.remove("open");
@@ -2861,7 +3519,7 @@
               );
             } catch (error) {
               openHistoryModal("error", id);
-              $("history-modal-title").textContent = "ดำเนินการไม่สำเร็จ";
+              $("history-modal-title").textContent = t("history.actionFailed");
               $("history-modal-text").textContent = error.message;
               $("history-modal-input").style.display = "none";
               $("history-modal-confirm").style.display = "none";
@@ -2877,18 +3535,128 @@
         conversationCreatedAt = null;
         conversationTitle = null;
         messages.splice(0, messages.length);
-        $("messages").innerHTML =
-          '<div class="session-divider"><span>เริ่มการสนทนาใหม่</span></div>';
+        emptyConversationMode = "new";
+        renderMessages();
+        updatePageTitle();
         document.querySelector('[data-view="chat"]').click();
         closeSidebar();
         $("input").focus();
       });
       $("reset").addEventListener("click", async () => {
-        if (!confirm("รีเซ็ตการตั้งค่าทั้งหมดหรือไม่?")) return;
+        if (!confirm(t("notice.resetConfirm"))) return;
         await fetch("/api/settings/reset", { method: "POST" });
         await loadSettings();
-        showNotice("รีเซ็ตการตั้งค่าแล้ว");
+        showNotice(t("notice.resetDone"));
       });
+      function renderMessages() {
+        const container = $("messages");
+        container.innerHTML = "";
+        if (!messages.length) {
+          if (emptyConversationMode === "deleted") {
+            const el = document.createElement("div");
+            el.className = "message assistant";
+            const text = document.createElement("div");
+            text.textContent = t("history.emptyHint");
+            el.appendChild(text);
+            container.appendChild(el);
+          } else {
+            const divider = document.createElement("div");
+            divider.className = "session-divider";
+            const span = document.createElement("span");
+            span.textContent =
+              emptyConversationMode === "new"
+                ? t("history.startedNew")
+                : t("session.ready");
+            divider.appendChild(span);
+            container.appendChild(divider);
+          }
+          return;
+        }
+        messages.forEach((message) =>
+          addMessage(message.role, message.content, message),
+        );
+      }
+      function applyStaticTranslations() {
+        document.documentElement.lang = currentLanguage;
+        document.title = t("app.title");
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+          element.textContent = t(element.dataset.i18n);
+        });
+        document
+          .querySelectorAll("[data-i18n-placeholder]")
+          .forEach((element) => {
+            element.setAttribute(
+              "placeholder",
+              t(element.dataset.i18nPlaceholder),
+            );
+          });
+        document.querySelectorAll("[data-i18n-title]").forEach((element) => {
+          element.setAttribute("title", t(element.dataset.i18nTitle));
+        });
+        document
+          .querySelectorAll("[data-i18n-aria-label]")
+          .forEach((element) => {
+            element.setAttribute(
+              "aria-label",
+              t(element.dataset.i18nAriaLabel),
+            );
+          });
+        $("language-select").value = currentLanguage;
+        $("language-select").title = t("language.title");
+        $("language-select").setAttribute("aria-label", t("language.title"));
+      }
+      function applyTranslations() {
+        applyStaticTranslations();
+        updatePageTitle();
+        setModelStatus(modelStatus.key, modelStatus.vars, modelStatus.title);
+        const customModelOption = $("model_select").querySelector(
+          'option[value="__custom__"]',
+        );
+        if (customModelOption)
+          customModelOption.textContent = t("model.custom");
+        updateChatModelOptions(currentChatModels, currentChatSelected);
+        updateScheduleModelOptions(
+          currentScheduleModels,
+          currentScheduleSelected,
+        );
+        updateFallbackModelOptions(
+          currentFallbackModels,
+          currentFallbackSelected,
+        );
+        updateApiKeyHint($("provider").value);
+        if (connectionState.known) updateConnectionUi();
+        renderMessages();
+        renderHistoryList(currentHistoryItems);
+        renderSchedules(currentSchedules);
+        renderLogs();
+        $("schedule-timezone").textContent =
+          currentScheduleTimezone || t("schedule.loading");
+        if (
+          $("history-modal").classList.contains("open") &&
+          historyModalAction &&
+          historyModalAction !== "error"
+        ) {
+          refreshHistoryModalText();
+        }
+      }
+      function setLanguage(language) {
+        currentLanguage = SUPPORTED_LANGUAGES.includes(language)
+          ? language
+          : "th";
+        localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage);
+        applyTranslations();
+        if (connectionState.known) {
+          const selectedChatModel = $("chat-model-select").value;
+          refreshConnectionState().then(() => {
+            if (selectedChatModel)
+              $("header-model-name").textContent = selectedChatModel;
+          });
+        }
+      }
+      $("language-select").addEventListener("change", (event) => {
+        setLanguage(event.target.value);
+      });
+      applyTranslations();
       loadChatMeta();
       loadHistoryList();
       loadSchedules();

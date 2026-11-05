@@ -583,14 +583,50 @@ def key_fingerprint(key: str) -> str:
     return hashlib.sha256(str(key).encode("utf-8")).hexdigest()[:16]
 
 
-def provider_key_check(provider: str, settings: dict[str, Any]) -> dict[str, Any]:
+STATUS_MESSAGES = {
+    "th": {
+        "invalid_key": "API key ของ {label} ไม่ถูกต้องหรือหมดสิทธิ์ใช้งาน",
+        "endpoint_missing": "ตรวจไม่พบ endpoint ของ {label} — ตรวจสอบ Base URL อีกครั้ง",
+        "anthropic_model_missing": "ไม่พบโมเดล Anthropic ที่เลือก หรือโมเดลนี้ไม่เปิดให้ใช้งาน",
+        "anthropic_model_error": "Anthropic เรียกโมเดลที่เลือกไม่ได้ (HTTP {status})",
+        "http_error": "{label} ตอบกลับ HTTP {status}",
+        "connection_failed": "เชื่อมต่อ {label} ไม่ได้: {error}",
+        "missing_key": "ยังไม่ได้ตั้งค่า API key ของ {label}",
+        "missing_model": "ยังไม่ได้เลือกโมเดลของ {label}",
+        "invalid_key_shape": "API key ของ {label} ดูไม่ถูกต้อง (สั้นเกินไปหรือเป็นค่าตัวอย่าง)",
+    },
+    "en": {
+        "invalid_key": "{label} API key is invalid or unauthorized",
+        "endpoint_missing": "{label} endpoint not found — check the Base URL",
+        "anthropic_model_missing": "The selected Anthropic model was not found or is not available",
+        "anthropic_model_error": "Anthropic could not call the selected model (HTTP {status})",
+        "http_error": "{label} returned HTTP {status}",
+        "connection_failed": "Could not connect to {label}: {error}",
+        "missing_key": "{label} API key is not configured",
+        "missing_model": "No {label} model is selected",
+        "invalid_key_shape": "The {label} API key looks invalid (too short or a placeholder)",
+    },
+}
+
+
+def normalize_language(value: Any) -> str:
+    return "en" if str(value or "").strip().lower().startswith("en") else "th"
+
+
+def status_message(language: str, key: str, **kwargs: Any) -> str:
+    messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["th"]
+    template = messages.get(key) or STATUS_MESSAGES["th"].get(key, key)
+    return template.format(**kwargs)
+
+
+def provider_key_check(provider: str, settings: dict[str, Any], language: str = "th") -> dict[str, Any]:
     """Check credentials and, for Anthropic, the selected model's real usability."""
     provider = normalize_provider(provider)
     label = PROVIDER_LABELS[provider]
     key = get_api_key(provider, settings)
     base_url = str(settings.get("base_url") or "").rstrip("/")
     model = str(settings.get("model") or "").strip()
-    cache_key = f"{provider}|{base_url}|{model}|{key_fingerprint(key)}"
+    cache_key = f"{provider}|{base_url}|{model}|{key_fingerprint(key)}|{language}"
     cached = STATUS_CACHE.get(cache_key)
     if cached and time.time() - cached[0] < STATUS_CACHE_TTL:
         return {**cached[1], "cached": True}
@@ -615,9 +651,9 @@ def provider_key_check(provider: str, settings: dict[str, Any]) -> dict[str, Any
                 timeout=20,
             )
         if response.status_code in {401, 403}:
-            result = {"ready": False, "reason": f"API key ของ {label} ไม่ถูกต้องหรือหมดสิทธิ์ใช้งาน", "status": response.status_code}
+            result = {"ready": False, "reason": status_message(language, "invalid_key", label=label), "status": response.status_code}
         elif response.status_code == 404:
-            result = {"ready": False, "reason": f"ตรวจไม่พบ endpoint ของ {label} — ตรวจสอบ Base URL อีกครั้ง", "status": 404}
+            result = {"ready": False, "reason": status_message(language, "endpoint_missing", label=label), "status": 404}
         elif response.ok and provider == "anthropic":
             probe = requests.post(
                 "https://api.anthropic.com/v1/messages",
@@ -634,36 +670,36 @@ def provider_key_check(provider: str, settings: dict[str, Any]) -> dict[str, Any
                 timeout=20,
             )
             if probe.status_code in {401, 403}:
-                result = {"ready": False, "reason": f"API key ของ {label} ไม่ถูกต้องหรือหมดสิทธิ์ใช้งาน", "status": probe.status_code}
+                result = {"ready": False, "reason": status_message(language, "invalid_key", label=label), "status": probe.status_code}
             elif probe.status_code == 404:
-                result = {"ready": False, "reason": f"ไม่พบโมเดล Anthropic ที่เลือก หรือโมเดลนี้ไม่เปิดให้ใช้งาน", "status": 404}
+                result = {"ready": False, "reason": status_message(language, "anthropic_model_missing"), "status": 404}
             elif probe.ok:
                 result = {"ready": True, "reason": "", "status": probe.status_code}
             else:
-                result = {"ready": False, "reason": f"Anthropic เรียกโมเดลที่เลือกไม่ได้ (HTTP {probe.status_code})", "status": probe.status_code}
+                result = {"ready": False, "reason": status_message(language, "anthropic_model_error", status=probe.status_code), "status": probe.status_code}
         elif response.ok:
             result = {"ready": True, "reason": "", "status": response.status_code}
         else:
-            result = {"ready": False, "reason": f"{label} ตอบกลับ HTTP {response.status_code}", "status": response.status_code}
+            result = {"ready": False, "reason": status_message(language, "http_error", label=label, status=response.status_code), "status": response.status_code}
     except requests.RequestException as exc:
-        result = {"ready": False, "reason": f"เชื่อมต่อ {label} ไม่ได้: {exc.__class__.__name__}", "status": None}
+        result = {"ready": False, "reason": status_message(language, "connection_failed", label=label, error=exc.__class__.__name__), "status": None}
     STATUS_CACHE[cache_key] = (time.time(), result)
     return {**result, "cached": False}
 
 
-def provider_readiness(settings: dict[str, Any]) -> dict[str, Any]:
+def provider_readiness(settings: dict[str, Any], language: str = "th") -> dict[str, Any]:
     provider = normalize_provider(settings.get("provider"))
     model = str(settings.get("model") or "").strip()
     label = PROVIDER_LABELS[provider]
     key = get_api_key(provider, settings)
     base = {"provider": provider, "model": model}
     if not key:
-        return {**base, "ready": False, "reason": f"ยังไม่ได้ตั้งค่า API key ของ {label}", "checked": "local"}
+        return {**base, "ready": False, "reason": status_message(language, "missing_key", label=label), "checked": "local"}
     if not model:
-        return {**base, "ready": False, "reason": f"ยังไม่ได้เลือกโมเดลของ {label}", "checked": "local"}
+        return {**base, "ready": False, "reason": status_message(language, "missing_model", label=label), "checked": "local"}
     if not key_looks_plausible(key, provider, str(settings.get("base_url") or "")):
-        return {**base, "ready": False, "reason": f"API key ของ {label} ดูไม่ถูกต้อง (สั้นเกินไปหรือเป็นค่าตัวอย่าง)", "checked": "local"}
-    check = provider_key_check(provider, settings)
+        return {**base, "ready": False, "reason": status_message(language, "invalid_key_shape", label=label), "checked": "local"}
+    check = provider_key_check(provider, settings, language)
     return {**base, "ready": check["ready"], "reason": check["reason"], "checked": "api", "cached": check.get("cached", False)}
 
 
@@ -931,7 +967,7 @@ def settings_get():
 def status_get():
     """Report whether the selected provider/model is actually usable."""
     settings = load_settings()
-    return jsonify(provider_readiness(settings))
+    return jsonify(provider_readiness(settings, normalize_language(request.args.get("lang"))))
 
 
 @app.get("/api/history")
