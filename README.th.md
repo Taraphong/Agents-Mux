@@ -45,6 +45,8 @@ python app.py
 3. ไปที่ Settings ในเว็บ ใส่ Bot token เปิดใช้งาน Discord bot แล้วกดบันทึก
 4. ใน Discord ให้ mention bot หรือพิมพ์ `!ai ข้อความของคุณ` (เปลี่ยน prefix ได้ใน Settings)
 
+คำสั่ง slash ที่รองรับ: `/ai` ส่งงานให้ agent, `/clear` ล้างบริบทห้อง, `/status` ตรวจสถานะ, `/model` ดูโมเดล และ `/help` ดูคำสั่งทั้งหมด
+
 Token จะถูกเก็บไว้ฝั่งเซิร์ฟเวอร์ใน `.app-settings.json` ซึ่งไม่ถูก commit เข้า Git หรือจะตั้ง `DISCORD_BOT_TOKEN` และ `DISCORD_BOT_PREFIX` ใน `.env` ก็ได้
 
 ### Scheduler

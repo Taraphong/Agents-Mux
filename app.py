@@ -1,4 +1,5 @@
 import os
+import asyncio
 import fcntl
 import hashlib
 import json
@@ -897,9 +898,18 @@ def start_discord_bot() -> None:
     intents = discord.Intents.default()
     intents.message_content = True
     prefix = str(settings.get("discord_prefix") or "!ai").strip() or "!ai"
+    commands_synced = False
 
     class AIClient(discord.Client):
         async def on_ready(self) -> None:
+            nonlocal commands_synced
+            if not commands_synced:
+                try:
+                    await command_tree.sync()
+                    commands_synced = True
+                    log_event("discord.commands", "ลงทะเบียน Discord slash commands แล้ว")
+                except Exception as exc:
+                    log_event("discord.error", "ลงทะเบียน Discord slash commands ไม่สำเร็จ", error=str(exc))
             log_event("discord.connected", "เชื่อมต่อ Discord bot แล้ว", user=str(self.user))
 
         async def on_message(self, message: Any) -> None:
@@ -917,25 +927,70 @@ def start_discord_bot() -> None:
                 await message.reply(f"พิมพ์ข้อความหลัง {prefix} หรือ mention bot เพื่อเริ่มคุยได้เลยครับ")
                 return
 
-            context_key = str(message.channel.id)
-            with DISCORD_CONTEXT_LOCK:
-                context = DISCORD_CONTEXTS.setdefault(context_key, deque(maxlen=12))
-                context.append({"role": "user", "content": content})
-                messages = list(context)
-            try:
-                settings_for_chat = load_settings()
-                messages = clean_messages(messages, settings_for_chat)
-                answer, _usage = await __import__("asyncio").to_thread(call_provider, messages, settings_for_chat)
-                with DISCORD_CONTEXT_LOCK:
-                    DISCORD_CONTEXTS[context_key].append({"role": "assistant", "content": answer})
-                for chunk in split_discord_message(answer):
-                    await message.reply(chunk, mention_author=False)
-                log_event("discord.message", "ตอบข้อความจาก Discord แล้ว", channel=message.channel.id)
-            except Exception as exc:
-                log_event("discord.error", "ตอบข้อความจาก Discord ไม่สำเร็จ", error=str(exc))
-                await message.reply("ขออภัยครับ ตอนนี้เรียก AI ไม่สำเร็จ กรุณาตรวจสอบการตั้งค่าในเว็บ")
+            answer = await ask_agent(str(message.channel.id), content)
+            for chunk in split_discord_message(answer):
+                await message.reply(chunk, mention_author=False)
 
     client = AIClient(intents=intents)
+    command_tree = discord.app_commands.CommandTree(client)
+
+    async def ask_agent(context_key: str, content: str) -> str:
+        """Run one agent turn while keeping a short per-channel conversation."""
+        with DISCORD_CONTEXT_LOCK:
+            context = DISCORD_CONTEXTS.setdefault(context_key, deque(maxlen=12))
+            context.append({"role": "user", "content": content})
+            messages = list(context)
+        try:
+            settings_for_chat = load_settings()
+            messages = clean_messages(messages, settings_for_chat)
+            answer, _usage = await asyncio.to_thread(call_provider, messages, settings_for_chat)
+            with DISCORD_CONTEXT_LOCK:
+                DISCORD_CONTEXTS[context_key].append({"role": "assistant", "content": answer})
+            log_event("discord.message", "ตอบข้อความจาก Discord แล้ว", channel=context_key)
+            return answer
+        except Exception as exc:
+            log_event("discord.error", "ตอบข้อความจาก Discord ไม่สำเร็จ", error=str(exc))
+            return "ขออภัยครับ ตอนนี้เรียก AI ไม่สำเร็จ กรุณาตรวจสอบการตั้งค่าในเว็บ"
+
+    @command_tree.command(name="ai", description="ส่งงานหรือพูดคุยกับ AI agent")
+    async def ai_command(interaction: Any, prompt: str) -> None:
+        await interaction.response.defer()
+        answer = await ask_agent(str(interaction.channel_id), prompt)
+        for chunk in split_discord_message(answer):
+            await interaction.followup.send(chunk)
+
+    @command_tree.command(name="clear", description="ล้างบริบทการสนทนาของห้องนี้")
+    async def clear_command(interaction: Any) -> None:
+        with DISCORD_CONTEXT_LOCK:
+            DISCORD_CONTEXTS.pop(str(interaction.channel_id), None)
+        await interaction.response.send_message("ล้างบริบทการสนทนาของห้องนี้แล้วครับ")
+
+    @command_tree.command(name="status", description="ตรวจสอบสถานะ AI agent")
+    async def status_command(interaction: Any) -> None:
+        current = load_settings()
+        await interaction.response.send_message(
+            f"Discord: เชื่อมต่อแล้ว\nProvider: {current.get('provider', 'openai')}\nModel: {current.get('model', 'ยังไม่ได้เลือก')}"
+        )
+
+    @command_tree.command(name="model", description="ดู provider และ model ที่ agent ใช้งาน")
+    async def model_command(interaction: Any) -> None:
+        current = load_settings()
+        await interaction.response.send_message(
+            f"Provider: `{current.get('provider', 'openai')}` · Model: `{current.get('model', 'ยังไม่ได้เลือก')}`"
+        )
+
+    @command_tree.command(name="help", description="แสดงคำสั่งของ AI agent")
+    async def help_command(interaction: Any) -> None:
+        await interaction.response.send_message(
+            "คำสั่งของ AI agent:\n"
+            "`/ai prompt` ส่งงานหรือคุยกับ AI\n"
+            "`/clear` ล้างบริบทห้อง\n"
+            "`/status` ตรวจสถานะ bot\n"
+            "`/model` ดูโมเดลปัจจุบัน\n"
+            "`/help` แสดงคำสั่งนี้\n\n"
+            f"นอกจากนี้ mention bot หรือใช้ `{prefix} ข้อความ` ได้ด้วย"
+        )
+
     DISCORD_BOT = client
     DISCORD_TOKEN_FINGERPRINT = key_fingerprint(token)
 

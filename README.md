@@ -47,6 +47,8 @@ The app can run a Discord bot beside Flask and use the configured provider/model
 3. In the web Settings page, enter the bot token, enable Discord, and save.
 4. Mention the bot or send `!ai your message` in Discord. The prefix can be changed in Settings.
 
+Supported slash commands: `/ai` to send work to the agent, `/clear` to clear the channel context, `/status` to check the bot, `/model` to show the active model, and `/help` to list commands.
+
 The token is stored server-side in `.app-settings.json`, which is ignored by Git. Alternatively, set `DISCORD_BOT_TOKEN` and `DISCORD_BOT_PREFIX` in `.env`.
 
 ### Scheduler
