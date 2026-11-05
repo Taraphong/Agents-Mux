@@ -107,6 +107,7 @@ STATUS_CACHE_TTL = 300
 STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
 DISCORD_CONTEXTS: dict[str, deque[dict[str, str]]] = {}
+DISCORD_CONVERSATION_IDS: dict[str, str] = {}
 DISCORD_CONTEXT_LOCK = threading.Lock()
 DISCORD_BOT: Any = None
 DISCORD_THREAD: threading.Thread | None = None
@@ -927,14 +928,14 @@ def start_discord_bot() -> None:
                 await message.reply(f"พิมพ์ข้อความหลัง {prefix} หรือ mention bot เพื่อเริ่มคุยได้เลยครับ")
                 return
 
-            answer = await ask_agent(str(message.channel.id), content)
+            answer = await ask_agent(str(message.channel.id), content, getattr(message.channel, "name", "Discord"))
             for chunk in split_discord_message(answer):
                 await message.reply(chunk, mention_author=False)
 
     client = AIClient(intents=intents)
     command_tree = discord.app_commands.CommandTree(client)
 
-    async def ask_agent(context_key: str, content: str) -> str:
+    async def ask_agent(context_key: str, content: str, channel_title: str = "Discord") -> str:
         """Run one agent turn while keeping a short per-channel conversation."""
         with DISCORD_CONTEXT_LOCK:
             context = DISCORD_CONTEXTS.setdefault(context_key, deque(maxlen=12))
@@ -943,10 +944,37 @@ def start_discord_bot() -> None:
         try:
             settings_for_chat = load_settings()
             messages = clean_messages(messages, settings_for_chat)
-            answer, _usage = await asyncio.to_thread(call_provider, messages, settings_for_chat)
+            fallback_used = ""
+            try:
+                answer, _usage = await asyncio.to_thread(call_provider, messages, settings_for_chat)
+            except requests.HTTPError as primary_error:
+                channel_fallbacks = settings_for_chat.get("discord_fallback_models")
+                channel_fallback = channel_fallbacks.get(context_key) if isinstance(channel_fallbacks, dict) else ""
+                fallback_model = str(channel_fallback or settings_for_chat.get("fallback_model") or "").strip()
+                status_code = primary_error.response.status_code if primary_error.response is not None else None
+                can_fallback = (
+                    bool(settings_for_chat.get("fallback_enabled"))
+                    and fallback_model
+                    and fallback_model != settings_for_chat.get("model")
+                    and status_code in {400, 404, 429, 500, 502, 503, 504}
+                )
+                if not can_fallback:
+                    raise
+                settings_for_chat["model"] = fallback_model
+                answer, _usage = await asyncio.to_thread(call_provider, messages, settings_for_chat)
+                fallback_used = fallback_model
             with DISCORD_CONTEXT_LOCK:
                 DISCORD_CONTEXTS[context_key].append({"role": "assistant", "content": answer})
+                conversation_id = DISCORD_CONVERSATION_IDS.setdefault(context_key, str(uuid.uuid4()))
+                history_messages = list(DISCORD_CONTEXTS[context_key])
+            save_history({
+                "id": conversation_id,
+                "title": f"Discord · {channel_title}"[:100],
+                "messages": history_messages,
+            })
             log_event("discord.message", "ตอบข้อความจาก Discord แล้ว", channel=context_key)
+            if fallback_used:
+                log_event("discord.fallback", "ใช้ fallback model สำหรับ Discord", model=fallback_used, channel=context_key)
             return answer
         except Exception as exc:
             log_event("discord.error", "ตอบข้อความจาก Discord ไม่สำเร็จ", error=str(exc))
@@ -955,7 +983,7 @@ def start_discord_bot() -> None:
     @command_tree.command(name="ai", description="ส่งงานหรือพูดคุยกับ AI agent")
     async def ai_command(interaction: Any, prompt: str) -> None:
         await interaction.response.defer()
-        answer = await ask_agent(str(interaction.channel_id), prompt)
+        answer = await ask_agent(str(interaction.channel_id), prompt, getattr(interaction.channel, "name", "Discord"))
         for chunk in split_discord_message(answer):
             await interaction.followup.send(chunk)
 
@@ -963,7 +991,77 @@ def start_discord_bot() -> None:
     async def clear_command(interaction: Any) -> None:
         with DISCORD_CONTEXT_LOCK:
             DISCORD_CONTEXTS.pop(str(interaction.channel_id), None)
+            DISCORD_CONVERSATION_IDS.pop(str(interaction.channel_id), None)
         await interaction.response.send_message("ล้างบริบทการสนทนาของห้องนี้แล้วครับ")
+
+    @command_tree.command(name="models", description="เปลี่ยน provider และ model ของ AI agent")
+    @discord.app_commands.choices(provider=[
+        discord.app_commands.Choice(name="OpenAI / compatible", value="openai"),
+        discord.app_commands.Choice(name="Google Gemini", value="gemini"),
+        discord.app_commands.Choice(name="Anthropic Claude", value="anthropic"),
+    ])
+    async def models_command(interaction: Any, provider: discord.app_commands.Choice[str], model: str | None = None) -> None:
+        selected_provider = normalize_provider(provider.value)
+        if not model or not model.strip():
+            try:
+                current = load_settings()
+                available = await asyncio.to_thread(list_models, selected_provider, current)
+                names = [item["id"] for item in available[:25]]
+                listing = "\n".join(f"• `{name}`" for name in names) or "ไม่พบรายการ model"
+                await interaction.response.send_message(f"Models ของ {PROVIDER_LABELS[selected_provider]}:\n{listing}")
+            except Exception as exc:
+                await interaction.response.send_message(f"ดึงรายการ model ไม่สำเร็จ: {str(exc)[:300]}")
+            return
+        current = load_settings()
+        current["provider"] = selected_provider
+        current["model"] = model.strip()[:200]
+        save_settings(current)
+        STATUS_CACHE.clear()
+        await interaction.response.send_message(
+            f"เปลี่ยน agent เป็น `{PROVIDER_LABELS[selected_provider]}` / `{current['model']}` แล้วครับ"
+        )
+
+    @command_tree.command(name="ping", description="ตรวจสอบความหน่วงของ Discord bot")
+    async def ping_command(interaction: Any) -> None:
+        latency_ms = round(client.latency * 1000)
+        await interaction.response.send_message(f"Pong! Discord latency: `{latency_ms} ms`")
+
+    @command_tree.command(name="fallback", description="ตั้ง fallback model สำหรับห้อง Discord นี้")
+    async def fallback_command(interaction: Any, model: str | None = None) -> None:
+        current = load_settings()
+        channel_key = str(interaction.channel_id)
+        channel_fallbacks = current.get("discord_fallback_models")
+        if not isinstance(channel_fallbacks, dict):
+            channel_fallbacks = {}
+        if not model or not model.strip():
+            selected = channel_fallbacks.get(channel_key) or current.get("fallback_model") or "ไม่ได้ตั้งค่า"
+            await interaction.response.send_message(f"Fallback model ของห้องนี้: `{selected}`")
+            return
+        if model.strip().lower() in {"off", "none", "ปิด"}:
+            channel_fallbacks.pop(channel_key, None)
+            message = "ปิด fallback เฉพาะห้องแล้วครับ (จะใช้ค่า fallback หลักถ้ามี)"
+        else:
+            channel_fallbacks[channel_key] = model.strip()[:200]
+            message = f"ตั้ง fallback model ของห้องนี้เป็น `{channel_fallbacks[channel_key]}` แล้วครับ"
+        current["discord_fallback_models"] = channel_fallbacks
+        save_settings(current)
+        await interaction.response.send_message(message)
+
+    @command_tree.command(name="thread", description="สร้างห้องย่อยสำหรับหัวข้อใหม่")
+    async def thread_command(interaction: Any, name: str) -> None:
+        channel = interaction.channel
+        if not hasattr(channel, "create_thread"):
+            await interaction.response.send_message("คำสั่งนี้ใช้ในห้องข้อความของ server เท่านั้นครับ", ephemeral=True)
+            return
+        try:
+            thread = await channel.create_thread(
+                name=name.strip()[:100] or "หัวข้อใหม่",
+                type=discord.ChannelType.public_thread,
+                auto_archive_duration=1440,
+            )
+            await interaction.response.send_message(f"สร้างห้องย่อยให้แล้วครับ: {thread.mention}")
+        except Exception as exc:
+            await interaction.response.send_message(f"สร้างห้องย่อยไม่สำเร็จ: {str(exc)[:300]}", ephemeral=True)
 
     @command_tree.command(name="status", description="ตรวจสอบสถานะ AI agent")
     async def status_command(interaction: Any) -> None:
@@ -985,6 +1083,10 @@ def start_discord_bot() -> None:
             "คำสั่งของ AI agent:\n"
             "`/ai prompt` ส่งงานหรือคุยกับ AI\n"
             "`/clear` ล้างบริบทห้อง\n"
+            "`/models` เปลี่ยน provider/model\n"
+            "`/ping` ตรวจ latency ของ bot\n"
+            "`/thread` สร้างห้องย่อยตามหัวข้อ\n"
+            "`/fallback model` ตั้ง fallback เฉพาะห้อง\n"
             "`/status` ตรวจสถานะ bot\n"
             "`/model` ดูโมเดลปัจจุบัน\n"
             "`/help` แสดงคำสั่งนี้\n\n"
