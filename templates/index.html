@@ -1256,13 +1256,25 @@
         border-radius: 6px;
         background: transparent;
         color: var(--muted);
+        color-scheme: dark;
         font: inherit;
         font-size: 0.74rem;
         cursor: pointer;
       }
+      .language-select option {
+        background: #0d1421;
+        color: var(--text);
+      }
       .language-select:hover,
       .language-select:focus {
         color: var(--text);
+      }
+      body.light-theme .language-select {
+        color-scheme: light;
+      }
+      body.light-theme .language-select option {
+        background: #ffffff;
+        color: #172033;
       }
       body.light-theme {
         color-scheme: light;
