@@ -1909,6 +1909,25 @@
               </div>
             </div>
             <div class="card">
+              <h2 data-i18n="settings.discordTitle">Discord bot</h2>
+              <p class="hint" data-i18n="settings.discordHint">
+                ให้ bot รับข้อความจาก Discord แล้วตอบด้วย provider/model หลักของระบบ
+              </p>
+              <div class="grid">
+                <label class="full toggle"
+                  ><input id="discord_enabled" type="checkbox" /><span data-i18n="settings.discordEnable">เปิดใช้งาน Discord bot</span></label
+                >
+                <label class="full"
+                  ><span data-i18n="settings.discordToken">Bot token</span
+                  ><input id="discord_token" type="password" placeholder="เว้นว่างเพื่อใช้ token เดิม" data-i18n-placeholder="settings.discordTokenPlaceholder" /><small class="hint" id="discord_token_hint"></small
+                ></label>
+                <label
+                  ><span data-i18n="settings.discordPrefix">Prefix</span
+                  ><input id="discord_prefix" value="!ai" maxlength="30" /></label
+                >
+              </div>
+            </div>
+            <div class="card">
               <h2 data-i18n="settings.assistantTitle">พฤติกรรมของผู้ช่วย</h2>
               <p class="hint" data-i18n="settings.assistantHint">
                 ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ
@@ -2214,6 +2233,12 @@
           "settings.thinkingMedium": "กลาง",
           "settings.thinkingHigh": "สูง",
           "settings.stream": "เปิดการตอบแบบ streaming (เตรียมรองรับ)",
+          "settings.discordTitle": "Discord bot",
+          "settings.discordHint": "ให้ bot รับข้อความจาก Discord แล้วตอบด้วย provider/model หลักของระบบ",
+          "settings.discordEnable": "เปิดใช้งาน Discord bot",
+          "settings.discordToken": "Bot token",
+          "settings.discordTokenPlaceholder": "เว้นว่างเพื่อใช้ token เดิม",
+          "settings.discordPrefix": "Prefix",
           "settings.save": "บันทึกการตั้งค่า",
           "settings.test": "ทดสอบการเชื่อมต่อ",
           "settings.reset": "รีเซ็ต",
@@ -2402,6 +2427,12 @@
           "settings.thinkingMedium": "Medium",
           "settings.thinkingHigh": "High",
           "settings.stream": "Enable streaming responses (preview)",
+          "settings.discordTitle": "Discord bot",
+          "settings.discordHint": "Let the bot receive Discord messages and answer with the app's main provider/model.",
+          "settings.discordEnable": "Enable Discord bot",
+          "settings.discordToken": "Bot token",
+          "settings.discordTokenPlaceholder": "Leave blank to keep the current token",
+          "settings.discordPrefix": "Prefix",
           "settings.save": "Save settings",
           "settings.test": "Test connection",
           "settings.reset": "Reset",
@@ -3289,6 +3320,12 @@
         $("chat-thinking-level").value = s.thinking_level ?? "off";
         $("stream").checked = !!s.stream;
         $("fallback_enabled").checked = !!s.fallback_enabled;
+        $("discord_enabled").checked = !!s.discord_enabled;
+        $("discord_prefix").value = s.discord_prefix ?? "!ai";
+        $("discord_token").value = "";
+        $("discord_token_hint").textContent = s.has_discord_token
+          ? "มี token แล้ว — เว้นว่างเพื่อคงค่าเดิม"
+          : "ยังไม่มี token — ใส่ token จาก Discord Developer Portal";
         updateFallbackModelOptions([], s.fallback_model ?? "");
         $("api_key").value = "";
         updateApiKeyHint($("provider").value);
@@ -3321,6 +3358,9 @@
           stream: $("stream").checked,
           fallback_enabled: $("fallback_enabled").checked,
           fallback_model: $("fallback_model_select").value,
+          discord_enabled: $("discord_enabled").checked,
+          discord_token: $("discord_token").value,
+          discord_prefix: $("discord_prefix").value,
         };
         const r = await fetch("/api/settings", {
           method: "PUT",

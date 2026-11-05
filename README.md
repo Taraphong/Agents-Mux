@@ -38,6 +38,17 @@ For detailed requirements and development guidelines, read **[AGENTS.md](AGENTS.
 - Paths are restricted to the project directory, excluding `.env`, `.app-settings.json`, `history/`, `.venv/`, and `.git/`.
 - Allowed commands are limited to `pwd`, `ls`, `git status|diff|log`, and `python -m py_compile app.py`.
 
+### Discord bot
+
+The app can run a Discord bot beside Flask and use the configured provider/model to answer messages.
+
+1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Enable **Message Content Intent**, then invite the bot with the `bot` scope and permission to send messages.
+3. In the web Settings page, enter the bot token, enable Discord, and save.
+4. Mention the bot or send `!ai your message` in Discord. The prefix can be changed in Settings.
+
+The token is stored server-side in `.app-settings.json`, which is ignored by Git. Alternatively, set `DISCORD_BOT_TOKEN` and `DISCORD_BOT_PREFIX` in `.env`.
+
 ### Scheduler
 
 Scheduled jobs run while the server is running. Set `AI_WEB_ENABLE_SCHEDULER=1` to enable the scheduler for WSGI deployments.

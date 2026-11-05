@@ -36,6 +36,17 @@ python app.py
 - Path ถูกจำกัดในโฟลเดอร์โปรเจกต์ ไม่รวม `.env`, `.app-settings.json`, `history/`, `.venv/`, และ `.git/`
 - รันคำสั่งได้เฉพาะ `pwd`, `ls`, `git status|diff|log` และ `python -m py_compile app.py`
 
+### Discord bot
+
+ระบบรองรับการรัน Discord bot ร่วมกับเว็บแชต โดยใช้ provider และ model หลักจาก Settings เดียวกัน
+
+1. สร้าง Application/Bot ใน [Discord Developer Portal](https://discord.com/developers/applications)
+2. เปิด **Message Content Intent** ในหน้า Bot และเชิญ bot เข้า server ด้วย scope `bot` และสิทธิ์ส่งข้อความ
+3. ไปที่ Settings ในเว็บ ใส่ Bot token เปิดใช้งาน Discord bot แล้วกดบันทึก
+4. ใน Discord ให้ mention bot หรือพิมพ์ `!ai ข้อความของคุณ` (เปลี่ยน prefix ได้ใน Settings)
+
+Token จะถูกเก็บไว้ฝั่งเซิร์ฟเวอร์ใน `.app-settings.json` ซึ่งไม่ถูก commit เข้า Git หรือจะตั้ง `DISCORD_BOT_TOKEN` และ `DISCORD_BOT_PREFIX` ใน `.env` ก็ได้
+
 ### Scheduler
 
 งานตามเวลาจะทำงานเมื่อเซิร์ฟเวอร์เปิดอยู่ ใช้ `AI_WEB_ENABLE_SCHEDULER=1` เพื่อเปิดใช้งาน scheduler สำหรับการ deploy แบบ WSGI

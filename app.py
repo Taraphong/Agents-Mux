@@ -85,6 +85,8 @@ DEFAULT_SETTINGS = {
     "thinking_level": "off",
     "fallback_enabled": False,
     "fallback_model": os.getenv("AI_FALLBACK_MODEL", ""),
+    "discord_enabled": bool(os.getenv("DISCORD_BOT_TOKEN", "").strip()),
+    "discord_prefix": os.getenv("DISCORD_BOT_PREFIX", "!ai"),
 }
 
 FALLBACK_MODELS = {
@@ -102,6 +104,13 @@ PROVIDER_ENV_KEYS = {
 }
 STATUS_CACHE_TTL = 300
 STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
+DISCORD_CONTEXTS: dict[str, deque[dict[str, str]]] = {}
+DISCORD_CONTEXT_LOCK = threading.Lock()
+DISCORD_BOT: Any = None
+DISCORD_THREAD: threading.Thread | None = None
+DISCORD_LOOP: Any = None
+DISCORD_TOKEN_FINGERPRINT = ""
 
 
 def normalize_provider(value: Any) -> str:
@@ -840,6 +849,112 @@ def call_provider(messages: list[dict[str, str]], settings: dict[str, Any]) -> t
     return call_openai(messages, settings)
 
 
+def get_discord_token(settings: dict[str, Any] | None = None) -> str:
+    settings = settings if settings is not None else load_settings()
+    configured = str(settings.get("discord_token") or "").strip()
+    return configured or os.getenv("DISCORD_BOT_TOKEN", "").strip()
+
+
+def discord_status() -> dict[str, Any]:
+    token = get_discord_token()
+    return {
+        "enabled": bool(load_settings().get("discord_enabled")),
+        "configured": bool(token),
+        "connected": bool(DISCORD_BOT and getattr(DISCORD_BOT, "is_ready", lambda: False)()),
+    }
+
+
+def split_discord_message(text: str, limit: int = 2000) -> list[str]:
+    text = str(text or "")
+    return [text[index:index + limit] for index in range(0, len(text), limit)] or ["(ไม่มีข้อความตอบกลับ)"]
+
+
+def stop_discord_bot() -> None:
+    if DISCORD_BOT is not None and DISCORD_LOOP is not None and not DISCORD_LOOP.is_closed():
+        try:
+            DISCORD_LOOP.call_soon_threadsafe(lambda: __import__("asyncio").create_task(DISCORD_BOT.close()))
+        except RuntimeError:
+            pass
+
+
+def start_discord_bot() -> None:
+    """Run the optional Discord client in a daemon thread beside Flask."""
+    global DISCORD_BOT, DISCORD_THREAD, DISCORD_LOOP, DISCORD_TOKEN_FINGERPRINT
+    settings = load_settings()
+    token = get_discord_token(settings)
+    if not settings.get("discord_enabled") or not token:
+        return
+    if DISCORD_THREAD and DISCORD_THREAD.is_alive() and DISCORD_TOKEN_FINGERPRINT == key_fingerprint(token):
+        return
+    if DISCORD_THREAD and DISCORD_THREAD.is_alive():
+        stop_discord_bot()
+    try:
+        import discord
+    except ImportError:
+        log_event("discord.error", "ยังไม่ได้ติดตั้ง discord.py")
+        return
+
+    intents = discord.Intents.default()
+    intents.message_content = True
+    prefix = str(settings.get("discord_prefix") or "!ai").strip() or "!ai"
+
+    class AIClient(discord.Client):
+        async def on_ready(self) -> None:
+            log_event("discord.connected", "เชื่อมต่อ Discord bot แล้ว", user=str(self.user))
+
+        async def on_message(self, message: Any) -> None:
+            if message.author == self.user:
+                return
+            content = str(message.content or "").strip()
+            mentioned = self.user and self.user in message.mentions
+            if mentioned:
+                content = re.sub(rf"<@!?{self.user.id}>", "", content).strip()
+            elif content.lower().startswith(prefix.lower()):
+                content = content[len(prefix):].strip()
+            elif message.guild is not None:
+                return
+            if not content:
+                await message.reply(f"พิมพ์ข้อความหลัง {prefix} หรือ mention bot เพื่อเริ่มคุยได้เลยครับ")
+                return
+
+            context_key = str(message.channel.id)
+            with DISCORD_CONTEXT_LOCK:
+                context = DISCORD_CONTEXTS.setdefault(context_key, deque(maxlen=12))
+                context.append({"role": "user", "content": content})
+                messages = list(context)
+            try:
+                settings_for_chat = load_settings()
+                messages = clean_messages(messages, settings_for_chat)
+                answer, _usage = await __import__("asyncio").to_thread(call_provider, messages, settings_for_chat)
+                with DISCORD_CONTEXT_LOCK:
+                    DISCORD_CONTEXTS[context_key].append({"role": "assistant", "content": answer})
+                for chunk in split_discord_message(answer):
+                    await message.reply(chunk, mention_author=False)
+                log_event("discord.message", "ตอบข้อความจาก Discord แล้ว", channel=message.channel.id)
+            except Exception as exc:
+                log_event("discord.error", "ตอบข้อความจาก Discord ไม่สำเร็จ", error=str(exc))
+                await message.reply("ขออภัยครับ ตอนนี้เรียก AI ไม่สำเร็จ กรุณาตรวจสอบการตั้งค่าในเว็บ")
+
+    client = AIClient(intents=intents)
+    DISCORD_BOT = client
+    DISCORD_TOKEN_FINGERPRINT = key_fingerprint(token)
+
+    def run_client() -> None:
+        global DISCORD_LOOP
+        import asyncio
+        DISCORD_LOOP = asyncio.new_event_loop()
+        asyncio.set_event_loop(DISCORD_LOOP)
+        try:
+            DISCORD_LOOP.run_until_complete(client.start(token))
+        except Exception as exc:
+            log_event("discord.error", "Discord bot หยุดทำงาน", error=str(exc))
+        finally:
+            DISCORD_LOOP.close()
+
+    DISCORD_THREAD = threading.Thread(target=run_client, name="discord-bot", daemon=True)
+    DISCORD_THREAD.start()
+
+
 @app.get("/api/tools")
 def tools_get():
     return jsonify({
@@ -955,11 +1070,15 @@ def settings_get():
     settings = load_settings()
     provider = normalize_provider(settings.get("provider"))
     key = get_api_key(provider, settings)
-    safe = {key_: value for key_, value in settings.items() if key_ not in {"api_keys", "api_key"}}
+    safe = {key_: value for key_, value in settings.items() if key_ not in {"api_keys", "api_key", "discord_token"}}
     safe["provider"] = provider
     safe["api_key"] = "" if not key else "••••••••"
     safe["has_api_key"] = bool(key)
     safe["key_providers"] = [name for name in PROVIDERS if key_is_configured(name, settings)]
+    discord_token = get_discord_token(settings)
+    safe["discord_token"] = "••••••••" if discord_token else ""
+    safe["has_discord_token"] = bool(discord_token)
+    safe["discord_status"] = discord_status()
     return jsonify(safe)
 
 
@@ -1049,13 +1168,18 @@ def models_get():
 def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
-    allowed = {"provider", "model", "base_url", "system_prompt", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model"}
+    allowed = {"provider", "model", "base_url", "system_prompt", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
     current["provider"] = normalize_provider(current.get("provider"))
     current["fallback_enabled"] = bool(current.get("fallback_enabled"))
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
+    current["discord_enabled"] = bool(current.get("discord_enabled"))
+    current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
+    discord_token = body.get("discord_token")
+    if isinstance(discord_token, str) and discord_token.strip() and discord_token != "••••••••":
+        current["discord_token"] = discord_token.strip()
     new_key = body.get("api_key")
     if isinstance(new_key, str) and new_key.strip() and new_key != "••••••••":
         keys = stored_api_keys(current)
@@ -1064,6 +1188,10 @@ def settings_put():
     current.pop("api_key", None)
     save_settings(current)
     STATUS_CACHE.clear()
+    if current.get("discord_enabled"):
+        start_discord_bot()
+    else:
+        stop_discord_bot()
     return jsonify({"ok": True, "provider": current["provider"], "has_api_key": key_is_configured(current["provider"], current)})
 
 
@@ -1175,5 +1303,6 @@ if os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower() in {"1", "true", "ye
 
 if __name__ == "__main__":
     start_scheduler()
+    start_discord_bot()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 
