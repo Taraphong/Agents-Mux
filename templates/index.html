@@ -2165,7 +2165,15 @@
                     type="button"
                     data-i18n="logs.saveFile"
                   >
-                    บันทึกไฟล์
+                    ดาวน์โหลด
+                  </button>
+                  <button
+                    id="delete-logs"
+                    class="danger"
+                    type="button"
+                    data-i18n="logs.delete"
+                  >
+                    ลบ Log
                   </button>
                   <button
                     id="refresh-logs"
@@ -2317,6 +2325,9 @@
           "logs.hint":
             "ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง API key หรือเนื้อหาไฟล์",
           "logs.saveFile": "บันทึกไฟล์",
+          "logs.delete": "ลบ Log",
+          "logs.deleteConfirm": "ต้องการลบ Log ทั้งหมดถาวรหรือไม่?",
+          "logs.deleteFailed": "ลบไม่สำเร็จ",
           "logs.refresh": "รีเฟรช",
           "logs.loading": "กำลังโหลด...",
           "logs.empty": "ยังไม่มี log",
@@ -2510,6 +2521,9 @@
           "logs.hint":
             "Review recent AI and tool activity without exposing API keys or file contents.",
           "logs.saveFile": "Save file",
+          "logs.delete": "Delete logs",
+          "logs.deleteConfirm": "Delete all logs permanently?",
+          "logs.deleteFailed": "Delete failed",
           "logs.refresh": "Refresh",
           "logs.loading": "Loading...",
           "logs.empty": "No logs yet",
@@ -2851,6 +2865,26 @@
           setTimeout(() => {
             button.textContent = t("logs.saveFile");
           }, 2500);
+        }
+      });
+      $("delete-logs").addEventListener("click", async () => {
+        if (!window.confirm(t("logs.deleteConfirm"))) return;
+        const button = $("delete-logs");
+        button.disabled = true;
+        try {
+          const response = await fetch("/api/logs", { method: "DELETE" });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "delete failed");
+          currentLogs = [];
+          logsLoaded = true;
+          renderLogs();
+        } catch (error) {
+          button.textContent = t("logs.deleteFailed");
+          setTimeout(() => {
+            button.textContent = t("logs.delete");
+          }, 2500);
+        } finally {
+          button.disabled = false;
         }
       });
       function resizeInput() {

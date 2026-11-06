@@ -1296,6 +1296,19 @@ def logs_get():
     return jsonify({"items": items})
 
 
+@app.delete("/api/logs")
+def logs_delete():
+    """Delete the persisted log file and clear the in-memory view."""
+    try:
+        with APP_LOG_LOCK:
+            deleted = len(APP_LOGS)
+            APP_LOGS.clear()
+            LOG_FILE.unlink(missing_ok=True)
+    except OSError as exc:
+        return jsonify({"ok": False, "error": f"ลบ log ไม่สำเร็จ: {exc}"}), 500
+    return jsonify({"ok": True, "deleted": deleted})
+
+
 @app.get("/api/schedules")
 def schedules_get():
     return jsonify({"items": load_schedules(), "timezone": datetime.now().astimezone().tzname()})
