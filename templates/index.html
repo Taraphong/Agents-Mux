@@ -255,6 +255,15 @@
         display: flex;
         gap: 8px;
       }
+      .logs-filter {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+      .logs-filter button.active {
+        background: #4f46e5;
+        color: #fff;
+      }
       .logs-list {
         display: block;
         max-height: min(68vh, 720px);
@@ -1964,6 +1973,11 @@
                   ><span>System prompt</span
                   ><textarea id="system_prompt" rows="5"></textarea>
                 </label>
+                <label class="full"
+                  ><span data-i18n="settings.memoryReview">ทบทวนความจำ</span
+                  ><textarea id="memory_review" rows="4" data-i18n-placeholder="settings.memoryReviewPlaceholder" placeholder="กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ"></textarea>
+                  <small class="hint" data-i18n="settings.memoryReviewHint">แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด</small>
+                </label>
                 <label
                   ><span>Temperature <b id="temperature-value">0.7</b></span>
                   <div class="range-row">
@@ -2184,6 +2198,10 @@
                   </button>
                 </div>
               </div>
+              <div class="logs-filter" role="tablist" aria-label="Log type">
+                <button id="logs-system-filter" class="active" type="button" data-logs-filter="system" data-i18n="logs.system">System logs</button>
+                <button id="logs-agent-filter" type="button" data-logs-filter="agent" data-i18n="logs.agent">Agent logs</button>
+              </div>
               <div id="logs-list" class="logs-list">
                 <p class="hint" data-i18n="logs.loading">กำลังโหลด...</p>
               </div>
@@ -2260,6 +2278,9 @@
           "settings.baseUrl": "Base URL (สำหรับ OpenAI-compatible)",
           "settings.apiKeyPlaceholder": "เว้นว่างเพื่อใช้คีย์เดิม",
           "settings.assistantTitle": "พฤติกรรมของผู้ช่วย",
+          "settings.memoryReview": "ทบทวนความจำ",
+          "settings.memoryReviewPlaceholder": "กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ",
+          "settings.memoryReviewHint": "แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด",
           "settings.assistantHint":
             "ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ",
           "settings.thinkingLevel": "ระดับการคิด",
@@ -2322,6 +2343,8 @@
           "schedule.added": "เพิ่มงานตามเวลาแล้ว",
           "schedule.addFailed": "เพิ่มงานไม่สำเร็จ",
           "logs.title": "Log ระบบ",
+          "logs.system": "System logs",
+          "logs.agent": "Agent logs",
           "logs.hint":
             "ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง API key หรือเนื้อหาไฟล์",
           "logs.saveFile": "บันทึกไฟล์",
@@ -2457,6 +2480,9 @@
           "settings.baseUrl": "Base URL (for OpenAI-compatible)",
           "settings.apiKeyPlaceholder": "Leave blank to keep the current key",
           "settings.assistantTitle": "Assistant behavior",
+          "settings.memoryReview": "Memory review",
+          "settings.memoryReviewPlaceholder": "Define what the agent should review before answering",
+          "settings.memoryReviewHint": "This guidance is sent to the agent on every response to preserve context and reduce errors.",
           "settings.assistantHint":
             "Set the system prompt and response parameters.",
           "settings.thinkingLevel": "Thinking level",
@@ -2518,6 +2544,8 @@
           "schedule.added": "Scheduled job added",
           "schedule.addFailed": "Could not add the scheduled job",
           "logs.title": "System logs",
+          "logs.system": "System logs",
+          "logs.agent": "Agent logs",
           "logs.hint":
             "Review recent AI and tool activity without exposing API keys or file contents.",
           "logs.saveFile": "Save file",
@@ -2643,6 +2671,8 @@
       let currentSchedules = [];
       let currentScheduleTimezone = "";
       let currentLogs = [];
+      let logsFilter = "system";
+      const agentLogPrefixes = ["chat.", "tool.", "provider."];
       let logsLoaded = false;
       let logsError = "";
       let emptyConversationMode = "ready";
@@ -2808,18 +2838,21 @@
           list.innerHTML = `<p class="hint">${escapeHtml(t("logs.loading"))}</p>`;
           return;
         }
-        if (!currentLogs.length) {
+        const visibleLogs = logsFilter === "agent"
+          ? currentLogs.filter((item) => agentLogPrefixes.some((prefix) => String(item.event || "").startsWith(prefix)))
+          : currentLogs;
+        if (!visibleLogs.length) {
           list.innerHTML = `<p class="hint">${escapeHtml(t("logs.empty"))}</p>`;
           return;
         }
-        list.innerHTML = currentLogs
+        list.innerHTML = visibleLogs
           .slice()
           .reverse()
           .map((item) => {
             const details = Object.entries(item.details || {})
               .map(([key, value]) => `${key}: ${value}`)
               .join(" · ");
-            const lineNumber = currentLogs.length - currentLogs.indexOf(item);
+            const lineNumber = visibleLogs.length - visibleLogs.indexOf(item);
             return `<div class="log-row ${escapeHtml(item.event || "")}">
               <span class="log-number">${lineNumber}</span>
               <span class="log-command"><span class="log-prompt">$</span> <strong>${escapeHtml(item.event || "event")}</strong> <span class="log-time">${escapeHtml(item.time || "")}</span></span>
@@ -2829,6 +2862,14 @@
           })
           .join("");
       }
+      document.querySelectorAll("[data-logs-filter]").forEach((button) => {
+        button.addEventListener("click", () => {
+          logsFilter = button.dataset.logsFilter;
+          document.querySelectorAll("[data-logs-filter]").forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          renderLogs();
+        });
+      });
       async function loadLogs() {
         logsError = "";
         if (!logsLoaded) renderLogs();
@@ -3376,6 +3417,7 @@
         $("provider").value = s.provider ?? "openai";
         $("base_url").value = s.base_url ?? "";
         $("system_prompt").value = s.system_prompt ?? "";
+        $("memory_review").value = s.memory_review ?? "";
         $("temperature").value = s.temperature ?? 0.7;
         $("max_tokens").value = s.max_tokens ?? 2048;
         $("top_p").value = s.top_p ?? 1;
@@ -3413,6 +3455,7 @@
           model: currentModel(),
           base_url: $("base_url").value,
           system_prompt: $("system_prompt").value,
+          memory_review: $("memory_review").value,
           api_key: $("api_key").value,
           temperature: Number($("temperature").value),
           top_p: Number($("top_p").value),
