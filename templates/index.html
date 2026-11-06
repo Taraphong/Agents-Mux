@@ -1850,7 +1850,16 @@
                       </option>
                       <option value="high" data-i18n="chat.thinkingHigh">
                         คิด: สูง
-                      </option></select
+                    </option></select
+                    ><select
+                      id="chat-command-mode"
+                      title="โหมดการรันคำสั่ง"
+                      data-i18n-title="chat.commandModeTitle"
+                    >
+                      <option value="ask" data-i18n="chat.commandAsk">คำสั่ง: ถามก่อน</option>
+                      <option value="auto" data-i18n="chat.commandAuto">คำสั่ง: อนุมัติอัตโนมัติ</option>
+                      <option value="fast" data-i18n="chat.commandFast">คำสั่ง: Fast+</option>
+                    </select
                     ><select
                       id="chat-model-select"
                       title="เลือกโมเดล"
@@ -2256,6 +2265,10 @@
           "chat.thinkingLow": "คิด: ต่ำ",
           "chat.thinkingMedium": "คิด: กลาง",
           "chat.thinkingHigh": "คิด: สูง",
+          "chat.commandModeTitle": "โหมดการรันคำสั่ง",
+          "chat.commandAsk": "คำสั่ง: ถามก่อน",
+          "chat.commandAuto": "คำสั่ง: อนุมัติอัตโนมัติ",
+          "chat.commandFast": "คำสั่ง: Fast+",
           "chat.modelTitle": "เลือกโมเดล",
           "chat.modelLoading": "กำลังโหลดโมเดล...",
           "chat.send": "ส่ง",
@@ -2458,6 +2471,10 @@
           "chat.thinkingLow": "Thinking: Low",
           "chat.thinkingMedium": "Thinking: Medium",
           "chat.thinkingHigh": "Thinking: High",
+          "chat.commandModeTitle": "Command execution mode",
+          "chat.commandAsk": "Commands: Ask first",
+          "chat.commandAuto": "Commands: Auto approved",
+          "chat.commandFast": "Commands: Fast+",
           "chat.modelTitle": "Choose model",
           "chat.modelLoading": "Loading models...",
           "chat.send": "Send",
@@ -3018,6 +3035,7 @@
             body: JSON.stringify({
               messages,
               thinking_level: $("chat-thinking-level").value,
+              command_mode: $("chat-command-mode").value,
               model: $("chat-model-select").value,
             }),
           });
