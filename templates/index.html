@@ -255,6 +255,15 @@
         display: flex;
         gap: 8px;
       }
+      .logs-filter {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+      .logs-filter button.active {
+        background: #4f46e5;
+        color: #fff;
+      }
       .logs-list {
         display: block;
         max-height: min(68vh, 720px);
@@ -2184,6 +2193,10 @@
                   </button>
                 </div>
               </div>
+              <div class="logs-filter" role="tablist" aria-label="Log type">
+                <button id="logs-system-filter" class="active" type="button" data-logs-filter="system" data-i18n="logs.system">System logs</button>
+                <button id="logs-agent-filter" type="button" data-logs-filter="agent" data-i18n="logs.agent">Agent logs</button>
+              </div>
               <div id="logs-list" class="logs-list">
                 <p class="hint" data-i18n="logs.loading">กำลังโหลด...</p>
               </div>
@@ -2322,6 +2335,8 @@
           "schedule.added": "เพิ่มงานตามเวลาแล้ว",
           "schedule.addFailed": "เพิ่มงานไม่สำเร็จ",
           "logs.title": "Log ระบบ",
+          "logs.system": "System logs",
+          "logs.agent": "Agent logs",
           "logs.hint":
             "ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง API key หรือเนื้อหาไฟล์",
           "logs.saveFile": "บันทึกไฟล์",
@@ -2518,6 +2533,8 @@
           "schedule.added": "Scheduled job added",
           "schedule.addFailed": "Could not add the scheduled job",
           "logs.title": "System logs",
+          "logs.system": "System logs",
+          "logs.agent": "Agent logs",
           "logs.hint":
             "Review recent AI and tool activity without exposing API keys or file contents.",
           "logs.saveFile": "Save file",
@@ -2643,6 +2660,8 @@
       let currentSchedules = [];
       let currentScheduleTimezone = "";
       let currentLogs = [];
+      let logsFilter = "system";
+      const agentLogPrefixes = ["chat.", "tool.", "provider."];
       let logsLoaded = false;
       let logsError = "";
       let emptyConversationMode = "ready";
@@ -2808,18 +2827,21 @@
           list.innerHTML = `<p class="hint">${escapeHtml(t("logs.loading"))}</p>`;
           return;
         }
-        if (!currentLogs.length) {
+        const visibleLogs = logsFilter === "agent"
+          ? currentLogs.filter((item) => agentLogPrefixes.some((prefix) => String(item.event || "").startsWith(prefix)))
+          : currentLogs;
+        if (!visibleLogs.length) {
           list.innerHTML = `<p class="hint">${escapeHtml(t("logs.empty"))}</p>`;
           return;
         }
-        list.innerHTML = currentLogs
+        list.innerHTML = visibleLogs
           .slice()
           .reverse()
           .map((item) => {
             const details = Object.entries(item.details || {})
               .map(([key, value]) => `${key}: ${value}`)
               .join(" · ");
-            const lineNumber = currentLogs.length - currentLogs.indexOf(item);
+            const lineNumber = visibleLogs.length - visibleLogs.indexOf(item);
             return `<div class="log-row ${escapeHtml(item.event || "")}">
               <span class="log-number">${lineNumber}</span>
               <span class="log-command"><span class="log-prompt">$</span> <strong>${escapeHtml(item.event || "event")}</strong> <span class="log-time">${escapeHtml(item.time || "")}</span></span>
@@ -2829,6 +2851,14 @@
           })
           .join("");
       }
+      document.querySelectorAll("[data-logs-filter]").forEach((button) => {
+        button.addEventListener("click", () => {
+          logsFilter = button.dataset.logsFilter;
+          document.querySelectorAll("[data-logs-filter]").forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          renderLogs();
+        });
+      });
       async function loadLogs() {
         logsError = "";
         if (!logsLoaded) renderLogs();
