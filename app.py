@@ -1028,7 +1028,25 @@ def start_discord_bot() -> None:
             f"เปิดแชทใหม่แล้วครับ ประวัติขึ้นบนเว็บทันที (ID: `{record['id'][:8]}`)"
         )
 
+    async def model_autocomplete(interaction: Any, current_text: str) -> list[Any]:
+        settings = load_settings()
+        selected = getattr(getattr(interaction, "namespace", None), "provider", settings.get("provider", "openai"))
+        selected_provider = selected.value if hasattr(selected, "value") else selected
+        selected_provider = normalize_provider(selected_provider)
+        try:
+            models = await asyncio.to_thread(list_models, selected_provider, settings)
+            names = [str(item.get("id", "")) for item in models if item.get("id")]
+        except Exception:
+            names = FALLBACK_MODELS.get(selected_provider, [])
+        query = str(current_text or "").strip().lower()
+        return [
+            discord.app_commands.Choice(name=name[:100], value=name[:100])
+            for name in names
+            if not query or query in name.lower()
+        ][:25]
+
     @command_tree.command(name="models", description="เปลี่ยน provider และ model ของ AI agent")
+    @discord.app_commands.autocomplete(model=model_autocomplete)
     @discord.app_commands.choices(provider=[
         discord.app_commands.Choice(name="OpenAI / compatible", value="openai"),
         discord.app_commands.Choice(name="Google Gemini", value="gemini"),
@@ -1076,6 +1094,7 @@ def start_discord_bot() -> None:
         await interaction.response.send_message(f"Pong! Discord latency: `{latency_ms} ms`")
 
     @command_tree.command(name="fallback", description="ตั้ง fallback model สำหรับห้อง Discord นี้")
+    @discord.app_commands.autocomplete(model=model_autocomplete)
     async def fallback_command(interaction: Any, model: str | None = None) -> None:
         current = load_settings()
         channel_key = str(interaction.channel_id)
