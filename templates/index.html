@@ -2512,7 +2512,7 @@
                   <button id="delete-skill" type="button" class="danger" data-i18n="settings.deleteSkill">ลบ Skill</button>
                 </div>
                 <label
-                  ><span>Temperature <b id="temperature-value">0.7</b></span>
+                  ><span><span data-i18n="settings.temperatureLabel">Temperature</span> <b id="temperature-value">0.7</b></span>
                   <div class="range-row">
                     <input
                       id="temperature"
@@ -2521,10 +2521,10 @@
                       max="2"
                       step="0.1"
                     /><span class="range-value" id="temp-label">0.7</span>
-                  </div></label
+                  </div><small class="hint" data-i18n="settings.temperatureHint">ค่าต่ำให้คำตอบสม่ำเสมอและคาดเดาง่าย ค่าสูงให้คำตอบหลากหลายขึ้น</small></label
                 >
                 <label
-                  ><span>Top P <b id="top_p-value">1</b></span>
+                  ><span><span data-i18n="settings.topPLabel">Top P</span> <b id="top_p-value">1</b></span>
                   <div class="range-row">
                     <input
                       id="top_p"
@@ -2533,7 +2533,7 @@
                       max="1"
                       step="0.05"
                     /><span class="range-value" id="top-label">1</span>
-                  </div></label
+                  </div><small class="hint" data-i18n="settings.topPHint">เลือกคำจากกลุ่มที่มีความน่าจะเป็นรวมกันตามค่านี้ ค่ายิ่งต่ำยิ่งจำกัดคำที่เลือก</small></label
                 >
                 <label
                   ><span>Max output tokens</span
@@ -2965,6 +2965,10 @@
           "settings.assistantHint":
             "ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ",
           "settings.thinkingLevel": "ระดับการคิด",
+          "settings.temperatureLabel": "Temperature",
+          "settings.temperatureHint": "ค่าต่ำให้คำตอบสม่ำเสมอและคาดเดาง่าย ค่าสูงให้คำตอบหลากหลายขึ้น",
+          "settings.topPLabel": "Top P",
+          "settings.topPHint": "เลือกคำจากกลุ่มที่มีความน่าจะเป็นรวมกันตามค่านี้ ค่ายิ่งต่ำยิ่งจำกัดคำที่เลือก",
           "settings.thinkingOff": "ปิด",
           "settings.thinkingLow": "ต่ำ",
           "settings.thinkingMedium": "กลาง",
@@ -3274,6 +3278,10 @@
           "settings.assistantHint":
             "Set the system prompt and response parameters.",
           "settings.thinkingLevel": "Thinking level",
+          "settings.temperatureLabel": "Temperature",
+          "settings.temperatureHint": "Lower values make answers steadier; higher values make them more varied.",
+          "settings.topPLabel": "Top P",
+          "settings.topPHint": "Select from the smallest high-probability token group whose total probability reaches this value.",
           "settings.thinkingOff": "Off",
           "settings.thinkingLow": "Low",
           "settings.thinkingMedium": "Medium",
