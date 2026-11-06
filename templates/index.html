@@ -1330,6 +1330,14 @@
         color: var(--muted);
         font-size: 1.1rem;
       }
+      .theme-toggle {
+        display: inline-grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        flex: 0 0 auto;
+      }
       .header-icon:hover {
         color: var(--text);
         background: rgba(255, 255, 255, 0.05);
@@ -1837,8 +1845,11 @@
           display: none;
         }
         .header-divider,
-        .header-icon {
+        .header-icon:not(.theme-toggle) {
           display: none;
+        }
+        .theme-toggle {
+          display: inline-grid;
         }
         .assistant-shell {
           gap: 8px;
