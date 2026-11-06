@@ -1973,6 +1973,11 @@
                   ><span>System prompt</span
                   ><textarea id="system_prompt" rows="5"></textarea>
                 </label>
+                <label class="full"
+                  ><span data-i18n="settings.memoryReview">ทบทวนความจำ</span
+                  ><textarea id="memory_review" rows="4" data-i18n-placeholder="settings.memoryReviewPlaceholder" placeholder="กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ"></textarea>
+                  <small class="hint" data-i18n="settings.memoryReviewHint">แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด</small>
+                </label>
                 <label
                   ><span>Temperature <b id="temperature-value">0.7</b></span>
                   <div class="range-row">
@@ -2273,6 +2278,9 @@
           "settings.baseUrl": "Base URL (สำหรับ OpenAI-compatible)",
           "settings.apiKeyPlaceholder": "เว้นว่างเพื่อใช้คีย์เดิม",
           "settings.assistantTitle": "พฤติกรรมของผู้ช่วย",
+          "settings.memoryReview": "ทบทวนความจำ",
+          "settings.memoryReviewPlaceholder": "กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ",
+          "settings.memoryReviewHint": "แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด",
           "settings.assistantHint":
             "ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ",
           "settings.thinkingLevel": "ระดับการคิด",
@@ -2472,6 +2480,9 @@
           "settings.baseUrl": "Base URL (for OpenAI-compatible)",
           "settings.apiKeyPlaceholder": "Leave blank to keep the current key",
           "settings.assistantTitle": "Assistant behavior",
+          "settings.memoryReview": "Memory review",
+          "settings.memoryReviewPlaceholder": "Define what the agent should review before answering",
+          "settings.memoryReviewHint": "This guidance is sent to the agent on every response to preserve context and reduce errors.",
           "settings.assistantHint":
             "Set the system prompt and response parameters.",
           "settings.thinkingLevel": "Thinking level",
@@ -3406,6 +3417,7 @@
         $("provider").value = s.provider ?? "openai";
         $("base_url").value = s.base_url ?? "";
         $("system_prompt").value = s.system_prompt ?? "";
+        $("memory_review").value = s.memory_review ?? "";
         $("temperature").value = s.temperature ?? 0.7;
         $("max_tokens").value = s.max_tokens ?? 2048;
         $("top_p").value = s.top_p ?? 1;
@@ -3443,6 +3455,7 @@
           model: currentModel(),
           base_url: $("base_url").value,
           system_prompt: $("system_prompt").value,
+          memory_review: $("memory_review").value,
           api_key: $("api_key").value,
           temperature: Number($("temperature").value),
           top_p: Number($("top_p").value),

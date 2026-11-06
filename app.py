@@ -109,6 +109,7 @@ DEFAULT_SETTINGS = {
     "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
     "base_url": "https://api.openai.com/v1",
     "system_prompt": "คุณเป็นผู้ช่วย AI ที่สุภาพ ชัดเจน และช่วยผู้ใช้ให้บรรลุเป้าหมาย",
+    "memory_review": "ก่อนตอบ ให้ทบทวนบทสนทนาก่อนหน้าเพื่อรักษาความต่อเนื่อง ตรวจสอบข้อเท็จจริงและงานที่ค้างอยู่ หากข้อมูลขัดแย้งกันให้ถามผู้ใช้ และอย่าเปิดเผยกระบวนการคิดภายใน",
     "temperature": 0.7,
     "max_tokens": 2048,
     "top_p": 1,
@@ -1477,7 +1478,7 @@ def models_get():
 def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
-    allowed = {"provider", "model", "base_url", "system_prompt", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix"}
+    allowed = {"provider", "model", "base_url", "system_prompt", "memory_review", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -1552,7 +1553,13 @@ def chat():
         requested_model = body.get("model")
         if isinstance(requested_model, str) and requested_model.strip():
             settings["model"] = requested_model.strip()
-        settings["system_prompt"] = f"{settings.get('system_prompt', '')}\n\n{TOOL_INSTRUCTIONS}"
+        settings["system_prompt"] = "\n\n".join(
+            part for part in (
+                settings.get("system_prompt", ""),
+                f"แนวทางทบทวนความจำ:\n{settings.get('memory_review', '')}" if settings.get("memory_review") else "",
+                TOOL_INSTRUCTIONS,
+            ) if part
+        )
         provider = str(settings.get("provider", "openai")).lower()
         messages = clean_messages(messages, settings)
         started_at = time.perf_counter()
