@@ -115,6 +115,7 @@ DEFAULT_SETTINGS = {
     "top_p": 1,
     "stream": False,
     "thinking_level": "off",
+    "command_mode": "ask",
     "fallback_enabled": False,
     "fallback_model": os.getenv("AI_FALLBACK_MODEL", ""),
     "discord_enabled": bool(os.getenv("DISCORD_BOT_TOKEN", "").strip()),
@@ -1553,6 +1554,9 @@ def chat():
         requested_model = body.get("model")
         if isinstance(requested_model, str) and requested_model.strip():
             settings["model"] = requested_model.strip()
+        command_mode = body.get("command_mode", settings.get("command_mode", "ask"))
+        if command_mode not in {"ask", "auto", "fast"}:
+            command_mode = "ask"
         settings["system_prompt"] = "\n\n".join(
             part for part in (
                 settings.get("system_prompt", ""),
@@ -1583,6 +1587,13 @@ def chat():
         if tool_request:
             if tool_request["name"] in {"list_files", "read_file"}:
                 result = run_local_tool(tool_request["name"], tool_request["arguments"])
+                messages.extend([
+                    {"role": "assistant", "content": answer},
+                    {"role": "user", "content": f"ผลการใช้เครื่องมือ:\n{json.dumps(result, ensure_ascii=False)}"},
+                ])
+                answer, usage = call_provider(messages, settings)
+            elif command_mode in {"auto", "fast"}:
+                result = run_local_tool(tool_request["name"], tool_request["arguments"], approved=True)
                 messages.extend([
                     {"role": "assistant", "content": answer},
                     {"role": "user", "content": f"ผลการใช้เครื่องมือ:\n{json.dumps(result, ensure_ascii=False)}"},
