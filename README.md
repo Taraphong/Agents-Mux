@@ -47,7 +47,9 @@ The app can run a Discord bot beside Flask and use the configured provider/model
 3. In the web Settings page, enter the bot token, enable Discord, and save.
 4. Mention the bot or send `!ai your message` in Discord. The prefix can be changed in Settings.
 
-Supported slash commands: `/ai` to send work to the agent, `/models` to change provider/model, `/clear` to clear channel context, `/thread` to create a topic thread, `/fallback` to set a channel-specific fallback, `/ping` to check server latency, and `/help` to list commands.
+Supported slash commands: `/ai` to send work to the agent, `/new` to create a new chat and web history immediately, `/models` to change provider/model and show availability, `/model` to show the active model and status, `/clear` to clear channel context, `/thread` to create a topic thread, `/fallback` to set a channel-specific fallback and show its status, `/ping` to check server latency, and `/help` to list commands.
+
+Changing the provider/model and setting a fallback require server administrator permission. Use `/invite` to generate an invite link with Administrator permission; a user with server management permission must open it because a bot cannot grant permissions to itself.
 
 The token is stored server-side in `.app-settings.json`, which is ignored by Git. Alternatively, set `DISCORD_BOT_TOKEN` and `DISCORD_BOT_PREFIX` in `.env`.
 
