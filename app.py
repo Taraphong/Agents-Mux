@@ -23,9 +23,10 @@ from flask import Flask, jsonify, render_template, request
 load_dotenv()
 
 app = Flask(__name__)
-APP_LOGS: deque[dict[str, Any]] = deque(maxlen=300)
+APP_LOGS: list[dict[str, Any]] = []
 APP_LOG_LOCK = threading.Lock()
 LOGGER = logging.getLogger("ai-web")
+LOG_FILE = Path(os.getenv("AI_WEB_LOG_FILE", "logs/app-log.jsonl"))
 SETTINGS_FILE = Path(os.getenv("AI_WEB_SETTINGS_FILE", ".app-settings.json"))
 HISTORY_ROOT = Path(os.getenv("AI_WEB_HISTORY_DIR", "history"))
 SCHEDULE_FILE = Path(os.getenv("AI_WEB_SCHEDULE_FILE", "scheduled-jobs.json"))
@@ -57,8 +58,25 @@ TOOL_INSTRUCTIONS = """
 TOOL_ALIASES = {"execute_command": "run_command"}
 
 
+def load_persisted_logs() -> None:
+    """Restore the append-only diagnostic trail after a server restart."""
+    if not LOG_FILE.exists():
+        return
+    try:
+        with LOG_FILE.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(record, dict):
+                    APP_LOGS.append(record)
+    except OSError as exc:
+        LOGGER.warning("อ่านไฟล์ log ถาวรไม่สำเร็จ: %s", exc)
+
+
 def log_event(event: str, message: str, **details: Any) -> None:
-    """Keep a small, UI-readable diagnostic trail without storing secrets."""
+    """Append a UI-readable diagnostic record without storing secrets."""
     safe_details = {}
     for key, value in details.items():
         if key.lower() in {"api_key", "authorization", "token", "content"}:
@@ -70,9 +88,21 @@ def log_event(event: str, message: str, **details: Any) -> None:
         "message": str(message)[:500],
         "details": safe_details,
     }
-    with APP_LOG_LOCK:
-        APP_LOGS.append(record)
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        serialized = json.dumps(record, ensure_ascii=False) + "\n"
+        with APP_LOG_LOCK:
+            with LOG_FILE.open("a", encoding="utf-8") as handle:
+                handle.write(serialized)
+            APP_LOGS.append(record)
+    except OSError as exc:
+        LOGGER.warning("บันทึก log ถาวรไม่สำเร็จ: %s", exc)
+        with APP_LOG_LOCK:
+            APP_LOGS.append(record)
     LOGGER.info("%s: %s", event, message)
+
+
+load_persisted_logs()
 
 DEFAULT_SETTINGS = {
     "provider": os.getenv("AI_PROVIDER", "openai"),
