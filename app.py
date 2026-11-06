@@ -32,6 +32,7 @@ HISTORY_ROOT = Path(os.getenv("AI_WEB_HISTORY_DIR", "history"))
 SCHEDULE_FILE = Path(os.getenv("AI_WEB_SCHEDULE_FILE", "scheduled-jobs.json"))
 SCHEDULE_LOCK = threading.Lock()
 PROJECT_ROOT = Path(__file__).resolve().parent
+SKILLS_ROOT = Path(os.getenv("AI_WEB_SKILLS_DIR", "skills"))
 TOOL_MAX_READ_BYTES = 200_000
 TOOL_MAX_WRITE_BYTES = 200_000
 PENDING_TOOL_REQUESTS: dict[str, dict[str, Any]] = {}
@@ -53,6 +54,7 @@ TOOL_INSTRUCTIONS = """
 หรือ <tool_call>{"name":"list_files","arguments":{"path":"."}}</tool_call>
 หากต้องเขียนไฟล์ ให้ใช้ชื่อ write_file และหากต้องรันคำสั่ง ให้ใช้ชื่อ run_command (ระบบยอมรับ execute_command เป็นชื่อเก่าด้วย) ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
 ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ
+หากต้องสร้างหรือปรับปรุงสกิล ให้ใช้เครื่องมือ create_skill พร้อมชื่อไฟล์ .md และเนื้อหาสกิลที่ชัดเจน ระบบจะจำกัดการเขียนไว้ในโฟลเดอร์ skills เท่านั้น
 """.strip()
 
 TOOL_ALIASES = {"execute_command": "run_command"}
@@ -73,6 +75,32 @@ def load_persisted_logs() -> None:
                     APP_LOGS.append(record)
     except OSError as exc:
         LOGGER.warning("อ่านไฟล์ log ถาวรไม่สำเร็จ: %s", exc)
+
+
+def skill_path(name: str) -> Path:
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(name).strip().lower()).strip("-")
+    if not safe_name:
+        raise ValueError("ชื่อสกิลไม่ถูกต้อง")
+    return (PROJECT_ROOT / SKILLS_ROOT / f"{safe_name}.md").resolve()
+
+
+def list_skills() -> list[dict[str, str]]:
+    root = (PROJECT_ROOT / SKILLS_ROOT).resolve()
+    if not root.exists():
+        return []
+    items = []
+    for path in sorted(root.glob("*.md")):
+        items.append({"name": path.stem, "content": path.read_text(encoding="utf-8")[:20_000]})
+    return items
+
+
+def selected_skill_prompt(settings: dict[str, Any]) -> str:
+    selected = settings.get("skills", [])
+    if not isinstance(selected, list):
+        return ""
+    by_name = {item["name"]: item["content"] for item in list_skills()}
+    blocks = [f"## Skill: {name}\n{by_name[name]}" for name in selected if name in by_name]
+    return "แนวทางจาก Skills ที่เลือก:\n\n" + "\n\n".join(blocks) if blocks else ""
 
 
 def log_event(event: str, message: str, **details: Any) -> None:
@@ -446,6 +474,19 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
     if requested_name != name:
         log_event("tool.alias", f"แปลงชื่อ tool {requested_name} เป็น {name}", requested=requested_name, tool=name)
     log_event("tool.start", f"เริ่มใช้ {name}", tool=name, approved=approved)
+    if name == "create_skill":
+        if not approved:
+            raise PermissionError("การสร้างสกิลต้องได้รับการอนุมัติก่อน")
+        skill_name = arguments.get("name", "")
+        content = arguments.get("content", "")
+        if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
+            raise ValueError("เนื้อหาสกิลไม่ถูกต้องหรือใหญ่เกินขนาดที่อนุญาต")
+        path = skill_path(skill_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content.strip() + "\n", encoding="utf-8")
+        result = {"tool": name, "name": path.stem, "path": str(path.relative_to(PROJECT_ROOT))}
+        log_event("tool.success", f"สร้างสกิล {path.stem} สำเร็จ", tool=name, path=result["path"])
+        return result
     if name == "list_files":
         root = resolve_project_path(arguments.get("path", "."), must_exist=True)
         if not root.is_dir():
@@ -1262,6 +1303,7 @@ def tools_get():
             {"name": "read_file", "approval_required": False},
             {"name": "write_file", "approval_required": True},
             {"name": "run_command", "approval_required": True},
+            {"name": "create_skill", "approval_required": True},
             {"name": "execute_command", "alias_for": "run_command", "approval_required": True},
         ],
     })
@@ -1390,7 +1432,23 @@ def settings_get():
     safe["discord_token"] = "••••••••" if discord_token else ""
     safe["has_discord_token"] = bool(discord_token)
     safe["discord_status"] = discord_status()
+    safe["available_skills"] = [{"name": item["name"]} for item in list_skills()]
     return jsonify(safe)
+
+
+@app.get("/api/skills")
+def skills_get():
+    return jsonify({"items": list_skills()})
+
+
+@app.post("/api/skills")
+def skills_create():
+    body = request.get_json(silent=True) or {}
+    try:
+        result = run_local_tool("create_skill", {"name": body.get("name", ""), "content": body.get("content", "")}, approved=True)
+        return jsonify(result), 201
+    except (OSError, PermissionError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
 
 
 @app.get("/api/status")
@@ -1479,7 +1537,7 @@ def models_get():
 def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
-    allowed = {"provider", "model", "base_url", "system_prompt", "memory_review", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix"}
+    allowed = {"provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -1488,6 +1546,7 @@ def settings_put():
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
     current["discord_enabled"] = bool(current.get("discord_enabled"))
     current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
+    current["skills"] = [str(name) for name in current.get("skills", []) if str(name) in {item["name"] for item in list_skills()}]
     discord_token = body.get("discord_token")
     if isinstance(discord_token, str) and discord_token.strip() and discord_token != "••••••••":
         current["discord_token"] = discord_token.strip()
@@ -1561,6 +1620,7 @@ def chat():
             part for part in (
                 settings.get("system_prompt", ""),
                 f"แนวทางทบทวนความจำ:\n{settings.get('memory_review', '')}" if settings.get("memory_review") else "",
+                selected_skill_prompt(settings),
                 TOOL_INSTRUCTIONS,
             ) if part
         )
