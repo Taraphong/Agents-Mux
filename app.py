@@ -935,6 +935,23 @@ def start_discord_bot() -> None:
     client = AIClient(intents=intents)
     command_tree = discord.app_commands.CommandTree(client)
 
+    def is_server_admin(interaction: Any) -> bool:
+        member = getattr(interaction, "user", None)
+        permissions = getattr(member, "guild_permissions", None)
+        return bool(getattr(permissions, "administrator", False))
+
+    async def require_server_admin(interaction: Any) -> bool:
+        if is_server_admin(interaction):
+            return True
+        await interaction.response.send_message("คำสั่งนี้ใช้ได้เฉพาะผู้ดูแล server เท่านั้นครับ", ephemeral=True)
+        return False
+
+    async def check_model_availability(provider: str, model: str, settings: dict[str, Any]) -> dict[str, Any]:
+        probe_settings = dict(settings)
+        probe_settings["provider"] = provider
+        probe_settings["model"] = model
+        return await asyncio.to_thread(provider_readiness, probe_settings, "th")
+
     async def ask_agent(context_key: str, content: str, channel_title: str = "Discord") -> str:
         """Run one agent turn while keeping a short per-channel conversation."""
         with DISCORD_CONTEXT_LOCK:
@@ -994,6 +1011,23 @@ def start_discord_bot() -> None:
             DISCORD_CONVERSATION_IDS.pop(str(interaction.channel_id), None)
         await interaction.response.send_message("ล้างบริบทการสนทนาของห้องนี้แล้วครับ")
 
+    @command_tree.command(name="new", description="เปิดแชทใหม่และสร้างประวัติใหม่บนเว็บ")
+    async def new_command(interaction: Any) -> None:
+        context_key = str(interaction.channel_id)
+        channel_title = getattr(interaction.channel, "name", "Discord")
+        conversation_id = str(uuid.uuid4())
+        with DISCORD_CONTEXT_LOCK:
+            DISCORD_CONTEXTS.pop(context_key, None)
+            DISCORD_CONVERSATION_IDS[context_key] = conversation_id
+        record = save_history({
+            "id": conversation_id,
+            "title": f"Discord · {channel_title}"[:100],
+            "messages": [],
+        })
+        await interaction.response.send_message(
+            f"เปิดแชทใหม่แล้วครับ ประวัติขึ้นบนเว็บทันที (ID: `{record['id'][:8]}`)"
+        )
+
     @command_tree.command(name="models", description="เปลี่ยน provider และ model ของ AI agent")
     @discord.app_commands.choices(provider=[
         discord.app_commands.Choice(name="OpenAI / compatible", value="openai"),
@@ -1002,23 +1036,38 @@ def start_discord_bot() -> None:
     ])
     async def models_command(interaction: Any, provider: discord.app_commands.Choice[str], model: str | None = None) -> None:
         selected_provider = normalize_provider(provider.value)
+        if model and not await require_server_admin(interaction):
+            return
+        await interaction.response.defer()
         if not model or not model.strip():
             try:
                 current = load_settings()
                 available = await asyncio.to_thread(list_models, selected_provider, current)
+                current_model = current.get("model") if current.get("provider") == selected_provider else ""
                 names = [item["id"] for item in available[:25]]
-                listing = "\n".join(f"• `{name}`" for name in names) or "ไม่พบรายการ model"
-                await interaction.response.send_message(f"Models ของ {PROVIDER_LABELS[selected_provider]}:\n{listing}")
+                listing = "\n".join(
+                    f"• `{name}`{' ← กำลังใช้งาน' if name == current_model else ''} · พร้อมใช้งาน"
+                    for name in names
+                ) or "ไม่พบรายการ model"
+                await interaction.followup.send(
+                    f"Models ของ {PROVIDER_LABELS[selected_provider]} (ตรวจจาก API แล้ว):\n{listing}"
+                )
             except Exception as exc:
-                await interaction.response.send_message(f"ดึงรายการ model ไม่สำเร็จ: {str(exc)[:300]}")
+                names = FALLBACK_MODELS.get(selected_provider, [])
+                listing = "\n".join(f"• `{name}` · ยังยืนยันไม่ได้" for name in names) or "ไม่มีรายการสำรอง"
+                await interaction.followup.send(
+                    f"API ของ {PROVIDER_LABELS[selected_provider]} ใช้งานไม่ได้: {str(exc)[:220]}\nรายการสำรอง:\n{listing}"
+                )
             return
         current = load_settings()
         current["provider"] = selected_provider
         current["model"] = model.strip()[:200]
         save_settings(current)
         STATUS_CACHE.clear()
-        await interaction.response.send_message(
-            f"เปลี่ยน agent เป็น `{PROVIDER_LABELS[selected_provider]}` / `{current['model']}` แล้วครับ"
+        availability = await check_model_availability(selected_provider, current["model"], current)
+        state = "พร้อมใช้งาน" if availability.get("ready") else f"ยังใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
+        await interaction.followup.send(
+            f"เปลี่ยน agent เป็น `{PROVIDER_LABELS[selected_provider]}` / `{current['model']}` แล้วครับ · {state}"
         )
 
     @command_tree.command(name="ping", description="ตรวจสอบความหน่วงของ Discord bot")
@@ -1034,9 +1083,18 @@ def start_discord_bot() -> None:
         if not isinstance(channel_fallbacks, dict):
             channel_fallbacks = {}
         if not model or not model.strip():
+            await interaction.response.defer()
             selected = channel_fallbacks.get(channel_key) or current.get("fallback_model") or "ไม่ได้ตั้งค่า"
-            await interaction.response.send_message(f"Fallback model ของห้องนี้: `{selected}`")
+            if selected == "ไม่ได้ตั้งค่า":
+                await interaction.followup.send("Fallback model ของห้องนี้: ยังไม่ได้ตั้งค่า")
+                return
+            availability = await check_model_availability(current.get("provider", "openai"), selected, current)
+            state = "พร้อมใช้งาน" if availability.get("ready") else f"ใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
+            await interaction.followup.send(f"Fallback model ของห้องนี้: `{selected}` · {state}")
             return
+        if not await require_server_admin(interaction):
+            return
+        await interaction.response.defer()
         if model.strip().lower() in {"off", "none", "ปิด"}:
             channel_fallbacks.pop(channel_key, None)
             message = "ปิด fallback เฉพาะห้องแล้วครับ (จะใช้ค่า fallback หลักถ้ามี)"
@@ -1045,7 +1103,11 @@ def start_discord_bot() -> None:
             message = f"ตั้ง fallback model ของห้องนี้เป็น `{channel_fallbacks[channel_key]}` แล้วครับ"
         current["discord_fallback_models"] = channel_fallbacks
         save_settings(current)
-        await interaction.response.send_message(message)
+        if channel_key in channel_fallbacks:
+            availability = await check_model_availability(current.get("provider", "openai"), channel_fallbacks[channel_key], current)
+            state = "พร้อมใช้งาน" if availability.get("ready") else f"ยังใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
+            message += f" · {state}"
+        await interaction.followup.send(message)
 
     @command_tree.command(name="thread", description="สร้างห้องย่อยสำหรับหัวข้อใหม่")
     async def thread_command(interaction: Any, name: str) -> None:
@@ -1065,16 +1127,42 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="status", description="ตรวจสอบสถานะ AI agent")
     async def status_command(interaction: Any) -> None:
+        await interaction.response.defer()
         current = load_settings()
-        await interaction.response.send_message(
-            f"Discord: เชื่อมต่อแล้ว\nProvider: {current.get('provider', 'openai')}\nModel: {current.get('model', 'ยังไม่ได้เลือก')}"
+        availability = await check_model_availability(
+            current.get("provider", "openai"), current.get("model", ""), current
+        )
+        state = "พร้อมใช้งาน" if availability.get("ready") else f"ใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
+        await interaction.followup.send(
+            f"Discord: เชื่อมต่อแล้ว\nProvider: {current.get('provider', 'openai')}\nModel: {current.get('model', 'ยังไม่ได้เลือก')}\nสถานะ AI: {state}"
         )
 
     @command_tree.command(name="model", description="ดู provider และ model ที่ agent ใช้งาน")
     async def model_command(interaction: Any) -> None:
+        await interaction.response.defer()
         current = load_settings()
+        availability = await check_model_availability(
+            current.get("provider", "openai"), current.get("model", ""), current
+        )
+        state = "พร้อมใช้งาน" if availability.get("ready") else f"ใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
+        await interaction.followup.send(
+            f"Provider: `{current.get('provider', 'openai')}` · Model: `{current.get('model', 'ยังไม่ได้เลือก')}` · {state}"
+        )
+
+    @command_tree.command(name="invite", description="สร้างลิงก์เชิญ bot ด้วยสิทธิ Administrator")
+    async def invite_command(interaction: Any) -> None:
+        if not await require_server_admin(interaction):
+            return
+        permissions = discord.Permissions(administrator=True)
+        url = discord.utils.oauth_url(
+            client.user.id,
+            permissions=permissions,
+            scopes=("bot", "applications.commands"),
+        )
         await interaction.response.send_message(
-            f"Provider: `{current.get('provider', 'openai')}` · Model: `{current.get('model', 'ยังไม่ได้เลือก')}`"
+            "ลิงก์นี้ใช้เชิญหรือเชิญ bot เข้า server ใหม่ด้วยสิทธิ Administrator "
+            "ผู้กดลิงก์ต้องมีสิทธิ์จัดการ server เอง:\n" + url,
+            ephemeral=True,
         )
 
     @command_tree.command(name="help", description="แสดงคำสั่งของ AI agent")
@@ -1082,11 +1170,13 @@ def start_discord_bot() -> None:
         await interaction.response.send_message(
             "คำสั่งของ AI agent:\n"
             "`/ai prompt` ส่งงานหรือคุยกับ AI\n"
+            "`/new` เปิดแชทใหม่และสร้างประวัติบนเว็บ\n"
             "`/clear` ล้างบริบทห้อง\n"
             "`/models` เปลี่ยน provider/model\n"
             "`/ping` ตรวจ latency ของ bot\n"
             "`/thread` สร้างห้องย่อยตามหัวข้อ\n"
             "`/fallback model` ตั้ง fallback เฉพาะห้อง\n"
+            "`/invite` สร้างลิงก์เชิญด้วยสิทธิ Administrator (admin เท่านั้น)\n"
             "`/status` ตรวจสถานะ bot\n"
             "`/model` ดูโมเดลปัจจุบัน\n"
             "`/help` แสดงคำสั่งนี้\n\n"
