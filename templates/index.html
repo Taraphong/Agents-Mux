@@ -256,33 +256,60 @@
         gap: 8px;
       }
       .logs-list {
-        display: grid;
-        gap: 8px;
+        display: block;
+        max-height: min(68vh, 720px);
+        overflow: auto;
+        padding: 14px 16px;
+        background: #080d18;
+        border: 1px solid #263451;
+        border-radius: 8px;
+        box-shadow: inset 0 1px 20px rgba(0, 0, 0, 0.24);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       }
       .log-row {
-        border: 1px solid #2b3958;
-        border-radius: 10px;
-        padding: 10px 12px;
-        background: #111a30;
+        position: relative;
+        display: grid;
+        grid-template-columns: 42px minmax(150px, auto) 1fr;
+        gap: 10px;
+        padding: 4px 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: #d1d5db;
+        line-height: 1.55;
+        word-break: break-word;
       }
       .log-row.error,
       .log-row.failed,
       .log-row.parse_failed {
-        border-color: #9f3b55;
+        color: #fda4af;
       }
       .log-row strong {
-        color: #bfdbfe;
-        margin-right: 8px;
+        color: #67e8f9;
+        font-weight: 600;
       }
       .log-time {
         color: #94a3b8;
         font-size: 0.75rem;
       }
+      .log-prompt {
+        color: #4ade80;
+        user-select: none;
+      }
+      .log-number {
+        color: #475569;
+        text-align: right;
+        user-select: none;
+      }
+      .log-command {
+        min-width: 0;
+      }
+      .log-message {
+        color: #e2e8f0;
+      }
       .log-details {
-        display: block;
-        margin-top: 5px;
+        grid-column: 3;
         color: #a5b4fc;
-        font-family: ui-monospace, SFMono-Regular, monospace;
         font-size: 0.75rem;
         white-space: pre-wrap;
         word-break: break-word;
@@ -2138,7 +2165,15 @@
                     type="button"
                     data-i18n="logs.saveFile"
                   >
-                    บันทึกไฟล์
+                    ดาวน์โหลด
+                  </button>
+                  <button
+                    id="delete-logs"
+                    class="danger"
+                    type="button"
+                    data-i18n="logs.delete"
+                  >
+                    ลบ Log
                   </button>
                   <button
                     id="refresh-logs"
@@ -2290,6 +2325,9 @@
           "logs.hint":
             "ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง API key หรือเนื้อหาไฟล์",
           "logs.saveFile": "บันทึกไฟล์",
+          "logs.delete": "ลบ Log",
+          "logs.deleteConfirm": "ต้องการลบ Log ทั้งหมดถาวรหรือไม่?",
+          "logs.deleteFailed": "ลบไม่สำเร็จ",
           "logs.refresh": "รีเฟรช",
           "logs.loading": "กำลังโหลด...",
           "logs.empty": "ยังไม่มี log",
@@ -2483,6 +2521,9 @@
           "logs.hint":
             "Review recent AI and tool activity without exposing API keys or file contents.",
           "logs.saveFile": "Save file",
+          "logs.delete": "Delete logs",
+          "logs.deleteConfirm": "Delete all logs permanently?",
+          "logs.deleteFailed": "Delete failed",
           "logs.refresh": "Refresh",
           "logs.loading": "Loading...",
           "logs.empty": "No logs yet",
@@ -2778,9 +2819,11 @@
             const details = Object.entries(item.details || {})
               .map(([key, value]) => `${key}: ${value}`)
               .join(" · ");
+            const lineNumber = currentLogs.length - currentLogs.indexOf(item);
             return `<div class="log-row ${escapeHtml(item.event || "")}">
-              <div><strong>${escapeHtml(item.event || "event")}</strong><span class="log-time">${escapeHtml(item.time || "")}</span></div>
-              <div>${escapeHtml(item.message || "")}</div>
+              <span class="log-number">${lineNumber}</span>
+              <span class="log-command"><span class="log-prompt">$</span> <strong>${escapeHtml(item.event || "event")}</strong> <span class="log-time">${escapeHtml(item.time || "")}</span></span>
+              <span class="log-message">${escapeHtml(item.message || "")}</span>
               ${details ? `<span class="log-details">${escapeHtml(details)}</span>` : ""}
             </div>`;
           })
@@ -2822,6 +2865,26 @@
           setTimeout(() => {
             button.textContent = t("logs.saveFile");
           }, 2500);
+        }
+      });
+      $("delete-logs").addEventListener("click", async () => {
+        if (!window.confirm(t("logs.deleteConfirm"))) return;
+        const button = $("delete-logs");
+        button.disabled = true;
+        try {
+          const response = await fetch("/api/logs", { method: "DELETE" });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "delete failed");
+          currentLogs = [];
+          logsLoaded = true;
+          renderLogs();
+        } catch (error) {
+          button.textContent = t("logs.deleteFailed");
+          setTimeout(() => {
+            button.textContent = t("logs.delete");
+          }, 2500);
+        } finally {
+          button.disabled = false;
         }
       });
       function resizeInput() {
