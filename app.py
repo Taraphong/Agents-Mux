@@ -7,6 +7,7 @@ import logging
 import re
 import secrets
 import shlex
+import shutil
 import subprocess
 import threading
 import time
@@ -54,7 +55,7 @@ TOOL_INSTRUCTIONS = """
 หรือ <tool_call>{"name":"list_files","arguments":{"path":"."}}</tool_call>
 หากต้องเขียนไฟล์ ให้ใช้ชื่อ write_file และหากต้องรันคำสั่ง ให้ใช้ชื่อ run_command (ระบบยอมรับ execute_command เป็นชื่อเก่าด้วย) ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
 ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ
-หากต้องสร้างหรือปรับปรุงสกิล ให้ใช้เครื่องมือ create_skill พร้อมชื่อไฟล์ .md และเนื้อหาสกิลที่ชัดเจน ระบบจะจำกัดการเขียนไว้ในโฟลเดอร์ skills เท่านั้น
+หากต้องสร้างหรือปรับปรุงสกิล ให้ใช้เครื่องมือ create_skill พร้อมชื่อสกิลและเนื้อหา SKILL.md ที่ชัดเจน ระบบจะเก็บไว้ในโฟลเดอร์ skills/<ชื่อสกิล>/ และจำกัดการเขียนไว้ในโฟลเดอร์ skills เท่านั้น
 """.strip()
 
 TOOL_ALIASES = {"execute_command": "run_command"}
@@ -77,11 +78,20 @@ def load_persisted_logs() -> None:
         LOGGER.warning("อ่านไฟล์ log ถาวรไม่สำเร็จ: %s", exc)
 
 
-def skill_path(name: str) -> Path:
+def skill_dir(name: str) -> Path:
     safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(name).strip().lower()).strip("-")
     if not safe_name:
         raise ValueError("ชื่อสกิลไม่ถูกต้อง")
-    return (PROJECT_ROOT / SKILLS_ROOT / f"{safe_name}.md").resolve()
+    root = (PROJECT_ROOT / SKILLS_ROOT).resolve()
+    directory = (root / safe_name).resolve()
+    if directory.parent != root:
+        raise ValueError("ชื่อสกิลอยู่นอกโฟลเดอร์ที่อนุญาต")
+    return directory
+
+
+def skill_path(name: str) -> Path:
+    """Return the canonical Agent Skills entrypoint: <skill>/SKILL.md."""
+    return skill_dir(name) / "SKILL.md"
 
 
 def list_skills() -> list[dict[str, str]]:
@@ -89,8 +99,17 @@ def list_skills() -> list[dict[str, str]]:
     if not root.exists():
         return []
     items = []
-    for path in sorted(root.glob("*.md")):
-        items.append({"name": path.stem, "content": path.read_text(encoding="utf-8")[:20_000]})
+    for directory in sorted(root.iterdir()):
+        if not directory.is_dir() or directory.name.startswith("."):
+            continue
+        path = directory / "SKILL.md"
+        if not path.is_file():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")[:20_000]
+        except OSError:
+            continue
+        items.append({"name": directory.name, "content": content})
     return items
 
 
@@ -484,8 +503,8 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         path = skill_path(skill_name)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content.strip() + "\n", encoding="utf-8")
-        result = {"tool": name, "name": path.stem, "path": str(path.relative_to(PROJECT_ROOT))}
-        log_event("tool.success", f"สร้างสกิล {path.stem} สำเร็จ", tool=name, path=result["path"])
+        result = {"tool": name, "name": path.parent.name, "path": str(path.relative_to(PROJECT_ROOT))}
+        log_event("tool.success", f"สร้างสกิล {path.parent.name} สำเร็จ", tool=name, path=result["path"])
         return result
     if name == "list_files":
         root = resolve_project_path(arguments.get("path", "."), must_exist=True)
@@ -1447,7 +1466,7 @@ def skill_get(name: str):
         path = skill_path(name)
         if not path.exists():
             return jsonify({"error": "ไม่พบ Skill"}), 404
-        return jsonify({"name": path.stem, "content": path.read_text(encoding="utf-8")[:20_000]})
+        return jsonify({"name": path.parent.name, "content": path.read_text(encoding="utf-8")[:20_000]})
     except (OSError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -1473,7 +1492,7 @@ def skills_update(name: str):
         if not path.exists():
             return jsonify({"error": "ไม่พบ Skill"}), 404
         path.write_text(content.strip() + "\n", encoding="utf-8")
-        return jsonify({"ok": True, "name": path.stem})
+        return jsonify({"ok": True, "name": path.parent.name})
     except (OSError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -1484,8 +1503,8 @@ def skills_delete(name: str):
         path = skill_path(name)
         if not path.exists():
             return jsonify({"error": "ไม่พบ Skill"}), 404
-        path.unlink()
-        return jsonify({"ok": True, "name": path.stem})
+        shutil.rmtree(path.parent)
+        return jsonify({"ok": True, "name": path.parent.name})
     except (OSError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
 
