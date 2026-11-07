@@ -145,6 +145,7 @@ DEFAULT_SETTINGS = {
     "thinking_level": "off",
     "command_mode": "ask",
     "fallback_enabled": False,
+    "fallback_provider": os.getenv("AI_FALLBACK_PROVIDER", "openai"),
     "fallback_model": os.getenv("AI_FALLBACK_MODEL", ""),
     "discord_enabled": bool(os.getenv("DISCORD_BOT_TOKEN", "").strip()),
     "discord_prefix": os.getenv("DISCORD_BOT_PREFIX", "!ai"),
@@ -1582,6 +1583,7 @@ def settings_put():
             current[key] = body[key]
     current["provider"] = normalize_provider(current.get("provider"))
     current["fallback_enabled"] = bool(current.get("fallback_enabled"))
+    current["fallback_provider"] = normalize_provider(current.get("fallback_provider"))
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
     current["discord_enabled"] = bool(current.get("discord_enabled"))
     current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
@@ -1607,6 +1609,17 @@ def settings_put():
 @app.post("/api/settings/test")
 def settings_test():
     settings = load_settings()
+    body = request.get_json(silent=True) or {}
+    # Test submitted settings without persisting credentials first. This lets
+    # the UI validate a new key before it becomes part of the saved settings.
+    for key in {"provider", "model", "base_url", "system_prompt", "memory_review", "temperature", "max_tokens", "top_p", "thinking_level"}:
+        if key in body:
+            settings[key] = body[key]
+    submitted_key = body.get("api_key")
+    if isinstance(submitted_key, str) and submitted_key.strip() and submitted_key != "••••••••":
+        keys = stored_api_keys(settings)
+        keys[normalize_provider(settings.get("provider"))] = submitted_key.strip()
+        settings["api_keys"] = keys
     provider = normalize_provider(settings.get("provider"))
     STATUS_CACHE.clear()
     try:
@@ -1670,11 +1683,13 @@ def chat():
         try:
             answer, usage = call_provider(messages, settings)
         except requests.HTTPError as primary_error:
+            fallback_provider = normalize_provider(settings.get("fallback_provider"))
             fallback_model = str(settings.get("fallback_model") or "").strip()
             status_code = primary_error.response.status_code if primary_error.response is not None else None
             can_fallback = bool(settings.get("fallback_enabled")) and fallback_model and fallback_model != settings["model"] and status_code in {400, 404, 429, 500, 502, 503, 504}
             if not can_fallback:
                 raise
+            settings["provider"] = fallback_provider
             settings["model"] = fallback_model
             answer, usage = call_provider(messages, settings)
             fallback_used = fallback_model
