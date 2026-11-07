@@ -3531,11 +3531,33 @@
           discord_token: $("discord_token").value,
           discord_prefix: $("discord_prefix").value,
         };
+        const apiKey = body.api_key.trim();
+        if (apiKey && apiKey !== "••••••••") {
+          $("save").disabled = true;
+          $("save").textContent = t("notice.testing");
+          const testResponse = await fetch("/api/settings/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const testData = await testResponse.json();
+          if (!testResponse.ok || !testData.ok) {
+            showNotice(
+              t("notice.testFailed", { error: testData.error || t("notice.settingsSaveFailed") }),
+              true,
+            );
+            $("save").disabled = false;
+            $("save").textContent = t("settings.save");
+            return;
+          }
+        }
         const r = await fetch("/api/settings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
+        $("save").disabled = false;
+        $("save").textContent = t("settings.save");
         showNotice(
           r.ok ? t("notice.settingsSaved") : t("notice.settingsSaveFailed"),
           !r.ok,

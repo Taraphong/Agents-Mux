@@ -1509,6 +1509,17 @@ def settings_put():
 @app.post("/api/settings/test")
 def settings_test():
     settings = load_settings()
+    body = request.get_json(silent=True) or {}
+    # Test submitted settings without persisting credentials first. This lets
+    # the UI validate a new key before it becomes part of the saved settings.
+    for key in {"provider", "model", "base_url", "system_prompt", "memory_review", "temperature", "max_tokens", "top_p", "thinking_level"}:
+        if key in body:
+            settings[key] = body[key]
+    submitted_key = body.get("api_key")
+    if isinstance(submitted_key, str) and submitted_key.strip() and submitted_key != "••••••••":
+        keys = stored_api_keys(settings)
+        keys[normalize_provider(settings.get("provider"))] = submitted_key.strip()
+        settings["api_keys"] = keys
     provider = normalize_provider(settings.get("provider"))
     STATUS_CACHE.clear()
     try:
