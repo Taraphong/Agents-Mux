@@ -39,7 +39,7 @@ PENDING_TOOL_REQUESTS: dict[str, dict[str, Any]] = {}
 PENDING_APPROVAL_LOCK = threading.Lock()
 APPROVAL_TTL_SECONDS = 15 * 60
 MAX_PENDING_APPROVALS = 50
-APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command", "create_schedule"}
+APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command", "create_schedule", "update_schedule"}
 SCHEDULE_LOCK_FILE = Path(f"{SCHEDULE_FILE}.lock")
 SCHEDULE_RUNNING: set[str] = set()
 SCHEDULE_RUNNING_LOCK = threading.Lock()
@@ -55,7 +55,7 @@ TOOL_INSTRUCTIONS = """
 หากต้องเขียนไฟล์ ให้ใช้ชื่อ write_file และหากต้องรันคำสั่ง ให้ใช้ชื่อ run_command (ระบบยอมรับ execute_command เป็นชื่อเก่าด้วย) ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
 ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ
 หากต้องสร้างหรือปรับปรุงสกิล ให้ใช้เครื่องมือ create_skill พร้อมชื่อไฟล์ .md และเนื้อหาสกิลที่ชัดเจน ระบบจะจำกัดการเขียนไว้ในโฟลเดอร์ skills เท่านั้น
-เมื่อผู้ใช้สั่งให้สร้างงานตามเวลา/Cron อย่างชัดเจน ให้ใช้เครื่องมือ create_schedule ด้วย arguments: name, schedule (Cron 5 ช่อง), prompt, model (ไม่บังคับ), enabled (ไม่บังคับ) และ discord_channel_id (ไม่บังคับ เป็น Channel ID ของ Discord) โดยใช้ timezone ของ Server
+เมื่อผู้ใช้สั่งให้สร้างหรือแก้ไขงานตามเวลา/Cron อย่างชัดเจน ให้ใช้ create_schedule หรือ update_schedule โดย create_schedule รับ arguments: name, schedule (Cron 5 ช่อง), prompt, model (ไม่บังคับ), enabled (ไม่บังคับ) และ discord_channel_id (ไม่บังคับ เป็น Channel ID ของ Discord); ส่วน update_schedule รับ job_id และฟิลด์ที่ต้องการแก้ไข โดยใช้ timezone ของ Server
 """.strip()
 
 TOOL_ALIASES = {"execute_command": "run_command"}
@@ -539,6 +539,35 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             jobs.append(job)
             save_schedules(jobs)
         log_event("schedule.created", f"สร้างงานตามเวลา {job['name']} สำเร็จ", job=job["id"], schedule=schedule)
+        return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
+    if name == "update_schedule":
+        if not approved:
+            raise PermissionError("การแก้ไขงานตามเวลาต้องได้รับการอนุมัติก่อน")
+        job_id = str(arguments.get("job_id", "")).strip()
+        if not job_id:
+            raise ValueError("ต้องระบุ job_id")
+        with SCHEDULE_LOCK:
+            jobs = load_schedules()
+            job = next((item for item in jobs if item.get("id") == job_id), None)
+            if not job:
+                raise ValueError("ไม่พบงานตามเวลา")
+            if "schedule" in arguments:
+                job["schedule"] = validate_cron(arguments["schedule"])
+            if "name" in arguments:
+                job["name"] = str(arguments["name"]).strip()[:100] or job["name"]
+            if "prompt" in arguments:
+                job["prompt"] = str(arguments["prompt"]).strip()[:10_000]
+            if "model" in arguments:
+                job["model"] = str(arguments["model"]).strip()[:200]
+            if "discord_channel_id" in arguments:
+                channel_id = str(arguments["discord_channel_id"]).strip()[:30]
+                if channel_id and not channel_id.isdigit():
+                    raise ValueError("Discord Channel ID ต้องเป็นตัวเลข")
+                job["discord_channel_id"] = channel_id
+            if "enabled" in arguments:
+                job["enabled"] = bool(arguments["enabled"])
+            save_schedules(jobs)
+        log_event("schedule.updated", f"แก้ไขงานตามเวลา {job['name']} สำเร็จ", job=job_id)
         return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
     if name == "list_files":
         root = resolve_project_path(arguments.get("path", "."), must_exist=True)
@@ -1120,7 +1149,7 @@ def start_discord_bot() -> None:
                     tool_request = None
                 if not tool_request:
                     break
-                if tool_request["name"] != "create_schedule":
+                if tool_request["name"] not in {"create_schedule", "update_schedule"}:
                     break
                 result = await asyncio.to_thread(
                     run_local_tool,
@@ -1385,6 +1414,7 @@ def tools_get():
             {"name": "run_command", "approval_required": True},
             {"name": "create_skill", "approval_required": True},
             {"name": "create_schedule", "approval_required": True},
+            {"name": "update_schedule", "approval_required": True},
             {"name": "execute_command", "alias_for": "run_command", "approval_required": True},
         ],
     })
