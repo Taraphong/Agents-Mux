@@ -2463,6 +2463,9 @@
           "schedule.addFailed": "เพิ่มงานไม่สำเร็จ",
           "schedule.runNow": "รันทันที",
           "schedule.started": "เริ่มรันงานแล้ว",
+          "schedule.edit": "แก้ไข",
+          "schedule.editing": "กำลังแก้ไขงานตามเวลา",
+          "schedule.updated": "บันทึกการแก้ไขแล้ว",
           "logs.title": "Log ระบบ",
           "logs.system": "System logs",
           "logs.agent": "Agent logs",
@@ -2689,6 +2692,9 @@
           "schedule.addFailed": "Could not add the scheduled job",
           "schedule.runNow": "Run now",
           "schedule.started": "Job started",
+          "schedule.edit": "Edit",
+          "schedule.editing": "Editing scheduled job",
+          "schedule.updated": "Scheduled job updated",
           "logs.title": "System logs",
           "logs.system": "System logs",
           "logs.agent": "Agent logs",
@@ -2827,6 +2833,7 @@
       let currentChatSelected = "";
       let currentScheduleModels = [];
       let currentScheduleSelected = "";
+      let currentScheduleEditingId = "";
       let currentFallbackModels = [];
       let currentFallbackSelected = "";
       function setModelStatus(key, vars = {}, title = "") {
@@ -3220,6 +3227,7 @@
             ${job.discord_channel_id ? `<small>${escapeHtml(t("schedule.discordChannel", { id: job.discord_channel_id }))}</small>` : ""}
             <div class="schedule-item-actions">
               <button type="button" data-schedule-action="run">${t("schedule.runNow")}</button>
+              <button type="button" data-schedule-action="edit">${t("schedule.edit")}</button>
               <button type="button" data-schedule-action="toggle" data-enabled="${job.enabled ? "true" : "false"}">${job.enabled ? t("schedule.toggleDisable") : t("schedule.toggleEnable")}</button>
               <button type="button" class="danger" data-schedule-action="delete">${t("common.delete")}</button>
             </div>
@@ -3244,6 +3252,7 @@
       });
       $("schedule-form").addEventListener("reset", () => {
         currentScheduleSelected = "";
+        currentScheduleEditingId = "";
       });
       function updateScheduleModelOptions(models, selected = "") {
         const select = $("schedule-model");
@@ -3262,8 +3271,9 @@
       }
       $("schedule-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const response = await fetch("/api/schedules", {
-          method: "POST",
+        const editing = Boolean(currentScheduleEditingId);
+        const response = await fetch(editing ? `/api/schedules/${currentScheduleEditingId}` : "/api/schedules", {
+          method: editing ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: $("schedule-name").value.trim(),
@@ -3278,13 +3288,28 @@
         if (!response.ok)
           return showNotice(data.error || t("schedule.addFailed"), true);
         $("schedule-form").reset();
+        currentScheduleEditingId = "";
         await loadSchedules();
-        showNotice(t("schedule.added"));
+        showNotice(t(editing ? "schedule.updated" : "schedule.added"));
       });
       $("schedule-list").addEventListener("click", async (event) => {
         const button = event.target.closest("[data-schedule-action]");
         if (!button) return;
         const id = button.closest("[data-schedule-id]").dataset.scheduleId;
+        if (button.dataset.scheduleAction === "edit") {
+          const job = currentSchedules.find((item) => item.id === id);
+          if (!job) return;
+          currentScheduleEditingId = id;
+          $("schedule-name").value = job.name || "";
+          $("schedule-expression").value = job.schedule || "";
+          $("schedule-model").value = job.model || "";
+          $("schedule-discord-channel").value = job.discord_channel_id || "";
+          $("schedule-prompt").value = job.prompt || "";
+          $("schedule-enabled").checked = job.enabled !== false;
+          $("schedule-name").focus();
+          showNotice(t("schedule.editing"));
+          return;
+        }
         if (button.dataset.scheduleAction === "run") {
           const response = await fetch(`/api/schedules/${id}/run`, { method: "POST" });
           const data = await response.json();
