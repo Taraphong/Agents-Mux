@@ -38,6 +38,12 @@ For detailed requirements and development guidelines, read **[AGENTS.md](AGENTS.
 - Paths are restricted to the project directory, excluding `.env`, `.app-settings.json`, `history/`, `.venv/`, and `.git/`.
 - Allowed commands are limited to `pwd`, `ls`, `git status|diff|log`, and `python -m py_compile app.py`.
 
+### Terminal
+
+The **Terminal** page runs shell commands directly on the server as the user running the app, starting in the project folder and supporting `cd` within the project. Commands time out after 60 seconds, output is capped at 100 KB, credential-like environment variables are removed, and known API keys/tokens are redacted from the output. The page can be disabled in **Settings**.
+
+> ⚠️ This app has no login. Anyone who can open the web interface can use the terminal. Only expose it on a trusted network.
+
 ### Discord bot
 
 The app can run a Discord bot beside Flask and use the configured provider/model to answer messages.

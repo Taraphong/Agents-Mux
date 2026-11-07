@@ -1746,6 +1746,142 @@
         background: transparent;
         color: #ffffff;
       }
+      #terminal-view.active {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+      }
+      .terminal-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        height: 100%;
+        min-height: 0;
+      }
+      .terminal-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .terminal-toolbar h2 {
+        margin: 0 0 4px;
+      }
+      .terminal-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        flex: none;
+      }
+      .terminal-warning {
+        padding: 8px 12px;
+        border: 1px solid rgba(251, 191, 36, 0.35);
+        border-radius: 6px;
+        background: rgba(251, 191, 36, 0.08);
+        color: #fcd34d;
+        font-size: 0.8rem;
+        line-height: 1.55;
+      }
+      .terminal-window {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 260px;
+        overflow: hidden;
+        border: 1px solid #263451;
+        border-radius: 8px;
+        background: #05080f;
+      }
+      .terminal-output {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 14px 16px;
+        color: #d1d5db;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.84rem;
+        line-height: 1.6;
+      }
+      .terminal-line {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .terminal-line.terminal-command {
+        color: #e2e8f0;
+      }
+      .terminal-line.terminal-command .terminal-prompt-mark {
+        color: #34d399;
+      }
+      .terminal-line.terminal-stdout {
+        color: #cbd5e1;
+      }
+      .terminal-line.terminal-stderr,
+      .terminal-line.terminal-error {
+        color: #fda4af;
+      }
+      .terminal-line.terminal-meta {
+        color: #7a89a0;
+        font-size: 0.74rem;
+      }
+      .terminal-line.terminal-notice {
+        color: #93c5fd;
+      }
+      .terminal-input-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-top: 1px solid #263451;
+        background: #080d18;
+      }
+      .terminal-prompt {
+        max-width: 55%;
+        overflow: hidden;
+        color: #34d399;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .terminal-input-row input {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 2px !important;
+        border: 0 !important;
+        background: transparent !important;
+        color: #f8fafc !important;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.86rem;
+        outline: none;
+      }
+      .terminal-input-row input::placeholder {
+        color: #64748b;
+      }
+      .terminal-status {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        color: var(--dim);
+        font-size: 0.74rem;
+      }
+      .terminal-status .terminal-dot {
+        color: #34d399;
+      }
+      .terminal-status .terminal-dot.offline {
+        color: #f59e0b;
+      }
+      .terminal-status .terminal-dot.busy {
+        color: #38bdf8;
+      }
+      @media (max-width: 720px) {
+        .terminal-toolbar {
+          flex-direction: column;
+        }
+        .terminal-warning {
+          font-size: 0.76rem;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1765,6 +1901,8 @@
         <nav>
           <button class="active" data-view="chat" data-i18n="nav.chat">
             ▰ แชต</button
+          ><button data-view="terminal" data-i18n="nav.terminal">
+            &gt;_ Terminal</button
           ><button data-view="settings" data-i18n="nav.settings">
             ⚙ Settings</button
           ><button data-view="schedule" data-i18n="nav.schedule">
@@ -2048,6 +2186,19 @@
               </div>
             </div>
             <div class="card">
+              <h2 data-i18n="settings.terminalTitle">Terminal</h2>
+              <p class="hint" data-i18n="settings.terminalHint">
+                เปิดหรือปิดหน้า Terminal ที่สามารถรันคำสั่งบน Server ได้โดยตรง
+                คำสั่งถูกจำกัดให้อยู่ในโฟลเดอร์โปรเจกต์
+              </p>
+              <label class="toggle"
+                ><input id="terminal_enabled" type="checkbox" /><span
+                  data-i18n="settings.terminalEnable"
+                  >เปิดใช้งานหน้า Terminal</span
+                ></label
+              >
+            </div>
+            <div class="card">
               <h2 data-i18n="settings.assistantTitle">พฤติกรรมของผู้ช่วย</h2>
               <p class="hint" data-i18n="settings.assistantHint">
                 ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ
@@ -2315,6 +2466,74 @@
               </div>
             </div>
           </section>
+          <section id="terminal-view" class="view">
+            <div class="card terminal-card">
+              <div class="terminal-toolbar">
+                <div>
+                  <h2 data-i18n="terminal.title">Terminal</h2>
+                  <p class="hint" data-i18n="terminal.hint">
+                    พิมพ์คำสั่งเพื่อทำงานบนเครื่อง Server โดยตรง
+                  </p>
+                </div>
+                <div class="terminal-actions">
+                  <button
+                    id="terminal-clear"
+                    type="button"
+                    class="secondary"
+                    data-i18n="terminal.clear"
+                  >
+                    ล้างจอ
+                  </button>
+                </div>
+              </div>
+              <div class="terminal-warning">
+                <span data-i18n="terminal.warning"
+                  >⚠ คำสั่งจะทำงานบน Server ด้วยสิทธิ์ของผู้ใช้ที่รันแอป
+                  และถูกจำกัดอยู่ภายในโฟลเดอร์โปรเจกต์</span
+                >
+                <strong id="terminal-scope"></strong>
+              </div>
+              <div class="terminal-window">
+                <div
+                  id="terminal-output"
+                  class="terminal-output"
+                  role="log"
+                  aria-live="polite"
+                ></div>
+                <form id="terminal-form" class="terminal-input-row" autocomplete="off">
+                  <span id="terminal-prompt" class="terminal-prompt">$</span>
+                  <input
+                    id="terminal-input"
+                    type="text"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    autocorrect="off"
+                    placeholder="พิมพ์คำสั่ง..."
+                    data-i18n-placeholder="terminal.placeholder"
+                  />
+                  <button
+                    id="terminal-run"
+                    type="submit"
+                    data-i18n="terminal.run"
+                  >
+                    รัน
+                  </button>
+                </form>
+              </div>
+              <div class="terminal-status">
+                <span
+                  ><span id="terminal-dot" class="terminal-dot">●</span>
+                  <span
+                    id="terminal-status-text"
+                    data-i18n="terminal.connecting"
+                    >กำลังเชื่อมต่อ...</span
+                  ></span
+                >
+                <span id="terminal-cwd"></span>
+              </div>
+            </div>
+          </section>
           <section id="about-view" class="view">
             <div class="card">
               <h2 data-i18n="about.title">เกี่ยวกับระบบ</h2>
@@ -2340,6 +2559,7 @@
           "app.title": "AI Control Center",
           "sidebar.newChat": "＋ แชตใหม่",
           "nav.chat": "▰ แชต",
+          "nav.terminal": ">_ Terminal",
           "nav.settings": "⚙ ตั้งค่า",
           "nav.schedule": "◷ งานตามเวลา",
           "nav.logs": "▤ Log ระบบ",
@@ -2431,6 +2651,10 @@
           "settings.discordToken": "Bot token",
           "settings.discordTokenPlaceholder": "เว้นว่างเพื่อใช้ token เดิม",
           "settings.discordPrefix": "Prefix",
+          "settings.terminalTitle": "Terminal",
+          "settings.terminalHint":
+            "เปิดหรือปิดหน้า Terminal ที่รันคำสั่งบน Server ได้โดยตรง (เริ่มต้นในโฟลเดอร์โปรเจกต์)",
+          "settings.terminalEnable": "เปิดใช้งานหน้า Terminal",
           "settings.save": "บันทึกการตั้งค่า",
           "settings.test": "ทดสอบการเชื่อมต่อ",
           "settings.reset": "รีเซ็ต",
@@ -2500,12 +2724,35 @@
           "logs.empty": "ยังไม่มี log",
           "logs.loadError": "โหลด log ไม่สำเร็จ: {message}",
           "logs.saveFailed": "บันทึกไม่สำเร็จ",
+          "terminal.title": "Terminal",
+          "terminal.hint": "พิมพ์คำสั่งเพื่อทำงานบนเครื่อง Server โดยตรง",
+          "terminal.warning":
+            "⚠ คำสั่งจะทำงานบน Server ด้วยสิทธิ์ของผู้ใช้ที่รันแอป และเริ่มต้นในโฟลเดอร์โปรเจกต์",
+          "terminal.scope": "· เริ่มต้นที่: {scope}",
+          "terminal.clear": "ล้างจอ",
+          "terminal.run": "รัน",
+          "terminal.placeholder": "พิมพ์คำสั่ง...",
+          "terminal.connecting": "กำลังเชื่อมต่อ...",
+          "terminal.ready": "พร้อมรับคำสั่ง",
+          "terminal.running": "กำลังรัน...",
+          "terminal.disabled": "Terminal ถูกปิดใช้งาน — เปิดได้ใน Settings",
+          "terminal.welcome": "Terminal พร้อมใช้งาน พิมพ์คำสั่งแล้วกด Enter",
+          "terminal.exitCode": "exit {code}",
+          "terminal.timeout": "คำสั่งใช้เวลานานเกินกำหนดและถูกหยุดแล้ว",
+          "terminal.truncated": "ผลลัพธ์ถูกตัดบางส่วน",
+          "terminal.error": "เชื่อมต่อ Terminal ไม่สำเร็จ: {message}",
+          "terminal.noOutput": "(ไม่มี output)",
+          "terminal.cwd": "โฟลเดอร์: {cwd}",
+          "terminal.statusIdle": "พร้อมใช้งาน",
+          "terminal.statusBusy": "กำลังทำงาน",
+          "terminal.statusDisabled": "ปิดใช้งาน",
           "about.title": "เกี่ยวกับระบบ",
           "about.text1":
             "เว็บแชต AI ที่รันบน Termux พร้อมหน้า settings สำหรับควบคุม provider, model, endpoint, prompt และพารามิเตอร์ต่าง ๆ",
           "about.text2":
             "API key จะเก็บฝั่งเซิร์ฟเวอร์ในไฟล์ตั้งค่าที่ไม่ถูก commit เข้า Git",
           "page.settings": "ตั้งค่าระบบ",
+          "page.terminal": "Terminal",
           "page.schedule": "งานตามเวลา",
           "page.logs": "Log ระบบ",
           "page.about": "เกี่ยวกับระบบ",
@@ -2578,6 +2825,7 @@
           "app.title": "AI Control Center",
           "sidebar.newChat": "+ New chat",
           "nav.chat": "▰ Chat",
+          "nav.terminal": ">_ Terminal",
           "nav.settings": "⚙ Settings",
           "nav.schedule": "◷ Scheduled jobs",
           "nav.logs": "▤ System logs",
@@ -2669,6 +2917,10 @@
           "settings.discordToken": "Bot token",
           "settings.discordTokenPlaceholder": "Leave blank to keep the current token",
           "settings.discordPrefix": "Prefix",
+          "settings.terminalTitle": "Terminal",
+          "settings.terminalHint":
+            "Enable or disable the terminal page that runs commands directly on the server. It starts in the project folder.",
+          "settings.terminalEnable": "Enable terminal page",
           "settings.save": "Save settings",
           "settings.test": "Test connection",
           "settings.reset": "Reset",
@@ -2738,11 +2990,34 @@
           "logs.loadError": "Could not load logs: {message}",
           "logs.saveFailed": "Save failed",
           "about.title": "About",
+          "terminal.title": "Terminal",
+          "terminal.hint": "Type commands to run directly on the server",
+          "terminal.warning":
+            "⚠ Commands run on the server with the permissions of the user running this app and start in the project folder.",
+          "terminal.scope": "· Starts in: {scope}",
+          "terminal.clear": "Clear",
+          "terminal.run": "Run",
+          "terminal.placeholder": "Type a command...",
+          "terminal.connecting": "Connecting...",
+          "terminal.ready": "Ready for commands",
+          "terminal.running": "Running...",
+          "terminal.disabled": "Terminal is disabled — enable it in Settings",
+          "terminal.welcome": "Terminal ready. Type a command and press Enter.",
+          "terminal.exitCode": "exit {code}",
+          "terminal.timeout": "The command took too long and was stopped.",
+          "terminal.truncated": "Output was truncated",
+          "terminal.error": "Could not reach the terminal: {message}",
+          "terminal.noOutput": "(no output)",
+          "terminal.cwd": "Folder: {cwd}",
+          "terminal.statusIdle": "Ready",
+          "terminal.statusBusy": "Working",
+          "terminal.statusDisabled": "Disabled",
           "about.text1":
             "A self-hosted AI chat app running on Termux, with a settings page for provider, model, endpoint, prompt, and response parameters.",
           "about.text2":
             "API keys are stored only on the server in a settings file that is not committed to Git.",
           "page.settings": "Settings",
+          "page.terminal": "Terminal",
           "page.schedule": "Scheduled jobs",
           "page.logs": "System logs",
           "page.about": "About",
@@ -2864,6 +3139,26 @@
       let currentScheduleEditingId = "";
       let currentFallbackModels = [];
       let currentFallbackSelected = "";
+      let terminalInfo = null;
+      let terminalCwd = ".";
+      let terminalBusy = false;
+      let terminalBooted = false;
+      const TERMINAL_HISTORY_STORAGE = "ai-control-center-terminal-history";
+      const terminalHistory = [];
+      let terminalHistoryIndex = -1;
+      try {
+        const storedHistory = JSON.parse(
+          localStorage.getItem(TERMINAL_HISTORY_STORAGE) || "[]",
+        );
+        if (Array.isArray(storedHistory)) {
+          terminalHistory.push(
+            ...storedHistory.filter((item) => typeof item === "string"),
+          );
+        }
+      } catch (error) {
+        /* ignore malformed local history */
+      }
+      terminalHistoryIndex = terminalHistory.length;
       function setModelStatus(key, vars = {}, title = "") {
         modelStatus = { key, vars, title };
         $("model_status").textContent = t(key, vars);
@@ -3004,6 +3299,7 @@
           $(`${button.dataset.view}-view`).classList.add("active");
           updatePageTitle();
           if (button.dataset.view === "settings") loadSettings();
+          if (button.dataset.view === "terminal") openTerminalView();
           if (button.dataset.view === "schedule") loadSchedules();
           if (button.dataset.view === "logs") loadLogs();
           closeSidebar();
@@ -3107,6 +3403,210 @@
           }, 2500);
         } finally {
           button.disabled = false;
+        }
+      });
+      function terminalPrompt() {
+        if (!terminalInfo) return "$";
+        const scope = terminalInfo.scope || "~";
+        const cwd =
+          terminalCwd && terminalCwd !== "."
+            ? `${scope}/${terminalCwd}`
+            : scope;
+        return `${terminalInfo.user}@${terminalInfo.host}:${cwd}$`;
+      }
+      function terminalCwdLabel() {
+        const scope = terminalInfo?.scope || "~";
+        return terminalCwd && terminalCwd !== "."
+          ? `${scope}/${terminalCwd}`
+          : scope;
+      }
+      function appendTerminalLine(text, kind = "stdout") {
+        const output = $("terminal-output");
+        const line = document.createElement("div");
+        line.className = `terminal-line terminal-${kind}`;
+        line.textContent = text;
+        output.appendChild(line);
+        output.scrollTop = output.scrollHeight;
+      }
+      function appendTerminalBlock(text, kind) {
+        const normalized = String(text ?? "")
+          .replace(/\r\n?/g, "\n")
+          .replace(/\n+$/, "");
+        if (normalized) appendTerminalLine(normalized, kind);
+      }
+      function appendTerminalCommand(command) {
+        const output = $("terminal-output");
+        const line = document.createElement("div");
+        line.className = "terminal-line terminal-command";
+        const prompt = document.createElement("span");
+        prompt.className = "terminal-prompt-mark";
+        prompt.textContent = `${terminalPrompt()} `;
+        line.appendChild(prompt);
+        line.appendChild(document.createTextNode(command));
+        output.appendChild(line);
+        output.scrollTop = output.scrollHeight;
+      }
+      function updateTerminalUi() {
+        if (!terminalInfo) {
+          $("terminal-status-text").textContent = t("terminal.connecting");
+          return;
+        }
+        const enabled = terminalInfo.enabled !== false;
+        $("terminal-dot").className = `terminal-dot${
+          !enabled ? " offline" : terminalBusy ? " busy" : ""
+        }`;
+        $("terminal-status-text").textContent = !enabled
+          ? t("terminal.statusDisabled")
+          : terminalBusy
+            ? t("terminal.statusBusy")
+            : t("terminal.statusIdle");
+        $("terminal-prompt").textContent = enabled ? terminalPrompt() : "$";
+        $("terminal-cwd").textContent = enabled
+          ? t("terminal.cwd", { cwd: terminalCwdLabel() })
+          : "";
+        $("terminal-input").disabled = !enabled || terminalBusy;
+        $("terminal-run").disabled = !enabled || terminalBusy;
+        $("terminal-scope").textContent = terminalInfo.scope
+          ? t("terminal.scope", { scope: terminalInfo.scope })
+          : "";
+      }
+      async function openTerminalView() {
+        if (!terminalInfo) {
+          try {
+            const response = await fetch("/api/terminal/info");
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            terminalInfo = await response.json();
+            terminalCwd = terminalInfo.cwd || ".";
+          } catch (error) {
+            terminalInfo = {
+              enabled: false,
+              user: "user",
+              host: "server",
+              scope: "~",
+            };
+            appendTerminalLine(
+              t("terminal.error", { message: error.message }),
+              "error",
+            );
+          }
+        }
+        if (!terminalBooted) {
+          terminalBooted = true;
+          appendTerminalLine(
+            terminalInfo.enabled
+              ? t("terminal.welcome")
+              : t("terminal.disabled"),
+            "notice",
+          );
+        }
+        updateTerminalUi();
+        if (terminalInfo.enabled) $("terminal-input").focus();
+      }
+      function clearTerminal() {
+        $("terminal-output").innerHTML = "";
+        if (terminalInfo?.enabled) {
+          appendTerminalLine(t("terminal.welcome"), "notice");
+        }
+      }
+      function rememberTerminalCommand(command) {
+        if (terminalHistory[terminalHistory.length - 1] !== command) {
+          terminalHistory.push(command);
+          if (terminalHistory.length > 100) terminalHistory.shift();
+        }
+        terminalHistoryIndex = terminalHistory.length;
+        try {
+          localStorage.setItem(
+            TERMINAL_HISTORY_STORAGE,
+            JSON.stringify(terminalHistory),
+          );
+        } catch (error) {
+          /* local storage is optional */
+        }
+      }
+      async function runTerminalCommand() {
+        const input = $("terminal-input");
+        const command = input.value.trim();
+        if (!command || terminalBusy || !terminalInfo?.enabled) return;
+        if (command === "clear" || command === "cls") {
+          input.value = "";
+          clearTerminal();
+          return;
+        }
+        input.value = "";
+        appendTerminalCommand(command);
+        rememberTerminalCommand(command);
+        terminalBusy = true;
+        updateTerminalUi();
+        try {
+          const response = await fetch("/api/terminal/exec", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command, cwd: terminalCwd }),
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+          }
+          terminalCwd = data.cwd || terminalCwd;
+          appendTerminalBlock(data.stdout, "stdout");
+          appendTerminalBlock(data.stderr, "stderr");
+          if (!data.stdout && !data.stderr && !data.changed_directory) {
+            appendTerminalLine(t("terminal.noOutput"), "meta");
+          }
+          if (data.timed_out) {
+            appendTerminalLine(t("terminal.timeout"), "error");
+          }
+          if (data.truncated) {
+            appendTerminalLine(t("terminal.truncated"), "meta");
+          }
+          if (data.returncode !== 0) {
+            appendTerminalLine(
+              t("terminal.exitCode", { code: data.returncode }),
+              "meta",
+            );
+          }
+        } catch (error) {
+          appendTerminalLine(
+            t("terminal.error", { message: error.message }),
+            "error",
+          );
+        } finally {
+          terminalBusy = false;
+          updateTerminalUi();
+          if (terminalInfo?.enabled) input.focus();
+        }
+      }
+      $("terminal-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        runTerminalCommand();
+      });
+      $("terminal-clear").addEventListener("click", clearTerminal);
+      $("terminal-input").addEventListener("keydown", (event) => {
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!terminalHistory.length) return;
+          terminalHistoryIndex = Math.max(0, terminalHistoryIndex - 1);
+          const value = terminalHistory[terminalHistoryIndex] || "";
+          $("terminal-input").value = value;
+          $("terminal-input").setSelectionRange(value.length, value.length);
+        } else if (event.key === "ArrowDown") {
+          event.preventDefault();
+          terminalHistoryIndex = Math.min(
+            terminalHistory.length,
+            terminalHistoryIndex + 1,
+          );
+          const value =
+            terminalHistoryIndex >= terminalHistory.length
+              ? ""
+              : terminalHistory[terminalHistoryIndex] || "";
+          $("terminal-input").value = value;
+          $("terminal-input").setSelectionRange(value.length, value.length);
+        } else if (
+          (event.ctrlKey || event.metaKey) &&
+          event.key.toLowerCase() === "l"
+        ) {
+          event.preventDefault();
+          clearTerminal();
         }
       });
       function resizeInput() {
@@ -3667,6 +4167,7 @@
         $("fallback_enabled").checked = !!s.fallback_enabled;
         $("fallback_provider_select").value = s.fallback_provider ?? "openai";
         $("discord_enabled").checked = !!s.discord_enabled;
+        $("terminal_enabled").checked = s.terminal_enabled !== false;
         $("discord_prefix").value = s.discord_prefix ?? "!ai";
         $("discord_token").value = "";
         $("discord_token_hint").textContent = s.has_discord_token
@@ -3720,6 +4221,7 @@
           discord_enabled: $("discord_enabled").checked,
           discord_token: $("discord_token").value,
           discord_prefix: $("discord_prefix").value,
+          terminal_enabled: $("terminal_enabled").checked,
         };
         const apiKey = body.api_key.trim();
         if (apiKey && apiKey !== "••••••••") {
@@ -4111,6 +4613,7 @@
         renderHistoryList(currentHistoryItems);
         renderSchedules(currentSchedules);
         renderLogs();
+        updateTerminalUi();
         $("schedule-timezone").textContent =
           currentScheduleTimezone || t("schedule.loading");
         if (
