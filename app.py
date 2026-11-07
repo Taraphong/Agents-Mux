@@ -56,6 +56,7 @@ TOOL_INSTRUCTIONS = """
 หากต้องเขียนไฟล์ ให้ใช้ชื่อ write_file และหากต้องรันคำสั่ง ให้ใช้ชื่อ run_command (ระบบยอมรับ execute_command เป็นชื่อเก่าด้วย) ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
 ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ
 หากต้องสร้างหรือปรับปรุงสกิล ให้ใช้เครื่องมือ create_skill พร้อมชื่อสกิลและเนื้อหา SKILL.md ที่ชัดเจน ระบบจะเก็บไว้ในโฟลเดอร์ skills/<ชื่อสกิล>/ และจำกัดการเขียนไว้ในโฟลเดอร์ skills เท่านั้น
+เมื่อผู้ใช้ถามเกี่ยวกับ Skill ให้ใช้เครื่องมืออ่าน SKILL.md ได้ แต่คำตอบสุดท้ายต้องเป็นข้อความธรรมดาที่อ่านง่าย อธิบายชื่อ Skill และหน้าที่ของแต่ละ Skill ห้ามแสดงแท็ก <tool_call> หรือ JSON ภายในคำตอบ
 """.strip()
 
 TOOL_ALIASES = {"execute_command": "run_command"}
@@ -566,22 +567,30 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
 
 
 def parse_tool_request(answer: str) -> dict[str, Any] | None:
+    requests = parse_tool_requests(answer)
+    return requests[0] if requests else None
+
+
+def parse_tool_requests(answer: str) -> list[dict[str, Any]]:
+    """Parse every tool call so multiple Skill files can be inspected in one turn."""
     if not isinstance(answer, str):
-        return None
-    match = re.search(r"<tool_call>\s*", answer, re.IGNORECASE)
-    if not match:
-        return None
-    decoder = json.JSONDecoder()
-    try:
-        request, _ = decoder.raw_decode(answer[match.end():].lstrip())
-    except json.JSONDecodeError as exc:
-        log_event("tool.parse_failed", "อ่าน tool_call ไม่สำเร็จ", error=str(exc))
-        raise ValueError("รูปแบบ tool_call ไม่ถูกต้อง") from exc
-    if not isinstance(request, dict) or not isinstance(request.get("name"), str) or not isinstance(request.get("arguments", {}), dict):
-        raise ValueError("ข้อมูล tool_call ไม่ถูกต้อง")
-    tool_request = {"name": request["name"], "arguments": request.get("arguments", {})}
-    log_event("tool.request", f"AI ขอใช้ {tool_request['name']}", tool=tool_request["name"])
-    return tool_request
+        return []
+    matches = re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", answer, re.IGNORECASE | re.DOTALL)
+    if not matches:
+        return []
+    requests = []
+    for raw_request in matches:
+        try:
+            request = json.loads(raw_request.strip())
+        except json.JSONDecodeError as exc:
+            log_event("tool.parse_failed", "อ่าน tool_call ไม่สำเร็จ", error=str(exc))
+            raise ValueError("รูปแบบ tool_call ไม่ถูกต้อง") from exc
+        if not isinstance(request, dict) or not isinstance(request.get("name"), str) or not isinstance(request.get("arguments", {}), dict):
+            raise ValueError("ข้อมูล tool_call ไม่ถูกต้อง")
+        tool_request = {"name": request["name"], "arguments": request.get("arguments", {})}
+        log_event("tool.request", f"AI ขอใช้ {tool_request['name']}", tool=tool_request["name"])
+        requests.append(tool_request)
+    return requests
 
 
 def find_history_file(conversation_id: str) -> Path | None:
@@ -1697,36 +1706,41 @@ def chat():
             settings["model"] = fallback_model
             answer, usage = call_provider(messages, settings)
             fallback_used = fallback_model
-        try:
-            tool_request = parse_tool_request(answer)
-        except ValueError as exc:
-            log_event("tool.parse_failed", "ข้าม tool_call ที่ไม่สมบูรณ์", error=str(exc))
-            tool_request = None
-        if tool_request:
-            if tool_request["name"] in {"list_files", "read_file"}:
-                result = run_local_tool(tool_request["name"], tool_request["arguments"])
-                messages.extend([
-                    {"role": "assistant", "content": answer},
-                    {"role": "user", "content": f"ผลการใช้เครื่องมือ:\n{json.dumps(result, ensure_ascii=False)}"},
-                ])
-                answer, usage = call_provider(messages, settings)
-            elif command_mode in {"auto", "fast"}:
-                result = run_local_tool(tool_request["name"], tool_request["arguments"], approved=True)
-                messages.extend([
-                    {"role": "assistant", "content": answer},
-                    {"role": "user", "content": f"ผลการใช้เครื่องมือ:\n{json.dumps(result, ensure_ascii=False)}"},
-                ])
-                answer, usage = call_provider(messages, settings)
-            else:
+        for _ in range(6):
+            try:
+                tool_requests = parse_tool_requests(answer)
+            except ValueError as exc:
+                log_event("tool.parse_failed", "ข้าม tool_call ที่ไม่สมบูรณ์", error=str(exc))
+                tool_requests = []
+            if not tool_requests:
+                break
+            approval_request = next(
+                (item for item in tool_requests if item["name"] not in {"list_files", "read_file"}),
+                None,
+            )
+            if approval_request and command_mode not in {"auto", "fast"}:
                 return jsonify({
                     "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
                     "provider": provider,
-                    "tool_request": tool_request,
-                    "approval_id": request_tool_approval(tool_request["name"], tool_request["arguments"]),
+                    "tool_request": approval_request,
+                    "approval_id": request_tool_approval(approval_request["name"], approval_request["arguments"]),
                     "duration_ms": round((time.perf_counter() - started_at) * 1000),
                     "usage": usage,
                     "model": settings["model"],
                 })
+            results = []
+            for tool_request in tool_requests:
+                result = run_local_tool(
+                    tool_request["name"],
+                    tool_request["arguments"],
+                    approved=bool(approval_request),
+                )
+                results.append(result)
+            messages.extend([
+                {"role": "assistant", "content": answer},
+                {"role": "user", "content": f"ผลการใช้เครื่องมือ:\n{json.dumps(results, ensure_ascii=False)}\n\nตอบผู้ใช้เป็นข้อความธรรมดา อธิบายชื่อและหน้าที่ของแต่ละ Skill ที่ตรวจพบ ห้ามแสดง tool_call หรือ JSON"},
+            ])
+            answer, usage = call_provider(messages, settings)
         duration_ms = round((time.perf_counter() - started_at) * 1000)
         log_event("chat.success", "ตอบข้อความสำเร็จ", provider=provider, model=settings["model"], duration_ms=duration_ms)
         return jsonify({"answer": answer, "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
