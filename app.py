@@ -39,7 +39,7 @@ PENDING_TOOL_REQUESTS: dict[str, dict[str, Any]] = {}
 PENDING_APPROVAL_LOCK = threading.Lock()
 APPROVAL_TTL_SECONDS = 15 * 60
 MAX_PENDING_APPROVALS = 50
-APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command"}
+APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command", "create_schedule"}
 SCHEDULE_LOCK_FILE = Path(f"{SCHEDULE_FILE}.lock")
 SCHEDULE_RUNNING: set[str] = set()
 SCHEDULE_RUNNING_LOCK = threading.Lock()
@@ -55,6 +55,7 @@ TOOL_INSTRUCTIONS = """
 หากต้องเขียนไฟล์ ให้ใช้ชื่อ write_file และหากต้องรันคำสั่ง ให้ใช้ชื่อ run_command (ระบบยอมรับ execute_command เป็นชื่อเก่าด้วย) ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
 ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ
 หากต้องสร้างหรือปรับปรุงสกิล ให้ใช้เครื่องมือ create_skill พร้อมชื่อไฟล์ .md และเนื้อหาสกิลที่ชัดเจน ระบบจะจำกัดการเขียนไว้ในโฟลเดอร์ skills เท่านั้น
+เมื่อผู้ใช้สั่งให้สร้างงานตามเวลา/Cron อย่างชัดเจน ให้ใช้เครื่องมือ create_schedule ด้วย arguments: name, schedule (Cron 5 ช่อง), prompt, model (ไม่บังคับ) และ enabled (ไม่บังคับ) โดยใช้ timezone ของ Server
 """.strip()
 
 TOOL_ALIASES = {"execute_command": "run_command"}
@@ -488,6 +489,32 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         result = {"tool": name, "name": path.stem, "path": str(path.relative_to(PROJECT_ROOT))}
         log_event("tool.success", f"สร้างสกิล {path.stem} สำเร็จ", tool=name, path=result["path"])
         return result
+    if name == "create_schedule":
+        if not approved:
+            raise PermissionError("การสร้างงานตามเวลาต้องได้รับการอนุมัติก่อน")
+        job_name = str(arguments.get("name", "")).strip()
+        prompt = str(arguments.get("prompt", "")).strip()
+        if not job_name or not prompt:
+            raise ValueError("ต้องระบุชื่องานและ prompt")
+        schedule = validate_cron(arguments.get("schedule", ""))
+        job = {
+            "id": str(uuid.uuid4()),
+            "name": job_name[:100],
+            "schedule": schedule,
+            "prompt": prompt[:10_000],
+            "model": str(arguments.get("model", "")).strip()[:200],
+            "enabled": bool(arguments.get("enabled", True)),
+            "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "last_run_at": None,
+            "last_status": None,
+            "last_error": "",
+        }
+        with SCHEDULE_LOCK:
+            jobs = load_schedules()
+            jobs.append(job)
+            save_schedules(jobs)
+        log_event("schedule.created", f"สร้างงานตามเวลา {job['name']} สำเร็จ", job=job["id"], schedule=schedule)
+        return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
     if name == "list_files":
         root = resolve_project_path(arguments.get("path", "."), must_exist=True)
         if not root.is_dir():
@@ -1034,6 +1061,13 @@ def start_discord_bot() -> None:
             messages = list(context)
         try:
             settings_for_chat = load_settings()
+            settings_for_chat["system_prompt"] = "\n\n".join(
+                part for part in (
+                    settings_for_chat.get("system_prompt", ""),
+                    selected_skill_prompt(settings_for_chat),
+                    TOOL_INSTRUCTIONS,
+                ) if part
+            )
             messages = clean_messages(messages, settings_for_chat)
             fallback_used = ""
             try:
@@ -1054,6 +1088,26 @@ def start_discord_bot() -> None:
                 settings_for_chat["model"] = fallback_model
                 answer, _usage = await asyncio.to_thread(call_provider, messages, settings_for_chat)
                 fallback_used = fallback_model
+            for _ in range(3):
+                try:
+                    tool_request = parse_tool_request(answer)
+                except ValueError:
+                    tool_request = None
+                if not tool_request:
+                    break
+                if tool_request["name"] != "create_schedule":
+                    break
+                result = await asyncio.to_thread(
+                    run_local_tool,
+                    tool_request["name"],
+                    tool_request["arguments"],
+                    True,
+                )
+                messages.extend([
+                    {"role": "assistant", "content": answer},
+                    {"role": "user", "content": f"ผลการสร้างงานตามเวลา:\n{json.dumps(result, ensure_ascii=False)}\n\nตอบเป็นข้อความธรรมดา ยืนยันชื่อ งาน เวลา Cron และสิ่งที่จะให้ AI ทำ ห้ามแสดง tool_call หรือ JSON"},
+                ])
+                answer, _usage = await asyncio.to_thread(call_provider, messages, settings_for_chat)
             with DISCORD_CONTEXT_LOCK:
                 DISCORD_CONTEXTS[context_key].append({"role": "assistant", "content": answer})
                 conversation_id = DISCORD_CONVERSATION_IDS.setdefault(context_key, str(uuid.uuid4()))
@@ -1305,6 +1359,7 @@ def tools_get():
             {"name": "write_file", "approval_required": True},
             {"name": "run_command", "approval_required": True},
             {"name": "create_skill", "approval_required": True},
+            {"name": "create_schedule", "approval_required": True},
             {"name": "execute_command", "alias_for": "run_command", "approval_required": True},
         ],
     })
