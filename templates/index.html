@@ -2045,6 +2045,8 @@
                   ><textarea id="new-skill-content" rows="3" placeholder="เขียนแนวทางการทำงานของ Skill"></textarea></label>
                 <div class="actions full">
                   <button id="create-skill" type="button" class="secondary" data-i18n="settings.createSkill">สร้าง Skill</button>
+                  <button id="update-skill" type="button" class="secondary" data-i18n="settings.updateSkill">บันทึกการแก้ไข</button>
+                  <button id="delete-skill" type="button" class="danger" data-i18n="settings.deleteSkill">ลบ Skill</button>
                 </div>
                 <label
                   ><span>Temperature <b id="temperature-value">0.7</b></span>
@@ -2360,6 +2362,11 @@
           "settings.createSkill": "สร้าง Skill",
           "settings.createSkillDone": "สร้าง Skill แล้ว",
           "settings.createSkillFailed": "สร้าง Skill ไม่สำเร็จ",
+          "settings.updateSkill": "บันทึกการแก้ไข",
+          "settings.deleteSkill": "ลบ Skill",
+          "settings.deleteSkillConfirm": "ต้องการลบ Skill นี้ถาวรหรือไม่?",
+          "settings.skillSaved": "บันทึก Skill แล้ว",
+          "settings.skillDeleted": "ลบ Skill แล้ว",
           "settings.assistantHint":
             "ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ",
           "settings.thinkingLevel": "ระดับการคิด",
@@ -2573,6 +2580,11 @@
           "settings.createSkill": "Create skill",
           "settings.createSkillDone": "Skill created",
           "settings.createSkillFailed": "Could not create skill",
+          "settings.updateSkill": "Save changes",
+          "settings.deleteSkill": "Delete skill",
+          "settings.deleteSkillConfirm": "Delete this skill permanently?",
+          "settings.skillSaved": "Skill saved",
+          "settings.skillDeleted": "Skill deleted",
           "settings.assistantHint":
             "Set the system prompt and response parameters.",
           "settings.thinkingLevel": "Thinking level",
@@ -3607,6 +3619,36 @@
         $("new-skill-content").value = "";
         await loadSettings();
         showNotice(t("settings.createSkillDone"));
+      });
+      $("skills").addEventListener("change", async () => {
+        const name = $("skills").value;
+        if (!name) return;
+        const response = await fetch(`/api/skills/${encodeURIComponent(name)}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        $("new-skill-name").value = data.name;
+        $("new-skill-content").value = data.content;
+      });
+      $("update-skill").addEventListener("click", async () => {
+        const name = $("skills").value;
+        if (!name) return;
+        const response = await fetch(`/api/skills/${encodeURIComponent(name)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: $("new-skill-content").value }),
+        });
+        if (response.ok) showNotice(t("settings.skillSaved"));
+      });
+      $("delete-skill").addEventListener("click", async () => {
+        const name = $("skills").value;
+        if (!name || !window.confirm(t("settings.deleteSkillConfirm"))) return;
+        const response = await fetch(`/api/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
+        if (response.ok) {
+          await loadSettings();
+          $("new-skill-name").value = "";
+          $("new-skill-content").value = "";
+          showNotice(t("settings.skillDeleted"));
+        }
       });
       $("test").addEventListener("click", async () => {
         $("test").disabled = true;
