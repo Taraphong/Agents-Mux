@@ -1441,6 +1441,17 @@ def skills_get():
     return jsonify({"items": list_skills()})
 
 
+@app.get("/api/skills/<name>")
+def skill_get(name: str):
+    try:
+        path = skill_path(name)
+        if not path.exists():
+            return jsonify({"error": "ไม่พบ Skill"}), 404
+        return jsonify({"name": path.stem, "content": path.read_text(encoding="utf-8")[:20_000]})
+    except (OSError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
 @app.post("/api/skills")
 def skills_create():
     body = request.get_json(silent=True) or {}
@@ -1448,6 +1459,34 @@ def skills_create():
         result = run_local_tool("create_skill", {"name": body.get("name", ""), "content": body.get("content", "")}, approved=True)
         return jsonify(result), 201
     except (OSError, PermissionError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.put("/api/skills/<name>")
+def skills_update(name: str):
+    body = request.get_json(silent=True) or {}
+    content = body.get("content", "")
+    if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
+        return jsonify({"error": "เนื้อหา Skill ไม่ถูกต้องหรือใหญ่เกินขนาดที่อนุญาต"}), 400
+    try:
+        path = skill_path(name)
+        if not path.exists():
+            return jsonify({"error": "ไม่พบ Skill"}), 404
+        path.write_text(content.strip() + "\n", encoding="utf-8")
+        return jsonify({"ok": True, "name": path.stem})
+    except (OSError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.delete("/api/skills/<name>")
+def skills_delete(name: str):
+    try:
+        path = skill_path(name)
+        if not path.exists():
+            return jsonify({"error": "ไม่พบ Skill"}), 404
+        path.unlink()
+        return jsonify({"ok": True, "name": path.stem})
+    except (OSError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
 
 
