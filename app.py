@@ -55,7 +55,7 @@ TOOL_INSTRUCTIONS = """
 หากต้องเขียนไฟล์ ให้ใช้ชื่อ write_file และหากต้องรันคำสั่ง ให้ใช้ชื่อ run_command (ระบบยอมรับ execute_command เป็นชื่อเก่าด้วย) ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
 ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ
 หากต้องสร้างหรือปรับปรุงสกิล ให้ใช้เครื่องมือ create_skill พร้อมชื่อไฟล์ .md และเนื้อหาสกิลที่ชัดเจน ระบบจะจำกัดการเขียนไว้ในโฟลเดอร์ skills เท่านั้น
-เมื่อผู้ใช้สั่งให้สร้างงานตามเวลา/Cron อย่างชัดเจน ให้ใช้เครื่องมือ create_schedule ด้วย arguments: name, schedule (Cron 5 ช่อง), prompt, model (ไม่บังคับ) และ enabled (ไม่บังคับ) โดยใช้ timezone ของ Server
+เมื่อผู้ใช้สั่งให้สร้างงานตามเวลา/Cron อย่างชัดเจน ให้ใช้เครื่องมือ create_schedule ด้วย arguments: name, schedule (Cron 5 ช่อง), prompt, model (ไม่บังคับ), enabled (ไม่บังคับ) และ discord_channel_id (ไม่บังคับ เป็น Channel ID ของ Discord) โดยใช้ timezone ของ Server
 """.strip()
 
 TOOL_ALIASES = {"execute_command": "run_command"}
@@ -305,6 +305,7 @@ def execute_schedule(job: dict[str, Any]) -> None:
             {"role": "user", "content": job["prompt"], "schedule_id": job["id"]},
             {"role": "assistant", "content": answer, "duration_ms": duration_ms, "usage": usage, "schedule_id": job["id"]},
         ]})
+        send_discord_schedule_result(job, answer)
         update_schedule(job["id"], last_status="สำเร็จ", last_error="", last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
         log_event("schedule.success", f"งานตามเวลา {job['name']} สำเร็จ", job=job["id"], duration_ms=duration_ms)
     except Exception as exc:
@@ -349,6 +350,26 @@ def schedule_loop() -> None:
             except OSError as exc:
                 log_event("schedule.error", "อ่านหรือบันทึกงานตามเวลาไม่สำเร็จ", error=str(exc))
         time.sleep(15)
+
+
+def send_discord_schedule_result(job: dict[str, Any], answer: str) -> None:
+    channel_id = str(job.get("discord_channel_id") or "").strip()
+    if not channel_id:
+        return
+    if not channel_id.isdigit():
+        raise ValueError("Discord Channel ID ต้องเป็นตัวเลข")
+    if DISCORD_BOT is None or DISCORD_LOOP is None or DISCORD_LOOP.is_closed():
+        raise RuntimeError("Discord bot ยังไม่ได้เชื่อมต่อ")
+
+    async def deliver() -> None:
+        channel = DISCORD_BOT.get_channel(int(channel_id))
+        if channel is None:
+            channel = await DISCORD_BOT.fetch_channel(int(channel_id))
+        for chunk in split_discord_message(f"⏰ {job['name']}\n\n{answer}"):
+            await channel.send(chunk)
+
+    future = asyncio.run_coroutine_threadsafe(deliver(), DISCORD_LOOP)
+    future.result(timeout=30)
 
 
 def start_scheduler() -> None:
@@ -497,12 +518,16 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         if not job_name or not prompt:
             raise ValueError("ต้องระบุชื่องานและ prompt")
         schedule = validate_cron(arguments.get("schedule", ""))
+        discord_channel_id = str(arguments.get("discord_channel_id", "")).strip()[:30]
+        if discord_channel_id and not discord_channel_id.isdigit():
+            raise ValueError("Discord Channel ID ต้องเป็นตัวเลข")
         job = {
             "id": str(uuid.uuid4()),
             "name": job_name[:100],
             "schedule": schedule,
             "prompt": prompt[:10_000],
             "model": str(arguments.get("model", "")).strip()[:200],
+            "discord_channel_id": discord_channel_id,
             "enabled": bool(arguments.get("enabled", True)),
             "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "last_run_at": None,
@@ -1425,7 +1450,10 @@ def schedules_create():
         schedule = validate_cron(body.get("schedule", ""))
     except (TypeError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
-    job = {"id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "model": str(body.get("model", "")).strip()[:200], "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
+    discord_channel_id = str(body.get("discord_channel_id", "")).strip()[:30]
+    if discord_channel_id and not discord_channel_id.isdigit():
+        return jsonify({"error": "Discord Channel ID ต้องเป็นตัวเลข"}), 400
+    job = {"id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "model": str(body.get("model", "")).strip()[:200], "discord_channel_id": discord_channel_id, "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
     with SCHEDULE_LOCK:
         jobs = load_schedules()
         jobs.append(job)
@@ -1452,10 +1480,34 @@ def schedules_update(job_id: str):
             job["prompt"] = str(body["prompt"]).strip()[:10_000]
         if "model" in body:
             job["model"] = str(body["model"]).strip()[:200]
+        if "discord_channel_id" in body:
+            discord_channel_id = str(body["discord_channel_id"]).strip()[:30]
+            if discord_channel_id and not discord_channel_id.isdigit():
+                return jsonify({"error": "Discord Channel ID ต้องเป็นตัวเลข"}), 400
+            job["discord_channel_id"] = discord_channel_id
         if "enabled" in body:
             job["enabled"] = bool(body["enabled"])
         save_schedules(jobs)
     return jsonify(job)
+
+
+@app.post("/api/schedules/<job_id>/run")
+def schedules_run(job_id: str):
+    jobs = load_schedules()
+    job = next((item for item in jobs if item.get("id") == job_id), None)
+    if not job:
+        return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
+    with SCHEDULE_RUNNING_LOCK:
+        if job_id in SCHEDULE_RUNNING:
+            return jsonify({"error": "งานนี้กำลังทำงานอยู่"}), 409
+        SCHEDULE_RUNNING.add(job_id)
+    try:
+        threading.Thread(target=execute_schedule, args=(job,), daemon=True).start()
+    except Exception:
+        with SCHEDULE_RUNNING_LOCK:
+            SCHEDULE_RUNNING.discard(job_id)
+        raise
+    return jsonify({"ok": True, "job_id": job_id}), 202
 
 
 @app.delete("/api/schedules/<job_id>")

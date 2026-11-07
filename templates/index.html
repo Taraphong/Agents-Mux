@@ -2231,6 +2231,14 @@
                     ใช้โมเดลหลักจาก Settings
                   </option>
                 </select>
+                <input
+                  id="schedule-discord-channel"
+                  inputmode="numeric"
+                  placeholder="Discord Channel ID (ไม่บังคับ)"
+                  data-i18n-placeholder="schedule.discordChannelPlaceholder"
+                  title="Discord Channel ID"
+                  data-i18n-title="schedule.discordChannelTitle"
+                />
                 <textarea
                   id="schedule-prompt"
                   rows="3"
@@ -2435,12 +2443,15 @@
           "schedule.expressionPlaceholder": "Cron เช่น 0 9 * * 1-5",
           "schedule.modelTitle": "โมเดลสำหรับงาน",
           "schedule.useMainModel": "ใช้โมเดลหลักจาก Settings",
+          "schedule.discordChannelPlaceholder": "Discord Channel ID (ไม่บังคับ)",
+          "schedule.discordChannelTitle": "รหัสช่อง Discord",
           "schedule.promptPlaceholder": "Prompt ที่ต้องการให้ AI ทำงาน",
           "schedule.enableNow": "เปิดใช้งานทันที",
           "schedule.add": "เพิ่มงานตามเวลา",
           "schedule.empty": "ยังไม่มีงานตามเวลา",
           "schedule.timezoneFallback": "เวลาของเครื่อง Server",
           "schedule.modelLabel": "โมเดล: {model}",
+          "schedule.discordChannel": "ส่งผลไป Discord ช่อง: {id}",
           "schedule.enabled": "เปิดใช้งาน",
           "schedule.disabled": "ปิดใช้งาน",
           "schedule.neverRun": "ยังไม่เคยทำงาน",
@@ -2450,6 +2461,8 @@
           "schedule.toggleDisable": "ปิดใช้งาน",
           "schedule.added": "เพิ่มงานตามเวลาแล้ว",
           "schedule.addFailed": "เพิ่มงานไม่สำเร็จ",
+          "schedule.runNow": "รันทันที",
+          "schedule.started": "เริ่มรันงานแล้ว",
           "logs.title": "Log ระบบ",
           "logs.system": "System logs",
           "logs.agent": "Agent logs",
@@ -2656,12 +2669,15 @@
           "schedule.expressionPlaceholder": "Cron, e.g. 0 9 * * 1-5",
           "schedule.modelTitle": "Model for jobs",
           "schedule.useMainModel": "Use the main model from Settings",
+          "schedule.discordChannelPlaceholder": "Discord Channel ID (optional)",
+          "schedule.discordChannelTitle": "Discord channel ID",
           "schedule.promptPlaceholder": "Prompt for the AI to run",
           "schedule.enableNow": "Enable immediately",
           "schedule.add": "Add scheduled job",
           "schedule.empty": "No scheduled jobs yet",
           "schedule.timezoneFallback": "Server timezone",
           "schedule.modelLabel": "Model: {model}",
+          "schedule.discordChannel": "Send results to Discord channel: {id}",
           "schedule.enabled": "Enabled",
           "schedule.disabled": "Disabled",
           "schedule.neverRun": "Never run",
@@ -2671,6 +2687,8 @@
           "schedule.toggleDisable": "Disable",
           "schedule.added": "Scheduled job added",
           "schedule.addFailed": "Could not add the scheduled job",
+          "schedule.runNow": "Run now",
+          "schedule.started": "Job started",
           "logs.title": "System logs",
           "logs.system": "System logs",
           "logs.agent": "Agent logs",
@@ -3199,7 +3217,9 @@
             <strong>${escapeHtml(job.name)}</strong>
             <small>${escapeHtml(job.schedule)} · ${job.model ? `${escapeHtml(t("schedule.modelLabel", { model: job.model }))} · ` : ""}${job.enabled ? t("schedule.enabled") : t("schedule.disabled")} · ${escapeHtml(scheduleStatusText(job.last_status))}</small>
             <small>${escapeHtml(job.prompt)}</small>
+            ${job.discord_channel_id ? `<small>${escapeHtml(t("schedule.discordChannel", { id: job.discord_channel_id }))}</small>` : ""}
             <div class="schedule-item-actions">
+              <button type="button" data-schedule-action="run">${t("schedule.runNow")}</button>
               <button type="button" data-schedule-action="toggle" data-enabled="${job.enabled ? "true" : "false"}">${job.enabled ? t("schedule.toggleDisable") : t("schedule.toggleEnable")}</button>
               <button type="button" class="danger" data-schedule-action="delete">${t("common.delete")}</button>
             </div>
@@ -3249,6 +3269,7 @@
             name: $("schedule-name").value.trim(),
             schedule: $("schedule-expression").value.trim(),
             model: $("schedule-model").value,
+            discord_channel_id: $("schedule-discord-channel").value.trim(),
             prompt: $("schedule-prompt").value.trim(),
             enabled: $("schedule-enabled").checked,
           }),
@@ -3264,6 +3285,13 @@
         const button = event.target.closest("[data-schedule-action]");
         if (!button) return;
         const id = button.closest("[data-schedule-id]").dataset.scheduleId;
+        if (button.dataset.scheduleAction === "run") {
+          const response = await fetch(`/api/schedules/${id}/run`, { method: "POST" });
+          const data = await response.json();
+          showNotice(data.error || t("schedule.started"), !response.ok);
+          await loadSchedules();
+          return;
+        }
         if (button.dataset.scheduleAction === "delete") {
           await fetch(`/api/schedules/${id}`, { method: "DELETE" });
         } else {
