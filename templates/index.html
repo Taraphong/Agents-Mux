@@ -1989,6 +1989,11 @@
                         ไม่ใช้ fallback
                       </option>
                     </select>
+                    <select id="fallback_provider_select" aria-label="Fallback provider">
+                      <option value="openai">OpenAI / OpenAI-compatible</option>
+                      <option value="gemini">Google Gemini</option>
+                      <option value="anthropic">Anthropic Claude</option>
+                    </select>
                   </div>
                   <small class="hint" data-i18n="settings.fallbackHint"
                     >จะลองใช้เมื่อ API
@@ -3400,6 +3405,18 @@
         currentFallbackModels = choices;
         currentFallbackSelected = select.value;
       }
+      async function fetchFallbackModels(provider, selected = "") {
+        try {
+          const r = await fetch(`/api/models?provider=${encodeURIComponent(provider)}`);
+          const data = await r.json();
+          updateFallbackModelOptions(
+            r.ok && Array.isArray(data.models) ? data.models : MODEL_OPTIONS[provider]?.models || [],
+            selected,
+          );
+        } catch (e) {
+          updateFallbackModelOptions(MODEL_OPTIONS[provider]?.models || [], selected);
+        }
+      }
       function currentModel() {
         return $("model_select").value === "__custom__"
           ? $("model_custom").value.trim()
@@ -3415,6 +3432,9 @@
         $("api_key").value = "";
         updateApiKeyHint(provider);
         fetchModels(provider);
+      });
+      $("fallback_provider_select").addEventListener("change", (event) => {
+        fetchFallbackModels(event.target.value, "");
       });
       $("model_select").addEventListener("change", () => {
         $("model_custom").style.display =
@@ -3558,6 +3578,7 @@
         $("chat-thinking-level").value = s.thinking_level ?? "off";
         $("stream").checked = !!s.stream;
         $("fallback_enabled").checked = !!s.fallback_enabled;
+        $("fallback_provider_select").value = s.fallback_provider ?? "openai";
         $("discord_enabled").checked = !!s.discord_enabled;
         $("discord_prefix").value = s.discord_prefix ?? "!ai";
         $("discord_token").value = "";
@@ -3570,6 +3591,10 @@
         await fetchModels(
           $("provider").value,
           s.model ?? "",
+          s.fallback_model ?? "",
+        );
+        await fetchFallbackModels(
+          $("fallback_provider_select").value,
           s.fallback_model ?? "",
         );
         updateRanges();
@@ -3597,6 +3622,7 @@
           thinking_level: $("thinking_level").value,
           stream: $("stream").checked,
           fallback_enabled: $("fallback_enabled").checked,
+          fallback_provider: $("fallback_provider_select").value,
           fallback_model: $("fallback_model_select").value,
           discord_enabled: $("discord_enabled").checked,
           discord_token: $("discord_token").value,
