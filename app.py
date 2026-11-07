@@ -152,6 +152,12 @@ def log_event(event: str, message: str, **details: Any) -> None:
 load_persisted_logs()
 
 DEFAULT_SETTINGS = {
+    "agent_name": "Mux",
+    "agent_role": "ผู้ช่วย AI อเนกประสงค์",
+    "response_language": "auto",
+    "response_style": "เป็นมิตร กระชับ และชัดเจน",
+    "use_markdown": True,
+    "ask_clarifying_questions": True,
     "provider": os.getenv("AI_PROVIDER", "openai"),
     "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
     "base_url": "https://api.openai.com/v1",
@@ -906,6 +912,19 @@ def clean_messages(messages: list[dict[str, str]], settings: dict[str, Any]) -> 
     return result
 
 
+def agent_profile_prompt(settings: dict[str, Any]) -> str:
+    """Turn the user-configured agent profile into stable runtime guidance."""
+    language = {"auto": "ตอบตามภาษาของผู้ใช้", "th": "ตอบเป็นภาษาไทย", "en": "ตอบเป็นภาษาอังกฤษ"}.get(str(settings.get("response_language", "auto")), "ตอบตามภาษาของผู้ใช้")
+    questions = "ถามกลับเมื่อข้อมูลไม่พอหรือคำสั่งกำกวม" if settings.get("ask_clarifying_questions", True) else "หลีกเลี่ยงการถามกลับและระบุสมมติฐานที่ใช้"
+    markdown = "ใช้ Markdown เมื่อช่วยให้อ่านง่าย" if settings.get("use_markdown", True) else "ไม่ใช้ Markdown ที่ซับซ้อน"
+    return "แนวทางโปรไฟล์ Agent:\n" + "\n".join((
+        f"- ชื่อที่ใช้แนะนำตัว: {str(settings.get('agent_name') or 'Mux')[:80]}",
+        f"- บทบาท: {str(settings.get('agent_role') or '')[:500]}",
+        f"- โทนการตอบ: {str(settings.get('response_style') or '')[:500]}",
+        f"- ภาษา: {language}", f"- รูปแบบ: {markdown}", f"- การขอข้อมูลเพิ่ม: {questions}",
+    ))
+
+
 def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: str, total_key: str | None) -> dict[str, int] | None:
     """Map provider-specific usage fields to the fields shown in the UI."""
     if not isinstance(usage, dict):
@@ -1144,6 +1163,7 @@ def start_discord_bot() -> None:
             settings_for_chat["system_prompt"] = "\n\n".join(
                 part for part in (
                     settings_for_chat.get("system_prompt", ""),
+                    agent_profile_prompt(settings_for_chat),
                     selected_skill_prompt(settings_for_chat),
                     TOOL_INSTRUCTIONS,
                 ) if part
@@ -1740,11 +1760,21 @@ def models_get():
 def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
+<<<<<<< HEAD
     allowed = {"provider", "model", "base_url", "system_prompt", "memory_review", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix"}
+=======
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix"}
+>>>>>>> b6ce9b6 (feat: add configurable agent profile settings)
     for key in allowed:
         if key in body:
             current[key] = body[key]
     current["provider"] = normalize_provider(current.get("provider"))
+    current["agent_name"] = str(current.get("agent_name") or "Mux").strip()[:80]
+    current["agent_role"] = str(current.get("agent_role") or "ผู้ช่วย AI อเนกประสงค์").strip()[:500]
+    current["response_language"] = current.get("response_language") if current.get("response_language") in {"auto", "th", "en"} else "auto"
+    current["response_style"] = str(current.get("response_style") or "เป็นมิตร กระชับ และชัดเจน").strip()[:500]
+    current["use_markdown"] = bool(current.get("use_markdown", True))
+    current["ask_clarifying_questions"] = bool(current.get("ask_clarifying_questions", True))
     current["fallback_enabled"] = bool(current.get("fallback_enabled"))
     current["fallback_provider"] = normalize_provider(current.get("fallback_provider"))
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
@@ -1834,6 +1864,7 @@ def chat():
         settings["system_prompt"] = "\n\n".join(
             part for part in (
                 settings.get("system_prompt", ""),
+                agent_profile_prompt(settings),
                 f"แนวทางทบทวนความจำ:\n{settings.get('memory_review', '')}" if settings.get("memory_review") else "",
                 selected_skill_prompt(settings),
                 TOOL_INSTRUCTIONS,
