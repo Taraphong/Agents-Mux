@@ -2037,6 +2037,22 @@
                   ><textarea id="memory_review" rows="4" data-i18n-placeholder="settings.memoryReviewPlaceholder" placeholder="กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ"></textarea>
                   <small class="hint" data-i18n="settings.memoryReviewHint">แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด</small>
                 </label>
+                <label class="full"
+                  ><span data-i18n="settings.skills">Skills ที่ใช้กับ Agent</span>
+                  <select id="skills" multiple size="4"></select>
+                  <small class="hint" data-i18n="settings.skillsHint">เลือกได้หลายสกิล ระบบจะส่งเนื้อหาไปเป็นแนวทางให้ Agent</small>
+                </label>
+                <label
+                  ><span data-i18n="settings.newSkillName">ชื่อ Skill ใหม่</span
+                  ><input id="new-skill-name" placeholder="เช่น code-review" /></label>
+                <label
+                  ><span data-i18n="settings.newSkillContent">เนื้อหา Skill</span
+                  ><textarea id="new-skill-content" rows="3" placeholder="เขียนแนวทางการทำงานของ Skill"></textarea></label>
+                <div class="actions full">
+                  <button id="create-skill" type="button" class="secondary" data-i18n="settings.createSkill">สร้าง Skill</button>
+                  <button id="update-skill" type="button" class="secondary" data-i18n="settings.updateSkill">บันทึกการแก้ไข</button>
+                  <button id="delete-skill" type="button" class="danger" data-i18n="settings.deleteSkill">ลบ Skill</button>
+                </div>
                 <label
                   ><span>Temperature <b id="temperature-value">0.7</b></span>
                   <div class="range-row">
@@ -2344,6 +2360,18 @@
           "settings.memoryReview": "ทบทวนความจำ",
           "settings.memoryReviewPlaceholder": "กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ",
           "settings.memoryReviewHint": "แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด",
+          "settings.skills": "Skills ที่ใช้กับ Agent",
+          "settings.skillsHint": "เลือกได้หลายสกิล ระบบจะส่งเนื้อหาไปเป็นแนวทางให้ Agent",
+          "settings.newSkillName": "ชื่อ Skill ใหม่",
+          "settings.newSkillContent": "เนื้อหา Skill",
+          "settings.createSkill": "สร้าง Skill",
+          "settings.createSkillDone": "สร้าง Skill แล้ว",
+          "settings.createSkillFailed": "สร้าง Skill ไม่สำเร็จ",
+          "settings.updateSkill": "บันทึกการแก้ไข",
+          "settings.deleteSkill": "ลบ Skill",
+          "settings.deleteSkillConfirm": "ต้องการลบ Skill นี้ถาวรหรือไม่?",
+          "settings.skillSaved": "บันทึก Skill แล้ว",
+          "settings.skillDeleted": "ลบ Skill แล้ว",
           "settings.assistantHint":
             "ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ",
           "settings.thinkingLevel": "ระดับการคิด",
@@ -2550,6 +2578,18 @@
           "settings.memoryReview": "Memory review",
           "settings.memoryReviewPlaceholder": "Define what the agent should review before answering",
           "settings.memoryReviewHint": "This guidance is sent to the agent on every response to preserve context and reduce errors.",
+          "settings.skills": "Skills used by the agent",
+          "settings.skillsHint": "Select multiple skills. Their content will guide the agent.",
+          "settings.newSkillName": "New skill name",
+          "settings.newSkillContent": "Skill content",
+          "settings.createSkill": "Create skill",
+          "settings.createSkillDone": "Skill created",
+          "settings.createSkillFailed": "Could not create skill",
+          "settings.updateSkill": "Save changes",
+          "settings.deleteSkill": "Delete skill",
+          "settings.deleteSkillConfirm": "Delete this skill permanently?",
+          "settings.skillSaved": "Skill saved",
+          "settings.skillDeleted": "Skill deleted",
           "settings.assistantHint":
             "Set the system prompt and response parameters.",
           "settings.thinkingLevel": "Thinking level",
@@ -3501,6 +3541,15 @@
         $("base_url").value = s.base_url ?? "";
         $("system_prompt").value = s.system_prompt ?? "";
         $("memory_review").value = s.memory_review ?? "";
+        const skillsSelect = $("skills");
+        skillsSelect.innerHTML = "";
+        (s.available_skills || []).forEach((skill) => {
+          const option = document.createElement("option");
+          option.value = skill.name;
+          option.textContent = skill.name;
+          option.selected = Array.isArray(s.skills) && s.skills.includes(skill.name);
+          skillsSelect.appendChild(option);
+        });
         $("temperature").value = s.temperature ?? 0.7;
         $("max_tokens").value = s.max_tokens ?? 2048;
         $("top_p").value = s.top_p ?? 1;
@@ -3544,6 +3593,7 @@
           base_url: $("base_url").value,
           system_prompt: $("system_prompt").value,
           memory_review: $("memory_review").value,
+          skills: Array.from($("skills").selectedOptions).map((option) => option.value),
           api_key: $("api_key").value,
           temperature: Number($("temperature").value),
           top_p: Number($("top_p").value),
@@ -3597,6 +3647,55 @@
               : $("model_select").value,
           });
           await refreshConnectionState();
+        }
+      });
+      $("create-skill").addEventListener("click", async () => {
+        const name = $("new-skill-name").value.trim();
+        const content = $("new-skill-content").value.trim();
+        if (!name || !content) return;
+        const r = await fetch("/api/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, content }),
+        });
+        if (!r.ok) {
+          const data = await r.json();
+          showNotice(data.error || t("settings.createSkillFailed"), true);
+          return;
+        }
+        $("new-skill-name").value = "";
+        $("new-skill-content").value = "";
+        await loadSettings();
+        showNotice(t("settings.createSkillDone"));
+      });
+      $("skills").addEventListener("change", async () => {
+        const name = $("skills").value;
+        if (!name) return;
+        const response = await fetch(`/api/skills/${encodeURIComponent(name)}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        $("new-skill-name").value = data.name;
+        $("new-skill-content").value = data.content;
+      });
+      $("update-skill").addEventListener("click", async () => {
+        const name = $("skills").value;
+        if (!name) return;
+        const response = await fetch(`/api/skills/${encodeURIComponent(name)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: $("new-skill-content").value }),
+        });
+        if (response.ok) showNotice(t("settings.skillSaved"));
+      });
+      $("delete-skill").addEventListener("click", async () => {
+        const name = $("skills").value;
+        if (!name || !window.confirm(t("settings.deleteSkillConfirm"))) return;
+        const response = await fetch(`/api/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
+        if (response.ok) {
+          await loadSettings();
+          $("new-skill-name").value = "";
+          $("new-skill-content").value = "";
+          showNotice(t("settings.skillDeleted"));
         }
       });
       $("test").addEventListener("click", async () => {
