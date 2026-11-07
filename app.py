@@ -322,6 +322,12 @@ def execute_schedule(job: dict[str, Any]) -> None:
         settings = load_settings()
         if job.get("model"):
             settings["model"] = job["model"]
+        settings["system_prompt"] = "\n\n".join(
+            part for part in (
+                settings.get("system_prompt", ""),
+                agent_profile_prompt(settings),
+            ) if part
+        )
         messages = clean_messages([{"role": "user", "content": job["prompt"]}], settings)
         started_at = time.perf_counter()
         answer, usage = call_provider(messages, settings)
@@ -1761,17 +1767,20 @@ def models_get():
 def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix"}
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
     current["provider"] = normalize_provider(current.get("provider"))
     current["agent_name"] = str(current.get("agent_name") or "Mux").strip()[:80]
     current["agent_role"] = str(current.get("agent_role") or "ผู้ช่วย AI อเนกประสงค์").strip()[:500]
-    current["response_language"] = current.get("response_language") if current.get("response_language") in {"auto", "th", "en"} else "auto"
+    language = str(current.get("response_language") or "auto").strip().lower()
+    current["response_language"] = language if language in {"auto", "th", "en"} else "auto"
     current["response_style"] = str(current.get("response_style") or "เป็นมิตร กระชับ และชัดเจน").strip()[:500]
     current["use_markdown"] = bool(current.get("use_markdown", True))
     current["ask_clarifying_questions"] = bool(current.get("ask_clarifying_questions", True))
+    thinking_level = str(current.get("thinking_level") or "off").strip().lower()
+    current["thinking_level"] = thinking_level if thinking_level in {"off", "low", "medium", "high"} else "off"
     current["fallback_enabled"] = bool(current.get("fallback_enabled"))
     current["fallback_provider"] = normalize_provider(current.get("fallback_provider"))
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
