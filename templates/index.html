@@ -2194,7 +2194,7 @@
               <div class="grid">
                 <label><span data-i18n="settings.agentName">ชื่อ Agent</span><input id="agent_name" maxlength="80" /></label>
                 <label><span data-i18n="settings.agentRole">บทบาท</span><input id="agent_role" maxlength="500" /></label>
-                <label><span data-i18n="settings.responseLanguage">ภาษาคำตอบ</span><select id="response_language"><option value="auto">ตามภาษาผู้ใช้</option><option value="th">ไทย</option><option value="en">English</option></select></label>
+                <label><span data-i18n="settings.responseLanguage">ภาษาคำตอบ</span><select id="response_language"><option value="auto" data-i18n="settings.languageAuto">ตามภาษาผู้ใช้</option><option value="th" data-i18n="settings.languageTh">ไทย</option><option value="en" data-i18n="settings.languageEn">English</option></select></label>
                 <label class="full"><span data-i18n="settings.responseStyle">โทนและสไตล์</span><textarea id="response_style" rows="2" maxlength="500"></textarea></label>
                 <label class="toggle"><input id="use_markdown" type="checkbox" /><span data-i18n="settings.useMarkdown">ใช้ Markdown</span></label>
                 <label class="toggle"><input id="ask_clarifying_questions" type="checkbox" /><span data-i18n="settings.askQuestions">ถามกลับเมื่อข้อมูลไม่พอ</span></label>
@@ -2639,6 +2639,9 @@
           "settings.responseStyle": "โทนและสไตล์",
           "settings.useMarkdown": "ใช้ Markdown",
           "settings.askQuestions": "ถามกลับเมื่อข้อมูลไม่พอ",
+          "settings.languageAuto": "ตามภาษาผู้ใช้",
+          "settings.languageTh": "ไทย",
+          "settings.languageEn": "English",
           "settings.providerHint":
             "เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ OpenAI-compatible API",
           "settings.modelNotFetched": "ยังไม่ได้ดึงจาก API",
@@ -2905,6 +2908,9 @@
           "settings.responseStyle": "Tone and style",
           "settings.useMarkdown": "Use Markdown",
           "settings.askQuestions": "Ask clarifying questions",
+          "settings.languageAuto": "Match the user's language",
+          "settings.languageTh": "Thai",
+          "settings.languageEn": "English",
           "settings.providerHint":
             "Choose the provider used for chat and set a custom endpoint for OpenAI-compatible APIs.",
           "settings.modelNotFetched": "Not fetched from API yet",
