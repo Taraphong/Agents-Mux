@@ -12,7 +12,18 @@
 
 set -u
 
-APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks so the documented install works:
+#   ln -sf ~/ai-web/start_web.sh "$PREFIX/bin/startweb"
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+for _ in 1 2 3 4 5 6 7 8; do
+  [ -L "$SCRIPT_PATH" ] || break
+  _target="$(readlink "$SCRIPT_PATH" 2>/dev/null)" || break
+  case "$_target" in
+    /*) SCRIPT_PATH="$_target" ;;
+    *) SCRIPT_PATH="$(dirname "$SCRIPT_PATH")/$_target" ;;
+  esac
+done
+APP_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
 APP_FILE="$APP_DIR/app.py"
 LOG_FILE="${AI_WEB_LOG:-$APP_DIR/debug-ai-web.log}"
 PORT="${PORT:-5000}"
