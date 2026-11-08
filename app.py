@@ -1,6 +1,7 @@
 import os
 import asyncio
 import fcntl
+import getpass
 import hashlib
 import json
 import logging
@@ -8,7 +9,10 @@ import re
 import secrets
 import shlex
 import shutil
+import signal
+import socket
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -49,6 +53,9 @@ _SCHEDULER_START_LOCK = threading.Lock()
 _SCHEDULER_LOCK_HANDLE: Any = None
 PROTECTED_NAMES = {".env", ".app-settings.json"}
 PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__"}
+TERMINAL_TIMEOUT_SECONDS = 60
+TERMINAL_MAX_OUTPUT_BYTES = 100_000
+TERMINAL_SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
 TOOL_INSTRUCTIONS = """
 คุณมีเครื่องมือจำกัดอยู่ในโฟลเดอร์โปรเจกต์เท่านั้น หากต้องอ่านไฟล์หรือดูรายการไฟล์ ให้ร้องขอด้วยรูปแบบนี้เพียงอย่างเดียว:
 <tool_call>{"name":"read_file","arguments":{"path":"app.py"}}</tool_call>
@@ -175,6 +182,7 @@ DEFAULT_SETTINGS = {
     "fallback_model": os.getenv("AI_FALLBACK_MODEL", ""),
     "discord_enabled": bool(os.getenv("DISCORD_BOT_TOKEN", "").strip()),
     "discord_prefix": os.getenv("DISCORD_BOT_PREFIX", "!ai"),
+    "terminal_enabled": True,
 }
 
 FALLBACK_MODELS = {
@@ -672,6 +680,196 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         return result
 
     raise ValueError("ไม่รู้จักเครื่องมือนี้")
+
+
+def terminal_settings() -> dict[str, Any]:
+    return load_settings()
+
+
+def terminal_is_enabled(settings: dict[str, Any] | None = None) -> bool:
+    settings = settings if settings is not None else terminal_settings()
+    return bool(settings.get("terminal_enabled", True))
+
+
+def terminal_shell() -> str:
+    """Pick an available POSIX shell, including Termux where /bin/sh may not exist."""
+    for candidate in (os.getenv("SHELL"), shutil.which("bash"), shutil.which("sh"), "/system/bin/sh", "/bin/sh"):
+        if candidate and Path(candidate).exists():
+            return candidate
+    return "sh"
+
+
+def terminal_environment() -> dict[str, str]:
+    """Inherit the server environment without exposing credentials to commands."""
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not any(part in name.upper() for part in TERMINAL_SENSITIVE_ENV_PARTS)
+    }
+    env.setdefault("TERM", "xterm-256color")
+    env.setdefault("LANG", "C.UTF-8")
+    env["PYTHONUNBUFFERED"] = "1"
+    return env
+
+
+def terminal_secret_values() -> list[str]:
+    settings = terminal_settings()
+    values = {value for value in stored_api_keys(settings).values() if value}
+    discord_token = get_discord_token(settings)
+    if discord_token:
+        values.add(discord_token)
+    for name, value in os.environ.items():
+        if value and len(value) >= 8 and any(part in name.upper() for part in TERMINAL_SENSITIVE_ENV_PARTS):
+            values.add(value)
+    return sorted(values, key=len, reverse=True)
+
+
+def redact_terminal_output(text: str, secrets_found: list[str]) -> str:
+    for secret in secrets_found:
+        text = text.replace(secret, "••••••••")
+    return text
+
+
+def read_terminal_capture(handle: Any) -> tuple[str, bool]:
+    """Read at most the tail of a captured stream so runaway output cannot exhaust memory."""
+    handle.flush()
+    handle.seek(0, os.SEEK_END)
+    size = handle.tell()
+    start = max(0, size - TERMINAL_MAX_OUTPUT_BYTES)
+    handle.seek(start)
+    text = handle.read().decode("utf-8", errors="replace")
+    if start > 0:
+        text = "… (ตัดข้อความส่วนต้นออก เนื่องจากมีผลลัพธ์จำนวนมาก)\n" + text
+    return text, start > 0
+
+
+def resolve_terminal_cwd(raw_path: Any) -> Path:
+    value = str(raw_path or ".").strip() or "."
+    if value in {"~", "~/"}:
+        candidate = PROJECT_ROOT
+    else:
+        if value.startswith("~/"):
+            value = value[2:]
+        candidate = (PROJECT_ROOT / value).resolve()
+    if candidate != PROJECT_ROOT and PROJECT_ROOT not in candidate.parents:
+        raise ValueError("Terminal ถูกจำกัดให้ทำงานภายในโฟลเดอร์โปรเจกต์")
+    if not candidate.exists():
+        raise FileNotFoundError(f"ไม่พบโฟลเดอร์: {raw_path}")
+    if not candidate.is_dir():
+        raise ValueError("path นี้ไม่ใช่โฟลเดอร์")
+    return candidate
+
+
+def relative_terminal_cwd(path: Path) -> str:
+    relative = path.relative_to(PROJECT_ROOT)
+    return "." if str(relative) == "." else relative.as_posix()
+
+
+def terminal_identity() -> tuple[str, str]:
+    try:
+        user = getpass.getuser()
+    except (KeyError, OSError):
+        user = str(os.getenv("USER") or "user")
+    try:
+        host = socket.gethostname() or "server"
+    except OSError:
+        host = "server"
+    return user, host
+
+
+def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int]:
+    """Run a shell command with capped output and a hard timeout for the whole process group."""
+    started_at = time.perf_counter()
+    timed_out = False
+    with tempfile.TemporaryFile() as out_file, tempfile.TemporaryFile() as err_file:
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            executable=terminal_shell(),
+            cwd=str(cwd),
+            stdin=subprocess.DEVNULL,
+            stdout=out_file,
+            stderr=err_file,
+            env=terminal_environment(),
+            start_new_session=True,
+        )
+        try:
+            process.wait(timeout=TERMINAL_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                process.kill()
+            process.wait()
+        stdout, stdout_cut = read_terminal_capture(out_file)
+        stderr, stderr_cut = read_terminal_capture(err_file)
+    duration_ms = round((time.perf_counter() - started_at) * 1000)
+    return process.returncode, stdout, stderr, timed_out, stdout_cut or stderr_cut, duration_ms
+
+
+def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
+    settings = terminal_settings()
+    if not terminal_is_enabled(settings):
+        raise PermissionError("หน้า Terminal ถูกปิดใช้งานอยู่ใน Settings")
+    stripped = command.strip()
+    if not stripped:
+        raise ValueError("กรุณาพิมพ์คำสั่ง")
+    if len(stripped) > 4000:
+        raise ValueError("คำสั่งยาวเกินไป (สูงสุด 4000 ตัวอักษร)")
+
+    changed_directory = False
+    cd_match = re.fullmatch(r"cd(?:\s+(.*))?", stripped)
+    if cd_match:
+        target = (cd_match.group(1) or "").strip()
+        if target in {"", "~"}:
+            new_cwd = PROJECT_ROOT
+        else:
+            try:
+                tokens = shlex.split(target)
+            except ValueError as exc:
+                raise ValueError("รูปแบบ path ของ cd ไม่ถูกต้อง") from exc
+            if len(tokens) != 1:
+                raise ValueError("cd รับ path ได้ครั้งละหนึ่งรายการ")
+            new_cwd = resolve_terminal_cwd(tokens[0])
+        cwd = new_cwd
+        changed_directory = True
+        result = {
+            "command": stripped,
+            "cwd": relative_terminal_cwd(cwd),
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "timed_out": False,
+            "truncated": False,
+            "changed_directory": changed_directory,
+            "duration_ms": 0,
+        }
+    else:
+        returncode, stdout, stderr, timed_out, truncated, duration_ms = run_terminal_process(stripped, cwd)
+        if timed_out:
+            returncode = 124
+        secrets_found = terminal_secret_values()
+        result = {
+            "command": stripped,
+            "cwd": relative_terminal_cwd(cwd),
+            "returncode": returncode,
+            "stdout": redact_terminal_output(stdout, secrets_found),
+            "stderr": redact_terminal_output(stderr, secrets_found),
+            "timed_out": timed_out,
+            "truncated": truncated,
+            "changed_directory": changed_directory,
+            "duration_ms": duration_ms,
+        }
+        log_event(
+            "tool.terminal",
+            f"Terminal รันคำสั่งเสร็จ ({returncode})",
+            command=redact_terminal_output(stripped, secrets_found)[:300],
+            returncode=returncode,
+            duration_ms=duration_ms,
+            timed_out=timed_out,
+        )
+    return result
 
 
 def parse_tool_request(answer: str) -> dict[str, Any] | None:
@@ -1527,6 +1725,36 @@ def tools_execute():
         return jsonify({"ok": False, "error": str(exc)}), 400
 
 
+@app.get("/api/terminal/info")
+def terminal_info():
+    settings = terminal_settings()
+    user, host = terminal_identity()
+    return jsonify({
+        "enabled": terminal_is_enabled(settings),
+        "user": user,
+        "host": host,
+        "cwd": ".",
+        "scope": f"~/{PROJECT_ROOT.name}",
+        "shell": Path(terminal_shell()).name,
+        "timeout_seconds": TERMINAL_TIMEOUT_SECONDS,
+    })
+
+
+@app.post("/api/terminal/exec")
+def terminal_exec():
+    body = request.get_json(silent=True) or {}
+    command = body.get("command")
+    if not isinstance(command, str):
+        return jsonify({"ok": False, "error": "ต้องระบุคำสั่ง"}), 400
+    try:
+        cwd = resolve_terminal_cwd(body.get("cwd", "."))
+        result = execute_terminal_command(command, cwd)
+        return jsonify({"ok": True, **result})
+    except (PermissionError, FileNotFoundError, ValueError, OSError, subprocess.SubprocessError) as exc:
+        log_event("tool.terminal_error", "Terminal รันคำสั่งไม่สำเร็จ", error=str(exc))
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
 @app.get("/api/logs")
 def logs_get():
     with APP_LOG_LOCK:
@@ -1797,7 +2025,7 @@ def models_get():
 def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix"}
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -1816,6 +2044,7 @@ def settings_put():
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
     current["discord_enabled"] = bool(current.get("discord_enabled"))
     current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
+    current["terminal_enabled"] = bool(current.get("terminal_enabled", True))
     current["skills"] = [str(name) for name in current.get("skills", []) if str(name) in {item["name"] for item in list_skills()}]
     discord_token = body.get("discord_token")
     if isinstance(discord_token, str) and discord_token.strip() and discord_token != "••••••••":
