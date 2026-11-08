@@ -161,7 +161,7 @@ DEFAULT_SETTINGS = {
     "ask_clarifying_questions": True,
     "provider": os.getenv("AI_PROVIDER", "openai"),
     "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
-    "base_url": "https://api.openai.com/v1",
+    "base_url": os.getenv("AI_BASE_URL", ""),
     "system_prompt": "คุณเป็นผู้ช่วย AI ที่สุภาพ ชัดเจน และช่วยผู้ใช้ให้บรรลุเป้าหมาย",
     "memory_review": "ก่อนตอบ ให้ทบทวนบทสนทนาก่อนหน้าเพื่อรักษาความต่อเนื่อง ตรวจสอบข้อเท็จจริงและงานที่ค้างอยู่ หากข้อมูลขัดแย้งกันให้ถามผู้ใช้ และอย่าเปิดเผยกระบวนการคิดภายใน",
     "temperature": 0.7,
@@ -181,14 +181,29 @@ FALLBACK_MODELS = {
     "openai": ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "o4-mini", "o3"],
     "gemini": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
     "anthropic": ["claude-sonnet-4-5", "claude-opus-4-1", "claude-3-7-sonnet-latest"],
+    "hf": ["meta-llama/Llama-3.1-8B-Instruct", "mistralai/Mistral-7B-Instruct"],
+    "or": ["openai/gpt-3.5-turbo", "anthropic/claude-3-haiku-20240307"],
+    "groq": ["mixtral-8x7b-32768", "gemma-7b-it"],
 }
 
-PROVIDERS = ("openai", "gemini", "anthropic")
-PROVIDER_LABELS = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}
+PROVIDERS = ("openai", "gemini", "anthropic", "hf", "or", "groq")
+PROVIDER_LABELS = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic", "hf": "Hugging Face", "or": "OpenRouter", "groq": "Groq"}
 PROVIDER_ENV_KEYS = {
     "openai": "OPENAI_API_KEY",
     "gemini": "GEMINI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
+    "hf": "HF_API_KEY",
+    "or": "OPENROUTER_API_KEY",
+    "groq": "GROQ_API_KEY",
+}
+
+PROVIDER_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta",
+    "anthropic": "https://api.anthropic.com/v1",
+    "hf": "https://api-inference.huggingface.co/models",
+    "or": "https://openrouter.ai/api/v1",
+    "groq": "https://api.groq.com/openai/v1",
 }
 STATUS_CACHE_TTL = 300
 STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -766,6 +781,18 @@ def key_is_configured(provider: str, settings: dict[str, Any] | None = None) -> 
     return bool(get_api_key(provider, settings))
 
 
+def get_base_url(provider: str, settings: dict[str, Any] | None = None) -> str:
+    """Get the appropriate base URL for a provider, using stored setting or default."""
+    provider = normalize_provider(provider)
+    if settings is None:
+        settings = load_settings()
+    stored_base = str(settings.get("base_url") or "").strip()
+    if stored_base:
+        return stored_base.rstrip("/")
+    # Return provider-specific default if no custom base URL set
+    return PROVIDER_BASE_URLS.get(provider, "https://api.openai.com/v1").rstrip("/")
+
+
 def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") -> bool:
     """Reject placeholders such as '000' or a leftover masked value."""
     key = str(key or "").strip()
@@ -823,7 +850,7 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
     provider = normalize_provider(provider)
     label = PROVIDER_LABELS[provider]
     key = get_api_key(provider, settings)
-    base_url = str(settings.get("base_url") or "").rstrip("/")
+    base_url = get_base_url(provider, settings)
     model = str(settings.get("model") or "").strip()
     cache_key = f"{provider}|{base_url}|{model}|{key_fingerprint(key)}|{language}"
     cached = STATUS_CACHE.get(cache_key)
@@ -896,7 +923,7 @@ def provider_readiness(settings: dict[str, Any], language: str = "th") -> dict[s
         return {**base, "ready": False, "reason": status_message(language, "missing_key", label=label), "checked": "local"}
     if not model:
         return {**base, "ready": False, "reason": status_message(language, "missing_model", label=label), "checked": "local"}
-    if not key_looks_plausible(key, provider, str(settings.get("base_url") or "")):
+    if not key_looks_plausible(key, provider, get_base_url(provider, settings)):
         return {**base, "ready": False, "reason": status_message(language, "invalid_key_shape", label=label), "checked": "local"}
     check = provider_key_check(provider, settings, language)
     return {**base, "ready": check["ready"], "reason": check["reason"], "checked": "api", "cached": check.get("cached", False)}
@@ -1280,6 +1307,9 @@ def start_discord_bot() -> None:
         discord.app_commands.Choice(name="OpenAI / compatible", value="openai"),
         discord.app_commands.Choice(name="Google Gemini", value="gemini"),
         discord.app_commands.Choice(name="Anthropic Claude", value="anthropic"),
+        discord.app_commands.Choice(name="Hugging Face", value="hf"),
+        discord.app_commands.Choice(name="OpenRouter", value="or"),
+        discord.app_commands.Choice(name="Groq", value="groq"),
     ])
     async def models_command(interaction: Any, provider: discord.app_commands.Choice[str], model: str | None = None) -> None:
         selected_provider = normalize_provider(provider.value)
