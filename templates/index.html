@@ -3918,6 +3918,14 @@
           ],
         },
       };
+      const PROVIDER_BASE_URLS = {
+        openai: "https://api.openai.com/v1",
+        gemini: "https://generativelanguage.googleapis.com",
+        anthropic: "https://api.anthropic.com",
+        hf: "https://router.huggingface.co/v1",
+        or: "https://openrouter.ai/api/v1",
+        groq: "https://api.groq.com/openai/v1",
+      };
       function updateModelOptions(provider, selected = "", models = null) {
         const select = $("model_select");
         const choices = models?.length
@@ -4027,11 +4035,8 @@
       }
       $("provider").addEventListener("change", () => {
         const provider = $("provider").value;
-        if (provider === "gemini")
-          $("base_url").value = "https://generativelanguage.googleapis.com";
-        else if (provider === "anthropic")
-          $("base_url").value = "https://api.anthropic.com";
-        else $("base_url").value = "https://api.openai.com/v1";
+        $("base_url").value =
+          PROVIDER_BASE_URLS[provider] ?? PROVIDER_BASE_URLS.openai;
         $("api_key").value = "";
         updateApiKeyHint(provider);
         fetchModels(provider);
@@ -4168,7 +4173,10 @@
         $("ask_clarifying_questions").checked = s.ask_clarifying_questions !== false;
         keyProviders = Array.isArray(s.key_providers) ? s.key_providers : [];
         $("provider").value = s.provider ?? "openai";
-        $("base_url").value = s.base_url ?? "";
+        $("base_url").value =
+          s.base_url ||
+          PROVIDER_BASE_URLS[s.provider ?? "openai"] ||
+          PROVIDER_BASE_URLS.openai;
         $("system_prompt").value = s.system_prompt ?? "";
         $("memory_review").value = s.memory_review ?? "";
         const skillsSelect = $("skills");

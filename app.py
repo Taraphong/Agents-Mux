@@ -209,7 +209,7 @@ PROVIDER_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
     "anthropic": "https://api.anthropic.com/v1",
-    "hf": "https://api-inference.huggingface.co/models",
+    "hf": "https://router.huggingface.co/v1",
     "or": "https://openrouter.ai/api/v1",
     "groq": "https://api.groq.com/openai/v1",
 }
@@ -965,7 +965,7 @@ def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]
         if models:
             return models
         raise RuntimeError("Anthropic ไม่ส่งรายการโมเดลกลับมา")
-    base_url = settings.get("base_url", "https://api.openai.com/v1").rstrip("/")
+    base_url = get_base_url(provider, settings)
     response = requests.get(f"{base_url}/models", headers={"Authorization": f"Bearer {key}"}, timeout=30)
     response.raise_for_status()
     models = response.json().get("data", [])
@@ -1183,7 +1183,7 @@ def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key")
 
-    base_url = settings.get("base_url", "https://api.openai.com/v1").rstrip("/")
+    base_url = get_base_url(settings["provider"], settings)
     payload = {
         "model": settings["model"],
         "messages": messages,
