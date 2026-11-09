@@ -180,6 +180,9 @@
         cursor: pointer;
         margin: 3px 0;
       }
+      nav button[hidden] {
+        display: none;
+      }
       nav button.active,
       nav button:hover {
         color: white;
@@ -2206,13 +2209,13 @@
             <div class="card">
               <h2 data-i18n="settings.terminalTitle">Terminal</h2>
               <p class="hint" data-i18n="settings.terminalHint">
-                เปิดหรือปิดหน้า Terminal ที่สามารถรันคำสั่งบน Server ได้โดยตรง
+                เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง
                 คำสั่งถูกจำกัดให้อยู่ในโฟลเดอร์โปรเจกต์
               </p>
               <label class="toggle"
                 ><input id="terminal_enabled" type="checkbox" /><span
                   data-i18n="settings.terminalEnable"
-                  >เปิดใช้งานหน้า Terminal</span
+                  >แสดงแท็บ Terminal ในแถบด้านข้าง</span
                 ></label
               >
             </div>
@@ -2667,8 +2670,8 @@
           "settings.discordPrefix": "Prefix",
           "settings.terminalTitle": "Terminal",
           "settings.terminalHint":
-            "เปิดหรือปิดหน้า Terminal ที่รันคำสั่งบน Server ได้โดยตรง (เริ่มต้นในโฟลเดอร์โปรเจกต์)",
-          "settings.terminalEnable": "เปิดใช้งานหน้า Terminal",
+            "เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง (เริ่มต้นในโฟลเดอร์โปรเจกต์)",
+          "settings.terminalEnable": "แสดงแท็บ Terminal ในแถบด้านข้าง",
           "settings.save": "บันทึกการตั้งค่า",
           "settings.test": "ทดสอบการเชื่อมต่อ",
           "settings.reset": "รีเซ็ต",
@@ -2929,8 +2932,8 @@
           "settings.discordPrefix": "Prefix",
           "settings.terminalTitle": "Terminal",
           "settings.terminalHint":
-            "Enable or disable the terminal page that runs commands directly on the server. It starts in the project folder.",
-          "settings.terminalEnable": "Enable terminal page",
+            "Show or hide the Terminal tab in the sidebar. It starts in the project folder.",
+          "settings.terminalEnable": "Show the Terminal tab in the sidebar",
           "settings.save": "Save settings",
           "settings.test": "Test connection",
           "settings.reset": "Reset",
@@ -3299,6 +3302,13 @@
       }
       document.querySelectorAll("nav button").forEach((button) =>
         button.addEventListener("click", () => {
+          if (
+            button.dataset.view === "terminal" &&
+            terminalInfo?.enabled === false
+          ) {
+            showNotice(t("terminal.disabled"), true);
+            return;
+          }
           document
             .querySelectorAll("nav button")
             .forEach((b) => b.classList.remove("active"));
@@ -3480,6 +3490,27 @@
           ? t("terminal.scope", { scope: terminalInfo.scope })
           : "";
       }
+      function applyTerminalEnabled(enabled) {
+        const navButton = document.querySelector('nav button[data-view="terminal"]');
+        if (!navButton) return;
+        const isEnabled = enabled !== false;
+        if (terminalInfo) terminalInfo.enabled = isEnabled;
+        navButton.hidden = !isEnabled;
+        if (!isEnabled && activeView() === "terminal") {
+          document.querySelector('nav button[data-view="chat"]')?.click();
+        }
+      }
+      async function refreshTerminalAvailability() {
+        try {
+          const response = await fetch("/api/terminal/info");
+          if (!response.ok) return;
+          terminalInfo = await response.json();
+          terminalCwd = terminalInfo.cwd || terminalCwd || ".";
+          applyTerminalEnabled(terminalInfo.enabled !== false);
+        } catch (error) {
+          /* Keep the tab visible; openTerminalView will report the error. */
+        }
+      }
       async function openTerminalView() {
         if (!terminalInfo) {
           try {
@@ -3487,6 +3518,7 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             terminalInfo = await response.json();
             terminalCwd = terminalInfo.cwd || ".";
+            applyTerminalEnabled(terminalInfo.enabled !== false);
           } catch (error) {
             terminalInfo = {
               enabled: false,
@@ -4178,6 +4210,7 @@
         $("fallback_provider_select").value = s.fallback_provider ?? "openai";
         $("discord_enabled").checked = !!s.discord_enabled;
         $("terminal_enabled").checked = s.terminal_enabled !== false;
+        applyTerminalEnabled(s.terminal_enabled !== false);
         $("discord_prefix").value = s.discord_prefix ?? "!ai";
         $("discord_token").value = "";
         $("discord_token_hint").textContent = s.has_discord_token
@@ -4655,6 +4688,7 @@
       loadChatMeta();
       loadHistoryList();
       loadSchedules();
+      refreshTerminalAvailability();
     </script>
   </body>
 </html>
