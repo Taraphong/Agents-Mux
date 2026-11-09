@@ -2088,7 +2088,7 @@ def models_get():
 def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled"}
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
