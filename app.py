@@ -46,6 +46,7 @@ APPROVAL_TTL_SECONDS = 15 * 60
 MAX_PENDING_APPROVALS = 50
 APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command", "create_schedule", "update_schedule"}
 SCHEDULE_LOCK_FILE = Path(f"{SCHEDULE_FILE}.lock")
+SCHEDULE_CONTEXT_MESSAGES = 40
 SCHEDULE_RUNNING: set[str] = set()
 SCHEDULE_RUNNING_LOCK = threading.Lock()
 _SCHEDULER_STARTED = False
@@ -168,7 +169,7 @@ DEFAULT_SETTINGS = {
     "ask_clarifying_questions": True,
     "provider": os.getenv("AI_PROVIDER", "openai"),
     "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
-    "base_url": "https://api.openai.com/v1",
+    "base_url": os.getenv("AI_BASE_URL", ""),
     "system_prompt": "คุณเป็นผู้ช่วย AI ที่สุภาพ ชัดเจน และช่วยผู้ใช้ให้บรรลุเป้าหมาย",
     "memory_review": "ก่อนตอบ ให้ทบทวนบทสนทนาก่อนหน้าเพื่อรักษาความต่อเนื่อง ตรวจสอบข้อเท็จจริงและงานที่ค้างอยู่ หากข้อมูลขัดแย้งกันให้ถามผู้ใช้ และอย่าเปิดเผยกระบวนการคิดภายใน",
     "temperature": 0.7,
@@ -189,14 +190,29 @@ FALLBACK_MODELS = {
     "openai": ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "o4-mini", "o3"],
     "gemini": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
     "anthropic": ["claude-sonnet-4-5", "claude-opus-4-1", "claude-3-7-sonnet-latest"],
+    "hf": ["meta-llama/Llama-3.1-8B-Instruct", "mistralai/Mistral-7B-Instruct"],
+    "or": ["openai/gpt-3.5-turbo", "anthropic/claude-3-haiku-20240307"],
+    "groq": ["mixtral-8x7b-32768", "gemma-7b-it"],
 }
 
-PROVIDERS = ("openai", "gemini", "anthropic")
-PROVIDER_LABELS = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}
+PROVIDERS = ("openai", "gemini", "anthropic", "hf", "or", "groq")
+PROVIDER_LABELS = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic", "hf": "Hugging Face", "or": "OpenRouter", "groq": "Groq"}
 PROVIDER_ENV_KEYS = {
     "openai": "OPENAI_API_KEY",
     "gemini": "GEMINI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
+    "hf": "HF_API_KEY",
+    "or": "OPENROUTER_API_KEY",
+    "groq": "GROQ_API_KEY",
+}
+
+PROVIDER_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta",
+    "anthropic": "https://api.anthropic.com/v1",
+    "hf": "https://router.huggingface.co/v1",
+    "or": "https://openrouter.ai/api/v1",
+    "groq": "https://api.groq.com/openai/v1",
 }
 STATUS_CACHE_TTL = 300
 STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -330,14 +346,34 @@ def execute_schedule(job: dict[str, Any]) -> None:
         settings = load_settings()
         if job.get("model"):
             settings["model"] = job["model"]
-        messages = clean_messages([{"role": "user", "content": job["prompt"]}], settings)
+        settings["system_prompt"] = "\n\n".join(
+            part for part in (
+                settings.get("system_prompt", ""),
+                agent_profile_prompt(settings),
+            ) if part
+        )
+        conversation_id = schedule_conversation_id(job)
+        record = load_history_record(conversation_id)
+        previous_messages = record.get("messages") if isinstance(record.get("messages"), list) else []
+        context_messages = [
+            message for message in previous_messages
+            if isinstance(message, dict) and message.get("role") in {"user", "assistant"}
+        ][-SCHEDULE_CONTEXT_MESSAGES:]
+        prompt_message = {"role": "user", "content": job["prompt"], "schedule_id": job["id"]}
+        messages = clean_messages(context_messages + [prompt_message], settings)
         started_at = time.perf_counter()
         answer, usage = call_provider(messages, settings)
         duration_ms = round((time.perf_counter() - started_at) * 1000)
-        save_history({"title": f"⏰ {job['name']}", "messages": [
-            {"role": "user", "content": job["prompt"], "schedule_id": job["id"]},
-            {"role": "assistant", "content": answer, "duration_ms": duration_ms, "usage": usage, "schedule_id": job["id"]},
-        ]})
+        save_history({
+            "id": conversation_id,
+            "title": record.get("title") or f"⏰ {job['name']}",
+            "created_at": record.get("created_at"),
+            "messages": [
+                *previous_messages,
+                prompt_message,
+                {"role": "assistant", "content": answer, "duration_ms": duration_ms, "usage": usage, "schedule_id": job["id"]},
+            ],
+        })
         send_discord_schedule_result(job, answer)
         update_schedule(job["id"], last_status="สำเร็จ", last_error="", last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
         log_event("schedule.success", f"งานตามเวลา {job['name']} สำเร็จ", job=job["id"], duration_ms=duration_ms)
@@ -556,6 +592,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             raise ValueError("Discord Channel ID ต้องเป็นตัวเลข")
         job = {
             "id": str(uuid.uuid4()),
+            "conversation_id": str(uuid.uuid4()),
             "name": job_name[:100],
             "schedule": schedule,
             "prompt": prompt[:10_000],
@@ -914,6 +951,53 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
+def load_history_record(conversation_id: str) -> dict[str, Any]:
+    path = find_history_file(conversation_id)
+    if path is None or not path.exists():
+        return {}
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def find_schedule_conversation_id(job_id: str) -> str:
+    """Find the newest history conversation that a scheduled job already wrote."""
+    if not job_id or not HISTORY_ROOT.exists():
+        return ""
+    best: tuple[str, str] | None = None
+    for path in HISTORY_ROOT.rglob("*.json"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(record, dict) or not isinstance(record.get("messages"), list):
+            continue
+        if not any(isinstance(message, dict) and message.get("schedule_id") == job_id for message in record["messages"]):
+            continue
+        conversation_id = record.get("id")
+        if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+            continue
+        updated_at = str(record.get("updated_at") or "")
+        if best is None or updated_at > best[1]:
+            best = (conversation_id, updated_at)
+    return best[0] if best else ""
+
+
+def schedule_conversation_id(job: dict[str, Any]) -> str:
+    """Resolve one stable history conversation per scheduled job and persist it."""
+    conversation_id = str(job.get("conversation_id") or "").strip()
+    if re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+        return conversation_id
+    conversation_id = find_schedule_conversation_id(str(job.get("id") or "")) or str(uuid.uuid4())
+    job["conversation_id"] = conversation_id
+    job_id = str(job.get("id") or "").strip()
+    if job_id:
+        update_schedule(job_id, conversation_id=conversation_id)
+    return conversation_id
+
+
 def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]:
     provider = normalize_provider(provider)
     key = get_api_key(provider, settings)
@@ -944,7 +1028,7 @@ def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]
         if models:
             return models
         raise RuntimeError("Anthropic ไม่ส่งรายการโมเดลกลับมา")
-    base_url = settings.get("base_url", "https://api.openai.com/v1").rstrip("/")
+    base_url = get_base_url(provider, settings)
     response = requests.get(f"{base_url}/models", headers={"Authorization": f"Bearer {key}"}, timeout=30)
     response.raise_for_status()
     models = response.json().get("data", [])
@@ -962,6 +1046,18 @@ def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
 
 def key_is_configured(provider: str, settings: dict[str, Any] | None = None) -> bool:
     return bool(get_api_key(provider, settings))
+
+
+def get_base_url(provider: str, settings: dict[str, Any] | None = None) -> str:
+    """Get the appropriate base URL for a provider, using stored setting or default."""
+    provider = normalize_provider(provider)
+    if settings is None:
+        settings = load_settings()
+    stored_base = str(settings.get("base_url") or "").strip()
+    if stored_base:
+        return stored_base.rstrip("/")
+    # Return provider-specific default if no custom base URL set
+    return PROVIDER_BASE_URLS.get(provider, "https://api.openai.com/v1").rstrip("/")
 
 
 def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") -> bool:
@@ -1021,7 +1117,7 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
     provider = normalize_provider(provider)
     label = PROVIDER_LABELS[provider]
     key = get_api_key(provider, settings)
-    base_url = str(settings.get("base_url") or "").rstrip("/")
+    base_url = get_base_url(provider, settings)
     model = str(settings.get("model") or "").strip()
     cache_key = f"{provider}|{base_url}|{model}|{key_fingerprint(key)}|{language}"
     cached = STATUS_CACHE.get(cache_key)
@@ -1094,7 +1190,7 @@ def provider_readiness(settings: dict[str, Any], language: str = "th") -> dict[s
         return {**base, "ready": False, "reason": status_message(language, "missing_key", label=label), "checked": "local"}
     if not model:
         return {**base, "ready": False, "reason": status_message(language, "missing_model", label=label), "checked": "local"}
-    if not key_looks_plausible(key, provider, str(settings.get("base_url") or "")):
+    if not key_looks_plausible(key, provider, get_base_url(provider, settings)):
         return {**base, "ready": False, "reason": status_message(language, "invalid_key_shape", label=label), "checked": "local"}
     check = provider_key_check(provider, settings, language)
     return {**base, "ready": check["ready"], "reason": check["reason"], "checked": "api", "cached": check.get("cached", False)}
@@ -1150,7 +1246,7 @@ def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key")
 
-    base_url = settings.get("base_url", "https://api.openai.com/v1").rstrip("/")
+    base_url = get_base_url(settings["provider"], settings)
     payload = {
         "model": settings["model"],
         "messages": messages,
@@ -1478,6 +1574,9 @@ def start_discord_bot() -> None:
         discord.app_commands.Choice(name="OpenAI / compatible", value="openai"),
         discord.app_commands.Choice(name="Google Gemini", value="gemini"),
         discord.app_commands.Choice(name="Anthropic Claude", value="anthropic"),
+        discord.app_commands.Choice(name="Hugging Face", value="hf"),
+        discord.app_commands.Choice(name="OpenRouter", value="or"),
+        discord.app_commands.Choice(name="Groq", value="groq"),
     ])
     async def models_command(interaction: Any, provider: discord.app_commands.Choice[str], model: str | None = None) -> None:
         selected_provider = normalize_provider(provider.value)
@@ -1758,7 +1857,7 @@ def schedules_create():
     discord_channel_id = str(body.get("discord_channel_id", "")).strip()[:30]
     if discord_channel_id and not discord_channel_id.isdigit():
         return jsonify({"error": "Discord Channel ID ต้องเป็นตัวเลข"}), 400
-    job = {"id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "model": str(body.get("model", "")).strip()[:200], "discord_channel_id": discord_channel_id, "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
+    job = {"id": str(uuid.uuid4()), "conversation_id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "model": str(body.get("model", "")).strip()[:200], "discord_channel_id": discord_channel_id, "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
     with SCHEDULE_LOCK:
         jobs = load_schedules()
         jobs.append(job)
@@ -1996,10 +2095,13 @@ def settings_put():
     current["provider"] = normalize_provider(current.get("provider"))
     current["agent_name"] = str(current.get("agent_name") or "Mux").strip()[:80]
     current["agent_role"] = str(current.get("agent_role") or "ผู้ช่วย AI อเนกประสงค์").strip()[:500]
-    current["response_language"] = current.get("response_language") if current.get("response_language") in {"auto", "th", "en"} else "auto"
+    language = str(current.get("response_language") or "auto").strip().lower()
+    current["response_language"] = language if language in {"auto", "th", "en"} else "auto"
     current["response_style"] = str(current.get("response_style") or "เป็นมิตร กระชับ และชัดเจน").strip()[:500]
     current["use_markdown"] = bool(current.get("use_markdown", True))
     current["ask_clarifying_questions"] = bool(current.get("ask_clarifying_questions", True))
+    thinking_level = str(current.get("thinking_level") or "off").strip().lower()
+    current["thinking_level"] = thinking_level if thinking_level in {"off", "low", "medium", "high"} else "off"
     current["fallback_enabled"] = bool(current.get("fallback_enabled"))
     current["fallback_provider"] = normalize_provider(current.get("fallback_provider"))
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
