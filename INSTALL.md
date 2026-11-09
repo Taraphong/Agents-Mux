@@ -111,14 +111,39 @@ bash install.sh
 
 ---
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:db2c7623a534bf3be76397b2dbe85d910b20128e1cd5b711eb1d2618b9be800c -->
+
 ## ติดตั้งบน macOS
 
+หากยังไม่มี Command Line Tools ให้รัน:
+
 ```bash
-xcode-select --install     # ถ้ายังไม่มี command line tools
+xcode-select --install
+```
+
+ทำตามหน้าต่างติดตั้ง Command Line Tools และรอจนติดตั้งเสร็จก่อนรัน `git clone`
+
+ติดตั้ง Python **3.10 ขึ้นไป** ด้วยตัวติดตั้ง macOS จาก [python.org](https://www.python.org/downloads/macos/)
+แล้วเปิด terminal ใหม่ (ดู [คู่มือ Python บน macOS](https://docs.python.org/3/using/mac.html))
+ตรวจสอบว่า `python3` ใน PATH เป็นเวอร์ชันที่รองรับก่อนรัน `install.sh`:
+
+```bash
+command -v python3
+python3 --version
+python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else "ต้องใช้ Python 3.10 ขึ้นไป")'
+```
+
+หากไม่พบ `python3` หรือเวอร์ชันต่ำกว่า 3.10 ให้ปรับ PATH ให้เลือก Python ที่เพิ่งติดตั้ง แล้วตรวจสอบอีกครั้งจนผ่าน จากนั้นจึงรัน:
+
+```bash
 git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
 cd ~/ai-web
 bash install.sh
 ```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ---
 

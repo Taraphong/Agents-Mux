@@ -10,11 +10,23 @@ Detailed install guide for Termux / Linux / macOS: **[INSTALL.md](INSTALL.md)**
 
 Quick install:
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:fab8f7793def8862ab6a37ae370ebdd61a8c182285c59cd7f65aa58ea4174870 -->
+
 ```bash
 git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
 cd ~/ai-web
 bash install.sh
 ```
+
+Edit `.env` to set `AI_PROVIDER` and the matching API key, then start the server:
+
+```bash
+./start_web.sh --start
+```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Or set up manually:
 

@@ -8,11 +8,23 @@
 
 ติดตั้งแบบเร็ว:
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:5638803a0b40e97e978d46bdea226d006ea376f2626c2155027c37bb0c3b092f -->
+
 ```bash
 git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
 cd ~/ai-web
 bash install.sh
 ```
+
+แก้ `.env` เพื่อกำหนด `AI_PROVIDER` และ API key ของผู้ให้บริการที่เลือก แล้วเริ่มเซิร์ฟเวอร์:
+
+```bash
+./start_web.sh --start
+```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 หรือติดตั้งเองทีละขั้น:
 

@@ -48,6 +48,9 @@ if [ ! -x "$APP_DIR/.venv/bin/python" ]; then
   info "สร้าง .venv"
   "$PYTHON_BIN" -m venv .venv || die "สร้าง .venv ไม่สำเร็จ — บน Debian/Ubuntu ให้ติดตั้ง python3-venv"
 else
+  if ! "$APP_DIR/.venv/bin/python" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+    die "ตรวจสอบ Python 3.10 ขึ้นไปใน .venv ไม่สำเร็จ — ย้ายหรือลบ $APP_DIR/.venv แล้วรัน bash install.sh ใหม่เพื่อสร้าง virtual environment"
+  fi
   info "พบ .venv เดิม ใช้ต่อ"
 fi
 
@@ -63,7 +66,7 @@ info "ติดตั้ง dependencies จาก requirements.txt (อาจ�
 
 # ---------- 4. ไฟล์ตั้งค่าและโฟลเดอร์ ----------
 if [ ! -f .env ]; then
-  cp .env.example .env
+  (umask 077; cp .env.example .env; chmod 600 .env)
   info "สร้าง .env จาก .env.example"
 else
   info "พบ .env เดิม ไม่เขียนทับ"
