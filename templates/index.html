@@ -2159,18 +2159,18 @@
                         data-i18n="settings.fallbackEnable"
                         >เปิดใช้งาน</span
                       ></label
-                    ><select id="fallback_model_select">
-                      <option value="" data-i18n="settings.fallbackNone">
-                        ไม่ใช้ fallback
-                      </option>
-                    </select>
-                    <select id="fallback_provider_select" aria-label="Fallback provider">
+                    ><select id="fallback_provider_select" aria-label="Fallback provider">
                       <option value="openai">OpenAI / OpenAI-compatible</option>
                       <option value="gemini">Google Gemini</option>
                       <option value="anthropic">Anthropic Claude</option>
                       <option value="hf">Hugging Face</option>
                       <option value="or">OpenRouter</option>
                       <option value="groq">Groq</option>
+                    </select>
+                    <select id="fallback_model_select">
+                      <option value="" data-i18n="settings.fallbackNone">
+                        ไม่ใช้ fallback
+                      </option>
                     </select>
                   </div>
                   <small class="hint" data-i18n="settings.fallbackHint"
@@ -2179,8 +2179,8 @@
                   >
                 </label>
                 <label class="full"
-                  ><span data-i18n="settings.baseUrl"
-                    >Base URL (สำหรับ OpenAI-compatible)</span
+                  ><span"
+                    >Base URL</span
                   ><input id="base_url" placeholder="https://api.openai.com/v1"
                 /></label>
                 <label class="full"
@@ -2658,7 +2658,6 @@
           "settings.fallbackNone": "ไม่ใช้ fallback",
           "settings.fallbackHint":
             "จะลองใช้เมื่อ API ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา",
-          "settings.baseUrl": "Base URL (สำหรับ OpenAI-compatible)",
           "settings.apiKeyPlaceholder": "เว้นว่างเพื่อใช้คีย์เดิม",
           "settings.assistantTitle": "พฤติกรรมของผู้ช่วย",
           "settings.memoryReview": "ทบทวนความจำ",
@@ -2927,7 +2926,6 @@
           "settings.fallbackNone": "No fallback",
           "settings.fallbackHint":
             "Used when the API reports the model is unavailable or rate-limited.",
-          "settings.baseUrl": "Base URL (for OpenAI-compatible)",
           "settings.apiKeyPlaceholder": "Leave blank to keep the current key",
           "settings.assistantTitle": "Assistant behavior",
           "settings.memoryReview": "Memory review",
