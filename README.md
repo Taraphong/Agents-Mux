@@ -6,8 +6,32 @@ Self-hosted AI chat running on Termux and accessible through a browser on the sa
 
 ## Getting Started
 
+Detailed install guide for Termux / Linux / macOS: **[INSTALL.md](INSTALL.md)**
+
+Quick install:
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:fab8f7793def8862ab6a37ae370ebdd61a8c182285c59cd7f65aa58ea4174870 -->
+
 ```bash
-python -m venv .venv
+git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
+cd ~/ai-web
+bash install.sh
+```
+
+Edit `.env` to set `AI_PROVIDER` and the matching API key, then start the server:
+
+```bash
+./start_web.sh --start
+```
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+Or set up manually:
+
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
@@ -18,7 +42,10 @@ Open `http://127.0.0.1:5000` in a browser.
 
 ### Configuration
 
-- Set `AI_PROVIDER` in `.env` (`openai`, `gemini`, or `anthropic`).
+- Set `AI_PROVIDER` in `.env` (`openai`, `gemini`, `anthropic`, `hf`, `or`, or `groq`).
+- Set the API key that matches the provider: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `HF_API_KEY`, `OPENROUTER_API_KEY`, or `GROQ_API_KEY`.
+- **Anthropic:** set `AI_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`, then open **Settings** in the web interface and select a Claude model. The startup default comes from `OPENAI_MODEL`, so an OpenAI model will not work with Anthropic.
+- Values saved from **Settings** are stored in `.app-settings.json` and override `.env`, including provider, model, and API keys. Change them in Settings (or remove the saved settings file) if editing `.env` has no effect.
 - Configure additional options from the **Settings** menu in the web interface.
 - Available reasoning levels: `off`, `low`, `medium`, and `high`.
 

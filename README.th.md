@@ -4,8 +4,32 @@
 
 ## เริ่มใช้งาน
 
+คู่มือติดตั้งแบบละเอียดสำหรับ Termux / Linux / macOS: **[INSTALL.md](INSTALL.md)**
+
+ติดตั้งแบบเร็ว:
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:5638803a0b40e97e978d46bdea226d006ea376f2626c2155027c37bb0c3b092f -->
+
 ```bash
-python -m venv .venv
+git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
+cd ~/ai-web
+bash install.sh
+```
+
+แก้ `.env` เพื่อกำหนด `AI_PROVIDER` และ API key ของผู้ให้บริการที่เลือก แล้วเริ่มเซิร์ฟเวอร์:
+
+```bash
+./start_web.sh --start
+```
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+หรือติดตั้งเองทีละขั้น:
+
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
@@ -16,7 +40,10 @@ python app.py
 
 ### การตั้งค่า
 
-- กำหนด `AI_PROVIDER` ใน `.env` (openai, gemini, anthropic)
+- กำหนด `AI_PROVIDER` ใน `.env` (`openai`, `gemini`, `anthropic`, `hf`, `or`, `groq`)
+- ใส่ API key ให้ตรงกับผู้ให้บริการ: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `HF_API_KEY`, `OPENROUTER_API_KEY` หรือ `GROQ_API_KEY`
+- **Anthropic:** ตั้ง `AI_PROVIDER=anthropic` และ `ANTHROPIC_API_KEY` แล้วเปิดหน้า **Settings** เลือกโมเดล Claude — ค่าเริ่มต้นของ model มาจาก `OPENAI_MODEL` จึงใช้กับ Anthropic ไม่ได้
+- ค่าที่บันทึกจากหน้า **Settings** จะถูกเก็บใน `.app-settings.json` และทับค่าใน `.env` (รวม provider, model และ API key) ถ้าแก้ `.env` แล้วไม่เห็นผล ให้แก้ใน Settings แทน
 - เลือกตั้งค่าเพิ่มเติมได้ที่เมนู **Settings** ในเว็บ
 - ระดับการคิด: `off`, `low`, `medium`, `high`
 
