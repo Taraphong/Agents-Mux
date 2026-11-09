@@ -4,8 +4,20 @@
 
 ## เริ่มใช้งาน
 
+คู่มือติดตั้งแบบละเอียดสำหรับ Termux / Linux / macOS: **[INSTALL.md](INSTALL.md)**
+
+ติดตั้งแบบเร็ว:
+
 ```bash
-python -m venv .venv
+git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
+cd ~/ai-web
+bash install.sh
+```
+
+หรือติดตั้งเองทีละขั้น:
+
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
