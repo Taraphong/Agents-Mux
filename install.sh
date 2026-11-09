@@ -26,35 +26,53 @@ case "${1:-}" in
     ;;
 esac
 
-# ---------- 1. ตรวจสอบ Python ----------
-PYTHON_BIN="${PYTHON:-}"
-if [ -z "$PYTHON_BIN" ]; then
-  for candidate in python3 python; do
-    if command -v "$candidate" >/dev/null 2>&1; then
-      PYTHON_BIN="$candidate"
-      break
-    fi
-  done
-fi
-[ -n "$PYTHON_BIN" ] || die "ไม่พบ Python — ติดตั้งก่อน: pkg install python (Termux) หรือ sudo apt install python3 python3-venv"
+# ---------- 1. ตรวจสอบ Python / .venv ที่มีอยู่ ----------
+VENV_PY="$APP_DIR/.venv/bin/python"
 
-if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
-  die "ต้องใช้ Python 3.10 ขึ้นไป (พบ $("$PYTHON_BIN" --version 2>&1))"
+venv_ok() {
+  [ -x "$VENV_PY" ] &&
+    "$VENV_PY" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1
+}
+
+PYTHON_BIN=""
+if [ -z "${PYTHON:-}" ] && venv_ok; then
+  # ติดตั้งซ้ำบนเครื่องที่เคยติดตั้งแล้ว: ไม่ต้องมี Python ใน PATH ก็ใช้ .venv เดิมได้
+  info "พบ .venv เดิม ใช้ต่อ ($("$VENV_PY" --version 2>&1))"
+else
+  PYTHON_BIN="${PYTHON:-}"
+  if [ -z "$PYTHON_BIN" ]; then
+    for candidate in python3 python; do
+      if command -v "$candidate" >/dev/null 2>&1; then
+        PYTHON_BIN="$candidate"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$PYTHON_BIN" ]; then
+    if [ -x "$VENV_PY" ]; then
+      die "พบ .venv เดิมแต่ใช้งานไม่ได้และไม่พบ Python ใน PATH — ตรวจสอบ .venv หรือติดตั้ง Python ใหม่"
+    fi
+    die "ไม่พบ Python — ติดตั้งก่อน: pkg install python (Termux) หรือ sudo apt install python3 python3-venv"
+  fi
+
+  if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+    die "ต้องใช้ Python 3.10 ขึ้นไป (พบ $("$PYTHON_BIN" --version 2>&1))"
+  fi
+  info "ใช้ $("$PYTHON_BIN" --version 2>&1) ที่ $(command -v "$PYTHON_BIN")"
 fi
-info "ใช้ $("$PYTHON_BIN" --version 2>&1) ที่ $(command -v "$PYTHON_BIN")"
 
 # ---------- 2. สร้าง virtual environment ----------
-if [ ! -x "$APP_DIR/.venv/bin/python" ]; then
-  info "สร้าง .venv"
-  "$PYTHON_BIN" -m venv .venv || die "สร้าง .venv ไม่สำเร็จ — บน Debian/Ubuntu ให้ติดตั้ง python3-venv"
-else
-  if ! "$APP_DIR/.venv/bin/python" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
-    die "ตรวจสอบ Python 3.10 ขึ้นไปใน .venv ไม่สำเร็จ — ย้ายหรือลบ $APP_DIR/.venv แล้วรัน bash install.sh ใหม่เพื่อสร้าง virtual environment"
+if [ -n "$PYTHON_BIN" ]; then
+  if [ -x "$VENV_PY" ]; then
+    info "ปรับ .venv ให้ใช้ $("$PYTHON_BIN" --version 2>&1)"
+    "$PYTHON_BIN" -m venv .venv || die "ปรับ .venv ไม่สำเร็จ — บน Debian/Ubuntu ให้ติดตั้ง python3-venv"
+  else
+    info "สร้าง .venv"
+    "$PYTHON_BIN" -m venv .venv || die "สร้าง .venv ไม่สำเร็จ — บน Debian/Ubuntu ให้ติดตั้ง python3-venv"
   fi
-  info "พบ .venv เดิม ใช้ต่อ"
 fi
 
-VENV_PY="$APP_DIR/.venv/bin/python"
 [ -x "$VENV_PY" ] || die "ไม่พบ $VENV_PY"
 
 # ---------- 3. ติดตั้ง dependencies ----------
