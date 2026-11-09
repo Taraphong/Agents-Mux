@@ -46,6 +46,7 @@ APPROVAL_TTL_SECONDS = 15 * 60
 MAX_PENDING_APPROVALS = 50
 APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command", "create_schedule", "update_schedule"}
 SCHEDULE_LOCK_FILE = Path(f"{SCHEDULE_FILE}.lock")
+SCHEDULE_CONTEXT_MESSAGES = 40
 SCHEDULE_RUNNING: set[str] = set()
 SCHEDULE_RUNNING_LOCK = threading.Lock()
 _SCHEDULER_STARTED = False
@@ -350,14 +351,28 @@ def execute_schedule(job: dict[str, Any]) -> None:
                 agent_profile_prompt(settings),
             ) if part
         )
-        messages = clean_messages([{"role": "user", "content": job["prompt"]}], settings)
+        conversation_id = schedule_conversation_id(job)
+        record = load_history_record(conversation_id)
+        previous_messages = record.get("messages") if isinstance(record.get("messages"), list) else []
+        context_messages = [
+            message for message in previous_messages
+            if isinstance(message, dict) and message.get("role") in {"user", "assistant"}
+        ][-SCHEDULE_CONTEXT_MESSAGES:]
+        prompt_message = {"role": "user", "content": job["prompt"], "schedule_id": job["id"]}
+        messages = clean_messages(context_messages + [prompt_message], settings)
         started_at = time.perf_counter()
         answer, usage = call_provider(messages, settings)
         duration_ms = round((time.perf_counter() - started_at) * 1000)
-        save_history({"title": f"⏰ {job['name']}", "messages": [
-            {"role": "user", "content": job["prompt"], "schedule_id": job["id"]},
-            {"role": "assistant", "content": answer, "duration_ms": duration_ms, "usage": usage, "schedule_id": job["id"]},
-        ]})
+        save_history({
+            "id": conversation_id,
+            "title": record.get("title") or f"⏰ {job['name']}",
+            "created_at": record.get("created_at"),
+            "messages": [
+                *previous_messages,
+                prompt_message,
+                {"role": "assistant", "content": answer, "duration_ms": duration_ms, "usage": usage, "schedule_id": job["id"]},
+            ],
+        })
         send_discord_schedule_result(job, answer)
         update_schedule(job["id"], last_status="สำเร็จ", last_error="", last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
         log_event("schedule.success", f"งานตามเวลา {job['name']} สำเร็จ", job=job["id"], duration_ms=duration_ms)
@@ -576,6 +591,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             raise ValueError("Discord Channel ID ต้องเป็นตัวเลข")
         job = {
             "id": str(uuid.uuid4()),
+            "conversation_id": str(uuid.uuid4()),
             "name": job_name[:100],
             "schedule": schedule,
             "prompt": prompt[:10_000],
@@ -932,6 +948,53 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     return record
+
+
+def load_history_record(conversation_id: str) -> dict[str, Any]:
+    path = find_history_file(conversation_id)
+    if path is None or not path.exists():
+        return {}
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def find_schedule_conversation_id(job_id: str) -> str:
+    """Find the newest history conversation that a scheduled job already wrote."""
+    if not job_id or not HISTORY_ROOT.exists():
+        return ""
+    best: tuple[str, str] | None = None
+    for path in HISTORY_ROOT.rglob("*.json"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(record, dict) or not isinstance(record.get("messages"), list):
+            continue
+        if not any(isinstance(message, dict) and message.get("schedule_id") == job_id for message in record["messages"]):
+            continue
+        conversation_id = record.get("id")
+        if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+            continue
+        updated_at = str(record.get("updated_at") or "")
+        if best is None or updated_at > best[1]:
+            best = (conversation_id, updated_at)
+    return best[0] if best else ""
+
+
+def schedule_conversation_id(job: dict[str, Any]) -> str:
+    """Resolve one stable history conversation per scheduled job and persist it."""
+    conversation_id = str(job.get("conversation_id") or "").strip()
+    if re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+        return conversation_id
+    conversation_id = find_schedule_conversation_id(str(job.get("id") or "")) or str(uuid.uuid4())
+    job["conversation_id"] = conversation_id
+    job_id = str(job.get("id") or "").strip()
+    if job_id:
+        update_schedule(job_id, conversation_id=conversation_id)
+    return conversation_id
 
 
 def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]:
@@ -1793,7 +1856,7 @@ def schedules_create():
     discord_channel_id = str(body.get("discord_channel_id", "")).strip()[:30]
     if discord_channel_id and not discord_channel_id.isdigit():
         return jsonify({"error": "Discord Channel ID ต้องเป็นตัวเลข"}), 400
-    job = {"id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "model": str(body.get("model", "")).strip()[:200], "discord_channel_id": discord_channel_id, "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
+    job = {"id": str(uuid.uuid4()), "conversation_id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "model": str(body.get("model", "")).strip()[:200], "discord_channel_id": discord_channel_id, "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
     with SCHEDULE_LOCK:
         jobs = load_schedules()
         jobs.append(job)
