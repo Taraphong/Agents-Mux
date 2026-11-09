@@ -1471,15 +1471,24 @@ def start_discord_bot() -> None:
                 channel_fallbacks = settings_for_chat.get("discord_fallback_models")
                 channel_fallback = channel_fallbacks.get(context_key) if isinstance(channel_fallbacks, dict) else ""
                 fallback_model = str(channel_fallback or settings_for_chat.get("fallback_model") or "").strip()
+                fallback_provider = normalize_provider(settings_for_chat.get("fallback_provider"))
+                primary_provider = normalize_provider(settings_for_chat.get("provider"))
                 status_code = primary_error.response.status_code if primary_error.response is not None else None
+                same_target = fallback_model == settings_for_chat.get("model") and (
+                    bool(channel_fallback) or fallback_provider == primary_provider
+                )
                 can_fallback = (
                     bool(settings_for_chat.get("fallback_enabled"))
                     and fallback_model
-                    and fallback_model != settings_for_chat.get("model")
+                    and not same_target
                     and status_code in {400, 404, 429, 500, 502, 503, 504}
                 )
                 if not can_fallback:
                     raise
+                if not channel_fallback:
+                    if fallback_provider != primary_provider:
+                        settings_for_chat["base_url"] = ""
+                    settings_for_chat["provider"] = fallback_provider
                 settings_for_chat["model"] = fallback_model
                 answer, _usage = await asyncio.to_thread(call_provider, messages, settings_for_chat)
                 fallback_used = fallback_model
@@ -2086,9 +2095,10 @@ def models_get():
 
 @app.put("/api/settings")
 def settings_put():
+    """Persist editable settings, including the configured fallback provider."""
     body = request.get_json(silent=True) or {}
     current = load_settings()
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled"}
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -2172,6 +2182,7 @@ def settings_reset():
 
 @app.post("/api/chat")
 def chat():
+    """Answer one chat turn, retrying once with the configured fallback."""
     body = request.get_json(silent=True) or {}
     messages = body.get("messages", [])
     if not messages or not isinstance(messages, list):
@@ -2207,10 +2218,19 @@ def chat():
         except requests.HTTPError as primary_error:
             fallback_provider = normalize_provider(settings.get("fallback_provider"))
             fallback_model = str(settings.get("fallback_model") or "").strip()
+            primary_provider = normalize_provider(settings.get("provider"))
             status_code = primary_error.response.status_code if primary_error.response is not None else None
-            can_fallback = bool(settings.get("fallback_enabled")) and fallback_model and fallback_model != settings["model"] and status_code in {400, 404, 429, 500, 502, 503, 504}
+            same_target = fallback_provider == primary_provider and fallback_model == settings["model"]
+            can_fallback = (
+                bool(settings.get("fallback_enabled"))
+                and fallback_model
+                and not same_target
+                and status_code in {400, 404, 429, 500, 502, 503, 504}
+            )
             if not can_fallback:
                 raise
+            if fallback_provider != primary_provider:
+                settings["base_url"] = ""
             settings["provider"] = fallback_provider
             settings["model"] = fallback_model
             answer, usage = call_provider(messages, settings)
