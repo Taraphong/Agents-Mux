@@ -6,8 +6,20 @@ Self-hosted AI chat running on Termux and accessible through a browser on the sa
 
 ## Getting Started
 
+Detailed install guide for Termux / Linux / macOS: **[INSTALL.md](INSTALL.md)**
+
+Quick install:
+
 ```bash
-python -m venv .venv
+git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
+cd ~/ai-web
+bash install.sh
+```
+
+Or set up manually:
+
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
