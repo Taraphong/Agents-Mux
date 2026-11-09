@@ -156,11 +156,35 @@ bash install.sh
 | `AI_PROVIDER` | ผู้ให้บริการหลัก: `openai`, `gemini`, `anthropic`, `hf`, `or`, `groq` |
 | `OPENAI_API_KEY` | API key ของ OpenAI หรือ API ที่เข้ากันได้ |
 | `GEMINI_API_KEY` | API key ของ Google Gemini |
+| `ANTHROPIC_API_KEY` | API key ของ Anthropic (Claude) |
 | `OPENROUTER_API_KEY` | API key ของ OpenRouter |
 | `GROQ_API_KEY` | API key ของ Groq |
 | `HF_API_KEY` | API key ของ Hugging Face |
 | `AI_BASE_URL` | ใช้เมื่อต้องชี้ไปยัง Base URL เฉพาะ (เว้นว่างได้) |
 | `AI_WEB_ENABLE_SCHEDULER` | ตั้ง `1` เมื่อรันผ่าน WSGI เพื่อเปิด scheduler |
+
+### ใช้ Anthropic (Claude)
+
+Anthropic ต้องตั้งค่าสองอย่างให้ตรงกัน คือ API key และโมเดล:
+
+```dotenv
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
+```
+
+จากนั้นเปิดหน้า **Settings** ในเว็บ เลือกผู้ให้บริการ **Anthropic** และเลือกโมเดล Claude จากรายการ
+(รายการโมเดลจะถูกดึงจาก API เมื่อมี key แล้ว)
+
+> ค่าเริ่มต้นของ `model` ในแอปมาจาก `OPENAI_MODEL` ซึ่งเป็นโมเดลของ OpenAI
+> ถ้าไม่เลือกโมเดล Claude ใน Settings การเรียก API จะล้มเหลว
+
+### ลำดับความสำคัญ: `.env` กับ Settings
+
+- `.env` ถูกอ่านตอนเริ่มโปรเซส และใช้เป็น **ค่าเริ่มต้น** เท่านั้น
+- ทุกครั้งที่กดบันทึกในหน้า **Settings** ค่าจะถูกเขียนลง `.app-settings.json`
+- เมื่อมี `.app-settings.json` แล้ว ค่าที่บันทึกไว้จะ **ทับค่าใน `.env`** รวมถึง provider, model และ API key
+- ถ้าแก้ `.env` แล้วไม่เห็นผล ให้แก้ค่าเดิมในหน้า Settings แทน หรือหยุดเซิร์ฟเวอร์ แก้/ลบ `.app-settings.json` แล้วเริ่มใหม่
+- API key ที่บันทึกผ่าน Settings จะถูกใช้ก่อน key ใน `.env` เสมอ
 
 ค่าอื่น ๆ (system prompt, temperature, model, Discord bot ฯลฯ) ตั้งได้จากหน้า **Settings** ในเว็บ
 และจะถูกเก็บไว้ใน `.app-settings.json` บนเครื่องผู้ใช้เท่านั้น
@@ -210,8 +234,11 @@ python app.py
 เปลี่ยนพอร์ตได้ด้วย:
 
 ```bash
-PORT=8080 ./start_web.sh --start
+PORT=8080 ./start_web.sh --restart
 ```
+
+ต้องใช้ `--restart` (หรือ `--stop` แล้วค่อย `--start`) เพราะ `--start` จะไม่ทำอะไรถ้าเซิร์ฟเวอร์ทำงานอยู่แล้ว
+และพอร์ตใหม่จะมีผลหลังกระบวนการเดิมถูกหยุดและเริ่มใหม่เท่านั้น
 
 ---
 
