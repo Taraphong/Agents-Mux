@@ -40,18 +40,24 @@ if [ -z "${PYTHON:-}" ] && venv_ok; then
   info "พบ .venv เดิม ใช้ต่อ ($("$VENV_PY" --version 2>&1))"
 else
   PYTHON_BIN="${PYTHON:-}"
+  PYTHON_TOO_OLD=""
   if [ -z "$PYTHON_BIN" ]; then
     for candidate in python3 python; do
-      if command -v "$candidate" >/dev/null 2>&1; then
+      command -v "$candidate" >/dev/null 2>&1 || continue
+      if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
         PYTHON_BIN="$candidate"
         break
       fi
+      PYTHON_TOO_OLD="$candidate"
     done
   fi
 
   if [ -z "$PYTHON_BIN" ]; then
     if [ -x "$VENV_PY" ]; then
       die "พบ .venv เดิมแต่ใช้งานไม่ได้และไม่พบ Python ใน PATH — ตรวจสอบ .venv หรือติดตั้ง Python ใหม่"
+    fi
+    if [ -n "$PYTHON_TOO_OLD" ]; then
+      die "พบ $PYTHON_TOO_OLD แต่ต้องใช้ Python 3.10 ขึ้นไป (พบ $("$PYTHON_TOO_OLD" --version 2>&1)) — ติดตั้ง Python ใหม่หรือกำหนด PYTHON=/path/to/python3"
     fi
     die "ไม่พบ Python — ติดตั้งก่อน: pkg install python (Termux) หรือ sudo apt install python3 python3-venv"
   fi
