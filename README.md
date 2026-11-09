@@ -42,7 +42,10 @@ Open `http://127.0.0.1:5000` in a browser.
 
 ### Configuration
 
-- Set `AI_PROVIDER` in `.env` (`openai`, `gemini`, or `anthropic`).
+- Set `AI_PROVIDER` in `.env` (`openai`, `gemini`, `anthropic`, `hf`, `or`, or `groq`).
+- Set the API key that matches the provider: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `HF_API_KEY`, `OPENROUTER_API_KEY`, or `GROQ_API_KEY`.
+- **Anthropic:** set `AI_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`, then open **Settings** in the web interface and select a Claude model. The startup default comes from `OPENAI_MODEL`, so an OpenAI model will not work with Anthropic.
+- Values saved from **Settings** are stored in `.app-settings.json` and override `.env`, including provider, model, and API keys. Change them in Settings (or remove the saved settings file) if editing `.env` has no effect.
 - Configure additional options from the **Settings** menu in the web interface.
 - Available reasoning levels: `off`, `low`, `medium`, and `high`.
 

@@ -40,7 +40,10 @@ python app.py
 
 ### การตั้งค่า
 
-- กำหนด `AI_PROVIDER` ใน `.env` (openai, gemini, anthropic)
+- กำหนด `AI_PROVIDER` ใน `.env` (`openai`, `gemini`, `anthropic`, `hf`, `or`, `groq`)
+- ใส่ API key ให้ตรงกับผู้ให้บริการ: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `HF_API_KEY`, `OPENROUTER_API_KEY` หรือ `GROQ_API_KEY`
+- **Anthropic:** ตั้ง `AI_PROVIDER=anthropic` และ `ANTHROPIC_API_KEY` แล้วเปิดหน้า **Settings** เลือกโมเดล Claude — ค่าเริ่มต้นของ model มาจาก `OPENAI_MODEL` จึงใช้กับ Anthropic ไม่ได้
+- ค่าที่บันทึกจากหน้า **Settings** จะถูกเก็บใน `.app-settings.json` และทับค่าใน `.env` (รวม provider, model และ API key) ถ้าแก้ `.env` แล้วไม่เห็นผล ให้แก้ใน Settings แทน
 - เลือกตั้งค่าเพิ่มเติมได้ที่เมนู **Settings** ในเว็บ
 - ระดับการคิด: `off`, `low`, `medium`, `high`
 
