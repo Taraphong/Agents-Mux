@@ -3829,6 +3829,15 @@
                   .slice(0, 25)
                   .map((item) => `• ${item.id || item}`)
                   .join("\n") || t("slash.modelsEmpty");
+              if (!response.ok) {
+                const reason = data.error || `HTTP ${response.status}`;
+                const fallback =
+                  data.source === "fallback"
+                    ? `\n${t("model.fallback")}\n${listing}`
+                    : "";
+                addCommandResult(`${reason}${fallback}`, true);
+                return { handled: true };
+              }
               addCommandResult(
                 `${t("slash.modelsTitle", {
                   provider: PROVIDER_LABELS_WEB[provider] || provider,
