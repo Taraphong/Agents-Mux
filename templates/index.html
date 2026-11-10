@@ -3503,6 +3503,7 @@
       let pendingAttachment = null;
       let typingIndicator = null;
       let typingTicker = null;
+      let chatBusy = false;
       let connectionState = {
         connected: false,
         model: "",
@@ -4599,6 +4600,10 @@
           console.warn(t("chat.saveWarning"), error);
         }
       }
+      async function sendChatMessage() {
+        const content = $("input").value.trim();
+        if ((!content && !pendingAttachment) || chatBusy) return;
+        chatBusy = true;
       async function sendChatMessage(
         content,
         requestedSkills = null,
@@ -4624,23 +4629,19 @@
         pendingAttachment = null;
         $("file-input").value = "";
         $("attachment-chip").hidden = true;
-        clearPendingSkill();
         resizeInput();
-        chatBusy = true;
+        $("send").disabled = true;
         $("send").textContent = "…";
-        updateSendState();
         try {
-          const payload = {
-            messages,
-            thinking_level: $("chat-thinking-level").value,
-            command_mode: $("chat-command-mode").value,
-            model: $("chat-model-select").value,
-          };
-          if (skills?.length) payload.skills = skills;
           const r = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              messages,
+              thinking_level: $("chat-thinking-level").value,
+              command_mode: $("chat-command-mode").value,
+              model: $("chat-model-select").value,
+            }),
           });
           const data = await r.json();
           if (!r.ok) throw new Error(data.error || t("chat.error"));
@@ -4654,7 +4655,6 @@
             fallback_used: data.fallback_used,
           };
           messages.push(assistantMessage);
-          removeTypingIndicator();
           addMessage("assistant", data.answer, assistantMessage);
           await saveConversation();
         } catch (e) {
@@ -4673,52 +4673,6 @@
           updateSendState();
           $("input").focus();
         }
-      }
-      $("chat-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const content = $("input").value.trim();
-        if ((!content && !pendingAttachment) || $("send").disabled) return;
-        hideSlashMenu();
-        if (content.startsWith("/") && !pendingAttachment) {
-          const submitted = content;
-          try {
-            const result = await runSlashCommand(content);
-            if (result?.send) {
-              if (!connectionState.connected) {
-                addCommandResult(t("chatModel.notConnected"), true);
-                $("input").focus();
-                return;
-              }
-              await sendChatMessage(
-                result.prompt,
-                result.skills,
-                result.skill,
-              );
-            } else {
-              if (
-                !result?.keepInput &&
-                $("input").value.trim() === submitted
-              ) {
-                $("input").value = "";
-                resizeInput();
-              }
-              updateSendState();
-              $("input").focus();
-            }
-          } catch (error) {
-            addCommandResult(
-              t("slash.switchFailed", { error: error.message }),
-              true,
-            );
-            if ($("input").value.trim() === submitted) {
-              $("input").value = "";
-              resizeInput();
-            }
-            updateSendState();
-          }
-          return;
-        }
-        await sendChatMessage(content);
       });
       function scheduleStatusText(value) {
         const status = String(value || "").trim();
