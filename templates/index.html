@@ -4687,8 +4687,10 @@
             if (result?.send) {
               await sendChatMessage(result.prompt, result.skills);
             } else {
-              $("input").value = "";
-              resizeInput();
+              if (!result?.keepInput) {
+                $("input").value = "";
+                resizeInput();
+              }
               updateSendState();
               $("input").focus();
             }
