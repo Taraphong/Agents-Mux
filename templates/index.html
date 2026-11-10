@@ -4654,6 +4654,7 @@
             fallback_used: data.fallback_used,
           };
           messages.push(assistantMessage);
+          removeTypingIndicator();
           addMessage("assistant", data.answer, assistantMessage);
           await saveConversation();
         } catch (e) {
