@@ -63,6 +63,22 @@ Conversations are stored by date and time in `history/YYYY-MM-DD/HH-MM-SS_<conve
 - Paths are restricted to the project directory, excluding `.env`, `.app-settings.json`, `history/`, `.venv/`, and `.git/`.
 - Allowed commands are limited to `pwd`, `ls`, `git status|diff|log`, and `python -m py_compile app.py`.
 
+### Web chat slash commands
+
+Type `/` in the chat box to open an autocomplete menu. Commands run locally unless noted:
+
+- `/help` lists every command and available skill.
+- `/new` or `/clear` starts a fresh conversation context.
+- `/model` and `/status` show the active provider, model, and readiness.
+- `/models [provider] [model]` lists models or switches provider/model.
+- `/ping` measures the server response time.
+- `/fallback [model|off]` shows or changes the fallback model.
+- `/skills` lists available skills.
+- `/skill <name> [prompt]` applies a skill to the next message, or to the given prompt immediately.
+- `/<skill-name> [prompt]` is a shortcut for `/skill <skill-name> [prompt]`.
+
+A skill used through a slash command applies only to that request and does not change the skills selected in Settings.
+
 ### Terminal
 
 The **Terminal** page runs shell commands directly on the server as the user running the app, starting in the project folder and supporting `cd` within the project. Commands time out after 60 seconds, output is capped at 100 KB, credential-like environment variables are removed, and known API keys/tokens are redacted from the output. The page can be disabled in **Settings**.

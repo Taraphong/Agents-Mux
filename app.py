@@ -2190,6 +2190,12 @@ def chat():
     try:
         log_event("chat.start", "เริ่มประมวลผลข้อความ", message_count=len(messages))
         settings = load_settings()
+        request_skills = body.get("skills")
+        if isinstance(request_skills, list):
+            # Slash commands can apply a skill to one turn without changing
+            # the skills saved in Settings.
+            available_skills = {item["name"] for item in list_skills()}
+            settings["skills"] = [str(name) for name in request_skills if str(name) in available_skills]
         requested_thinking = body.get("thinking_level")
         if requested_thinking in {"off", "low", "medium", "high"}:
             settings["thinking_level"] = requested_thinking
