@@ -3820,10 +3820,16 @@
                 models.length > 25
                   ? `\n${t("slash.modelsMore", { count: models.length })}`
                   : "";
+              const isFallback = !response.ok;
+              const fallbackNotice = isFallback
+                ? `\n${t("model.fallback")}: ${
+                    data.error || t("status.notConnectedReason")
+                  }`
+                : "";
               addCommandResult(
                 `${t("slash.modelsTitle", {
                   provider: PROVIDER_LABELS_WEB[provider] || provider,
-                })}\n${listing}${moreNotice}`,
+                })}${fallbackNotice}\n${listing}${moreNotice}`,
               );
             } catch (error) {
               addCommandResult(
