@@ -4689,7 +4689,8 @@
           await saveConversation();
           await refreshConnectionState();
         } finally {
-          $("send").disabled = false;
+          removeTypingIndicator();
+          chatBusy = false;
           $("send").textContent = "↑";
           updateSendState();
           $("input").focus();
