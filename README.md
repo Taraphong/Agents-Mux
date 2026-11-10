@@ -56,8 +56,6 @@ Conversations are stored by date and time in `history/YYYY-MM-DD/HH-MM-SS_<conve
 - The `history/` directory is excluded from Git.
 - Conversations can be renamed, pinned, locked, and unlocked from the chat interface.
 
-For detailed requirements and development guidelines, read **[AGENTS.md](AGENTS.md)**.
-
 ## AI Tools
 
 - AI agents can read project files immediately.
