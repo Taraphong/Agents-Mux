@@ -3732,7 +3732,7 @@
             const data = await refreshConnectionState();
             if (!data) {
               addCommandResult(
-                t("slash.pingFailed", { error: t("status.checkFailed") }),
+                t("status.checkFailed"),
                 true,
               );
               return { handled: true };
