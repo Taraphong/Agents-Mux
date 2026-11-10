@@ -2029,6 +2029,101 @@
           font-size: 0.76rem;
         }
       }
+      .chat-form {
+        position: relative;
+      }
+      .slash-menu {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: calc(100% + 8px);
+        z-index: 40;
+        max-height: 290px;
+        overflow-y: auto;
+        padding: 6px;
+        border: 1px solid var(--line-soft, #34415f);
+        border-radius: 10px;
+        background: #101827;
+        box-shadow: 0 18px 46px #050914bb;
+      }
+      .slash-menu[hidden] {
+        display: none;
+      }
+      .slash-item {
+        display: block;
+        width: 100%;
+        padding: 8px 10px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text, #e2e8f0);
+        text-align: left;
+        cursor: pointer;
+      }
+      .slash-item:hover,
+      .slash-item.active {
+        background: #1e293b;
+      }
+      .slash-item code {
+        color: var(--indigo, #a5b4fc);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.82rem;
+      }
+      .slash-item small {
+        display: block;
+        margin-top: 2px;
+        color: var(--dim, #94a3b8);
+        font-size: 0.74rem;
+        font-weight: 400;
+      }
+      .skill-chip {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: rgba(129, 140, 248, 0.16);
+        color: #c7d2fe;
+        font-size: 0.74rem;
+        cursor: pointer;
+      }
+      .command-result {
+        border-left: 3px solid var(--indigo, #818cf8);
+        background: rgba(30, 41, 59, 0.72);
+        font-size: 0.86rem;
+      }
+      .command-result.error {
+        border-left-color: #f87171;
+      }
+      .command-result-label {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--dim, #94a3b8);
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      body.light-theme .slash-menu {
+        background: #ffffff;
+        border-color: #dbe3ef;
+        box-shadow: 0 18px 46px rgba(15, 23, 42, 0.18);
+      }
+      body.light-theme .slash-item {
+        color: #1e293b;
+      }
+      body.light-theme .slash-item:hover,
+      body.light-theme .slash-item.active {
+        background: #eef2ff;
+      }
+      body.light-theme .skill-chip {
+        background: #e0e7ff;
+        color: #3730a3;
+      }
+      body.light-theme .command-result {
+        background: #f8fafc;
+        color: #1e293b;
+      }
     </style>
   </head>
   <body>
@@ -2149,6 +2244,14 @@
                 </div>
               </div>
               <form class="chat-form" id="chat-form">
+                <div
+                  id="slash-menu"
+                  class="slash-menu"
+                  role="listbox"
+                  aria-label="คำสั่ง"
+                  data-i18n-aria-label="slash.menuAria"
+                  hidden
+                ></div>
                 <textarea
                   id="input"
                   placeholder="ส่งข้อความถึง AI..."
@@ -2173,6 +2276,13 @@
                     <span
                       id="attachment-chip"
                       class="attachment-chip"
+                      hidden
+                    ></span>
+                    <span
+                      id="skill-chip"
+                      class="skill-chip"
+                      title="ยกเลิก Skill ที่รอใช้"
+                      data-i18n-title="slash.clearSkill"
                       hidden
                     ></span>
                     <select
@@ -2751,6 +2861,45 @@
           "chat.error": "เกิดข้อผิดพลาด",
           "chat.errorPrefix": "ข้อผิดพลาด: {message}",
           "chat.saveWarning": "บันทึกประวัติไม่สำเร็จ",
+          "slash.commandLabel": "⌘ คำสั่ง",
+          "slash.menuAria": "คำสั่งในแชต",
+          "slash.error": "คำสั่งไม่สำเร็จ",
+          "slash.helpTitle": "คำสั่งที่ใช้ได้ในเว็บ",
+          "slash.helpHint": "พิมพ์ / แล้วเลือกจากเมนู หรือพิมพ์คำสั่งเองได้เลย",
+          "slash.helpDesc": "แสดงรายการคำสั่งทั้งหมด",
+          "slash.newDesc": "เริ่มบทสนทนาใหม่",
+          "slash.clearDesc": "ล้างบริบทการสนทนาปัจจุบัน",
+          "slash.modelDesc": "ดู provider และ model ที่ใช้งาน",
+          "slash.modelsDesc": "ดูรายการ model หรือสลับ provider/model",
+          "slash.statusDesc": "ตรวจสอบสถานะการเชื่อมต่อ",
+          "slash.pingDesc": "วัดเวลาตอบกลับของเซิร์ฟเวอร์",
+          "slash.fallbackDesc": "ดูหรือตั้ง fallback model",
+          "slash.skillDesc": "ใช้ Skill กับข้อความถัดไปหรือข้อความที่ระบุ",
+          "slash.skillsDesc": "แสดงรายการ Skill ที่มี",
+          "slash.skillItemDesc": "ใช้ Skill นี้",
+          "slash.skillActivated": "จะใช้ Skill “{name}” กับข้อความถัดไป",
+          "slash.clearSkill": "ยกเลิก Skill ที่รอใช้",
+          "slash.skillMissing": "ไม่พบ Skill “{name}”",
+          "slash.skillUsage": "ใช้ /skill <ชื่อ> [ข้อความ] หรือพิมพ์ /ชื่อ-skill ตามด้วยข้อความ",
+          "slash.unknown": "ไม่รู้จักคำสั่ง “/{command}” — พิมพ์ /help เพื่อดูคำสั่งทั้งหมด",
+          "slash.newDone": "เริ่มบทสนทนาใหม่แล้ว",
+          "slash.clearDone": "ล้างบริบทการสนทนาแล้ว",
+          "slash.modelInfo": "Provider: {provider}\nModel: {model}\nสถานะ: {status}",
+          "slash.modelsTitle": "Model ของ {provider}",
+          "slash.modelsEmpty": "ไม่พบรายการ model",
+          "slash.modelSwitched": "สลับไปใช้ {provider} / {model} แล้ว",
+          "slash.switchFailed": "สลับ model ไม่สำเร็จ: {error}",
+          "slash.pingResult": "Pong! เซิร์ฟเวอร์ตอบกลับใน {ms} ms",
+          "slash.pingFailed": "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: {error}",
+          "slash.fallbackInfo": "Fallback: {state}\nProvider: {provider}\nModel: {model}",
+          "slash.fallbackNone": "ยังไม่ได้ตั้งค่า",
+          "slash.fallbackOff": "ปิด fallback แล้ว",
+          "slash.fallbackSet": "ตั้ง fallback model เป็น {model} แล้ว",
+          "slash.fallbackFailed": "ตั้ง fallback ไม่สำเร็จ: {error}",
+          "slash.skillsTitle": "Skills ที่ใช้ได้",
+          "slash.skillsEmpty": "ยังไม่มี Skill ในโฟลเดอร์ skills",
+          "slash.statusOn": "พร้อมใช้งาน",
+          "slash.statusOff": "ยังไม่พร้อม: {reason}",
           "settings.providerTitle": "ผู้ให้บริการและโมเดล",
           "settings.agentProfileTitle": "โปรไฟล์ Agent",
           "settings.agentProfileHint": "กำหนดตัวตน บทบาท ภาษา และรูปแบบการตอบของ Agent",
@@ -3019,6 +3168,45 @@
           "chat.error": "Something went wrong",
           "chat.errorPrefix": "Error: {message}",
           "chat.saveWarning": "Could not save the conversation",
+          "slash.commandLabel": "⌘ COMMAND",
+          "slash.menuAria": "Chat commands",
+          "slash.error": "Command failed",
+          "slash.helpTitle": "Web chat commands",
+          "slash.helpHint": "Type / and choose from the menu, or type a command directly.",
+          "slash.helpDesc": "Show every command",
+          "slash.newDesc": "Start a new conversation",
+          "slash.clearDesc": "Clear the current conversation context",
+          "slash.modelDesc": "Show the active provider and model",
+          "slash.modelsDesc": "List models or switch provider/model",
+          "slash.statusDesc": "Check the connection status",
+          "slash.pingDesc": "Measure the server response time",
+          "slash.fallbackDesc": "Show or set the fallback model",
+          "slash.skillDesc": "Apply a skill to the next or given message",
+          "slash.skillsDesc": "List available skills",
+          "slash.skillItemDesc": "Use this skill",
+          "slash.skillActivated": "Skill “{name}” will apply to the next message",
+          "slash.clearSkill": "Cancel the pending skill",
+          "slash.skillMissing": "Skill “{name}” was not found",
+          "slash.skillUsage": "Use /skill <name> [message] or /<skill-name> followed by a message",
+          "slash.unknown": "Unknown command “/{command}” — type /help to see all commands",
+          "slash.newDone": "Started a new conversation",
+          "slash.clearDone": "Cleared the conversation context",
+          "slash.modelInfo": "Provider: {provider}\nModel: {model}\nStatus: {status}",
+          "slash.modelsTitle": "Models for {provider}",
+          "slash.modelsEmpty": "No models found",
+          "slash.modelSwitched": "Switched to {provider} / {model}",
+          "slash.switchFailed": "Could not switch model: {error}",
+          "slash.pingResult": "Pong! The server responded in {ms} ms",
+          "slash.pingFailed": "Could not reach the server: {error}",
+          "slash.fallbackInfo": "Fallback: {state}\nProvider: {provider}\nModel: {model}",
+          "slash.fallbackNone": "Not configured",
+          "slash.fallbackOff": "Fallback disabled",
+          "slash.fallbackSet": "Fallback model set to {model}",
+          "slash.fallbackFailed": "Could not set fallback: {error}",
+          "slash.skillsTitle": "Available skills",
+          "slash.skillsEmpty": "No skills found in the skills folder",
+          "slash.statusOn": "Ready",
+          "slash.statusOff": "Not ready: {reason}",
           "settings.providerTitle": "Provider and model",
           "settings.agentProfileTitle": "Agent profile",
           "settings.agentProfileHint": "Define the agent identity, role, language, and response style.",
@@ -3266,6 +3454,44 @@
         );
       });
       const messages = [];
+      const PROVIDER_LABELS_WEB = {
+        openai: "OpenAI / OpenAI-compatible",
+        gemini: "Google Gemini",
+        anthropic: "Anthropic Claude",
+        hf: "Hugging Face",
+        or: "OpenRouter",
+        groq: "Groq",
+      };
+      const SLASH_COMMANDS = [
+        { name: "help", usage: "/help", descKey: "slash.helpDesc" },
+        { name: "new", usage: "/new", descKey: "slash.newDesc" },
+        { name: "clear", usage: "/clear", descKey: "slash.clearDesc" },
+        { name: "model", usage: "/model", descKey: "slash.modelDesc" },
+        {
+          name: "models",
+          usage: "/models [provider] [model]",
+          descKey: "slash.modelsDesc",
+        },
+        { name: "status", usage: "/status", descKey: "slash.statusDesc" },
+        { name: "ping", usage: "/ping", descKey: "slash.pingDesc" },
+        {
+          name: "fallback",
+          usage: "/fallback [model|off]",
+          descKey: "slash.fallbackDesc",
+        },
+        {
+          name: "skill",
+          usage: "/skill <name> [prompt]",
+          descKey: "slash.skillDesc",
+        },
+        { name: "skills", usage: "/skills", descKey: "slash.skillsDesc" },
+      ];
+      let defaultSkills = [];
+      let availableSkills = [];
+      let pendingSkill = null;
+      let chatBusy = false;
+      let slashMatches = [];
+      let slashIndex = 0;
       let keyProviders = [];
       let conversationId = null;
       let conversationCreatedAt = null;
@@ -3341,6 +3567,383 @@
             .slice(0, 80) || null;
         updatePageTitle();
       }
+      function addCommandResult(text, error = false) {
+        const el = document.createElement("div");
+        el.className = `message assistant command-result${error ? " error" : ""}`;
+        const label = document.createElement("span");
+        label.className = "command-result-label";
+        label.textContent = error ? t("slash.error") : t("slash.commandLabel");
+        const body = document.createElement("div");
+        body.textContent = text;
+        el.append(label, body);
+        $("messages").appendChild(el);
+        $("messages").scrollTop = $("messages").scrollHeight;
+      }
+      function activeSkills(extra = null) {
+        const list = [...defaultSkills];
+        if (pendingSkill) list.push(pendingSkill);
+        if (extra) list.push(extra);
+        return [...new Set(list.filter(Boolean))];
+      }
+      function updateSkillChip() {
+        const chip = $("skill-chip");
+        chip.textContent = pendingSkill ? `🧩 ${pendingSkill} ×` : "";
+        chip.hidden = !pendingSkill;
+      }
+      function setPendingSkill(name) {
+        pendingSkill = name;
+        updateSkillChip();
+      }
+      function clearPendingSkill() {
+        pendingSkill = null;
+        updateSkillChip();
+      }
+      function slashCatalog() {
+        return SLASH_COMMANDS.concat(
+          availableSkills.map((name) => ({
+            name,
+            usage: `/${name}`,
+            descKey: "slash.skillItemDesc",
+            isSkill: true,
+          })),
+        );
+      }
+      function hideSlashMenu() {
+        $("slash-menu").hidden = true;
+        $("slash-menu").innerHTML = "";
+        slashMatches = [];
+        slashIndex = 0;
+      }
+      function renderSlashMenu() {
+        const menu = $("slash-menu");
+        menu.innerHTML = "";
+        slashMatches.forEach((item, index) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `slash-item${index === slashIndex ? " active" : ""}`;
+          button.dataset.slashIndex = String(index);
+          button.setAttribute("role", "option");
+          button.setAttribute(
+            "aria-selected",
+            index === slashIndex ? "true" : "false",
+          );
+          const code = document.createElement("code");
+          code.textContent = item.usage || `/${item.name}`;
+          const description = document.createElement("small");
+          description.textContent = t(item.descKey);
+          button.append(code, description);
+          menu.appendChild(button);
+        });
+        menu.hidden = false;
+      }
+      function updateSlashMenu() {
+        const value = $("input").value;
+        if (!value.startsWith("/") || /\s/.test(value.slice(1))) {
+          hideSlashMenu();
+          return;
+        }
+        const query = value.slice(1).toLowerCase();
+        slashMatches = slashCatalog()
+          .filter((item) => item.name.toLowerCase().startsWith(query))
+          .slice(0, 8);
+        if (!slashMatches.length) {
+          hideSlashMenu();
+          return;
+        }
+        if (slashIndex >= slashMatches.length) slashIndex = 0;
+        renderSlashMenu();
+      }
+      function applySlashSuggestion(index = slashIndex) {
+        const item = slashMatches[index];
+        if (!item) return;
+        $("input").value = `/${item.name} `;
+        resizeInput();
+        hideSlashMenu();
+        updateSendState();
+        $("input").focus();
+      }
+      function moveSlashSelection(delta) {
+        if (!slashMatches.length) return;
+        slashIndex =
+          (slashIndex + delta + slashMatches.length) % slashMatches.length;
+        renderSlashMenu();
+      }
+      async function fetchSettings() {
+        const response = await fetch("/api/settings");
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }
+      function showSlashHelp() {
+        const lines = SLASH_COMMANDS.map(
+          (item) => `${item.usage} — ${t(item.descKey)}`,
+        );
+        if (availableSkills.length) {
+          lines.push(
+            "",
+            t("slash.skillsTitle"),
+            ...availableSkills.map((name) => `  /${name}`),
+          );
+        }
+        addCommandResult(
+          `${t("slash.helpTitle")}\n${t("slash.helpHint")}\n\n${lines.join("\n")}`,
+        );
+      }
+      async function applySkillCommand(name, prompt) {
+        if (!availableSkills.includes(name)) {
+          addCommandResult(t("slash.skillMissing", { name }), true);
+          return { handled: true };
+        }
+        if (prompt) {
+          return {
+            send: true,
+            prompt,
+            skills: activeSkills(name),
+          };
+        }
+        setPendingSkill(name);
+        addCommandResult(t("slash.skillActivated", { name }));
+        return { handled: true };
+      }
+      async function runSlashCommand(raw) {
+        const body = raw.trim().slice(1).trim();
+        const match = body.match(/^(\S+)(?:\s+([\s\S]*))?$/);
+        const name = (match?.[1] || "").toLowerCase();
+        const rest = (match?.[2] || "").trim();
+        if (!name) {
+          showSlashHelp();
+          return { handled: true };
+        }
+        if (availableSkills.includes(name)) {
+          return applySkillCommand(name, rest);
+        }
+        switch (name) {
+          case "help":
+            showSlashHelp();
+            return { handled: true };
+          case "new":
+          case "clear":
+            startNewChat("new");
+            addCommandResult(
+              t(name === "new" ? "slash.newDone" : "slash.clearDone"),
+            );
+            return { handled: true };
+          case "model":
+          case "status": {
+            const data = await refreshConnectionState();
+            if (!data) {
+              addCommandResult(
+                t("slash.pingFailed", { error: t("status.checkFailed") }),
+                true,
+              );
+              return { handled: true };
+            }
+            const state = data.ready
+              ? t("slash.statusOn")
+              : t("slash.statusOff", {
+                  reason: data.reason || t("status.notConnectedReason"),
+                });
+            addCommandResult(
+              t("slash.modelInfo", {
+                provider:
+                  PROVIDER_LABELS_WEB[data.provider] || data.provider || "-",
+                model: data.model || t("model.none"),
+                status: state,
+              }),
+            );
+            return { handled: true };
+          }
+          case "models": {
+            let provider = connectionState.provider || "openai";
+            const parts = rest.split(/\s+/).filter(Boolean);
+            let model = "";
+            if (parts.length) {
+              const candidate = parts[0].toLowerCase();
+              if (PROVIDER_LABELS_WEB[candidate]) {
+                provider = candidate;
+                model = parts.slice(1).join(" ");
+              } else {
+                model = parts.join(" ");
+              }
+            }
+            if (model) {
+              try {
+                const body = { provider, model };
+                if (
+                  connectionState.provider &&
+                  provider !== connectionState.provider
+                ) {
+                  body.base_url = "";
+                }
+                const response = await fetch("/api/settings", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                });
+                const data = await response.json();
+                if (!response.ok)
+                  throw new Error(data.error || `HTTP ${response.status}`);
+                await loadChatMeta();
+                addCommandResult(
+                  t("slash.modelSwitched", {
+                    provider: PROVIDER_LABELS_WEB[provider] || provider,
+                    model,
+                  }),
+                );
+              } catch (error) {
+                addCommandResult(
+                  t("slash.switchFailed", { error: error.message }),
+                  true,
+                );
+              }
+              return { handled: true };
+            }
+            try {
+              const response = await fetch(
+                `/api/models?provider=${encodeURIComponent(provider)}`,
+              );
+              const data = await response.json();
+              const models = Array.isArray(data.models) ? data.models : [];
+              const listing =
+                models
+                  .slice(0, 25)
+                  .map((item) => `• ${item.id || item}`)
+                  .join("\n") || t("slash.modelsEmpty");
+              addCommandResult(
+                `${t("slash.modelsTitle", {
+                  provider: PROVIDER_LABELS_WEB[provider] || provider,
+                })}\n${listing}`,
+              );
+            } catch (error) {
+              addCommandResult(
+                t("slash.switchFailed", { error: error.message }),
+                true,
+              );
+            }
+            return { handled: true };
+          }
+          case "ping": {
+            const started = performance.now();
+            try {
+              const response = await fetch(
+                `/api/status?lang=${encodeURIComponent(currentLanguage)}`,
+              );
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              await response.json();
+              addCommandResult(
+                t("slash.pingResult", {
+                  ms: Math.round(performance.now() - started),
+                }),
+              );
+            } catch (error) {
+              addCommandResult(
+                t("slash.pingFailed", { error: error.message }),
+                true,
+              );
+            }
+            return { handled: true };
+          }
+          case "fallback": {
+            try {
+              const settings = await fetchSettings();
+              if (!rest) {
+                const state = settings.fallback_enabled
+                  ? `${
+                      PROVIDER_LABELS_WEB[settings.fallback_provider] ||
+                      settings.fallback_provider ||
+                      settings.provider
+                    } / ${settings.fallback_model || t("slash.fallbackNone")}`
+                  : t("slash.fallbackNone");
+                addCommandResult(
+                  t("slash.fallbackInfo", {
+                    state,
+                    provider:
+                      PROVIDER_LABELS_WEB[settings.provider] ||
+                      settings.provider,
+                    model: settings.model || t("model.none"),
+                  }),
+                );
+                return { handled: true };
+              }
+              const disable = ["off", "none", "ปิด"].includes(
+                rest.toLowerCase(),
+              );
+              const response = await fetch("/api/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(
+                  disable
+                    ? { fallback_enabled: false }
+                    : {
+                        fallback_enabled: true,
+                        fallback_provider: settings.provider,
+                        fallback_model: rest,
+                      },
+                ),
+              });
+              const data = await response.json();
+              if (!response.ok)
+                throw new Error(data.error || `HTTP ${response.status}`);
+              addCommandResult(
+                disable
+                  ? t("slash.fallbackOff")
+                  : t("slash.fallbackSet", { model: rest }),
+              );
+            } catch (error) {
+              addCommandResult(
+                t("slash.fallbackFailed", { error: error.message }),
+                true,
+              );
+            }
+            return { handled: true };
+          }
+          case "skills": {
+            try {
+              const settings = await fetchSettings();
+              availableSkills = (settings.available_skills || []).map(
+                (item) => item.name,
+              );
+              defaultSkills = Array.isArray(settings.skills)
+                ? settings.skills.map(String)
+                : defaultSkills;
+            } catch (error) {
+              /* keep the cached list */
+            }
+            addCommandResult(
+              availableSkills.length
+                ? `${t("slash.skillsTitle")}\n${availableSkills
+                    .map((skillName) => `• /${skillName}`)
+                    .join("\n")}`
+                : t("slash.skillsEmpty"),
+            );
+            return { handled: true };
+          }
+          case "skill": {
+            const parts = rest.split(/\s+/).filter(Boolean);
+            const skillName = (parts.shift() || "").toLowerCase();
+            if (!skillName) {
+              addCommandResult(t("slash.skillUsage"), true);
+              return { handled: true };
+            }
+            return applySkillCommand(skillName, parts.join(" "));
+          }
+          default:
+            addCommandResult(t("slash.unknown", { command: name }), true);
+            return { handled: true };
+        }
+      }
+      function startNewChat(mode = "new") {
+        conversationId = null;
+        conversationCreatedAt = null;
+        conversationTitle = null;
+        messages.splice(0, messages.length);
+        emptyConversationMode = mode;
+        clearPendingSkill();
+        renderMessages();
+        updatePageTitle();
+        document.querySelector('[data-view="chat"]').click();
+        closeSidebar();
+        $("input").focus();
+      }
       function closeSidebar() {
         document.querySelector("aside").classList.remove("open");
         $("sidebar-backdrop").classList.remove("open");
@@ -3378,6 +3981,12 @@
           attachment.className = "message-attachment";
           attachment.textContent = `📎 ${meta.attachment.name}`;
           el.appendChild(attachment);
+        }
+        if (role === "user" && meta?.skill) {
+          const skill = document.createElement("small");
+          skill.className = "message-attachment";
+          skill.textContent = `🧩 ${meta.skill}`;
+          el.appendChild(skill);
         }
         if (role === "assistant" && meta?.tool_request && meta?.approval_id) {
           const approval = document.createElement("button");
@@ -3870,13 +4479,57 @@
         el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
         el.style.overflowY = "auto";
       }
-      $("input").addEventListener("input", resizeInput);
+      $("input").addEventListener("input", () => {
+        resizeInput();
+        updateSlashMenu();
+        updateSendState();
+      });
       $("input").addEventListener("keydown", (event) => {
+        if (!$("slash-menu").hidden) {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            moveSlashSelection(1);
+            return;
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            moveSlashSelection(-1);
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            hideSlashMenu();
+            return;
+          }
+          if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+            const selected = slashMatches[slashIndex];
+            const exact = selected?.name
+              ? $("input").value.trim() === `/${selected.name}`
+              : false;
+            event.preventDefault();
+            if (exact) {
+              hideSlashMenu();
+              $("chat-form").requestSubmit();
+            } else {
+              applySlashSuggestion();
+            }
+            return;
+          }
+        }
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           $("chat-form").requestSubmit();
+        } else if (event.key === "Escape") {
+          clearPendingSkill();
         }
       });
+      $("slash-menu").addEventListener("mousedown", (event) => {
+        const item = event.target.closest("[data-slash-index]");
+        if (!item) return;
+        event.preventDefault();
+        applySlashSuggestion(Number(item.dataset.slashIndex));
+      });
+      $("skill-chip").addEventListener("click", () => clearPendingSkill());
       $("file-input").addEventListener("change", async (event) => {
         const file = event.target.files?.[0];
         if (!file) return;
@@ -3928,15 +4581,22 @@
           console.warn(t("chat.saveWarning"), error);
         }
       }
-      $("chat-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const content = $("input").value.trim();
-        if ((!content && !pendingAttachment) || $("send").disabled) return;
+      async function sendChatMessage(content, requestedSkills = null) {
         const userMessage = {
           role: "user",
           content: content || t("chat.defaultAttachmentPrompt"),
         };
         if (pendingAttachment) userMessage.attachment = pendingAttachment;
+        const appliedSkill =
+          requestedSkills?.length
+            ? requestedSkills[requestedSkills.length - 1]
+            : pendingSkill;
+        const skills = requestedSkills?.length
+          ? requestedSkills
+          : pendingSkill
+            ? activeSkills()
+            : null;
+        if (appliedSkill) userMessage.skill = appliedSkill;
         messages.push(userMessage);
         addMessage("user", content, userMessage);
         addTypingIndicator();
@@ -3945,19 +4605,23 @@
         pendingAttachment = null;
         $("file-input").value = "";
         $("attachment-chip").hidden = true;
+        clearPendingSkill();
         resizeInput();
-        $("send").disabled = true;
+        chatBusy = true;
         $("send").textContent = "…";
+        updateSendState();
         try {
+          const payload = {
+            messages,
+            thinking_level: $("chat-thinking-level").value,
+            command_mode: $("chat-command-mode").value,
+            model: $("chat-model-select").value,
+          };
+          if (skills?.length) payload.skills = skills;
           const r = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messages,
-              thinking_level: $("chat-thinking-level").value,
-              command_mode: $("chat-command-mode").value,
-              model: $("chat-model-select").value,
-            }),
+            body: JSON.stringify(payload),
           });
           const data = await r.json();
           if (!r.ok) throw new Error(data.error || t("chat.error"));
@@ -3985,11 +4649,40 @@
           await saveConversation();
           await refreshConnectionState();
         } finally {
-          removeTypingIndicator();
           $("send").disabled = false;
           $("send").textContent = "↑";
+          updateSendState();
           $("input").focus();
         }
+      }
+      $("chat-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const content = $("input").value.trim();
+        if ((!content && !pendingAttachment) || chatBusy) return;
+        hideSlashMenu();
+        if (content.startsWith("/") && !pendingAttachment) {
+          try {
+            const result = await runSlashCommand(content);
+            if (result?.send) {
+              await sendChatMessage(result.prompt, result.skills);
+            } else {
+              $("input").value = "";
+              resizeInput();
+              updateSendState();
+              $("input").focus();
+            }
+          } catch (error) {
+            addCommandResult(
+              t("slash.switchFailed", { error: error.message }),
+              true,
+            );
+            $("input").value = "";
+            resizeInput();
+            updateSendState();
+          }
+          return;
+        }
+        await sendChatMessage(content);
       });
       function scheduleStatusText(value) {
         const status = String(value || "").trim();
@@ -4321,6 +5014,11 @@
         currentChatModels = choices;
         currentChatSelected = select.value;
       }
+      function updateSendState() {
+        const isCommand = $("input").value.trim().startsWith("/");
+        $("send").disabled =
+          chatBusy || (!connectionState.connected && !isCommand);
+      }
       function updateConnectionUi() {
         const status = document.querySelector(".status");
         const label = $("header-model-name");
@@ -4337,14 +5035,20 @@
         $("input").placeholder = connectionState.connected
           ? t("chat.placeholder")
           : connectionState.reason || t("status.inputDisabled");
-        $("send").disabled = !connectionState.connected;
+        updateSendState();
         $("chat-model-select").disabled = !connectionState.connected;
       }
-      function setConnectionState(connected, model = "", reason = "") {
+      function setConnectionState(
+        connected,
+        model = "",
+        reason = "",
+        provider = "",
+      ) {
         connectionState = {
           connected: !!connected,
           model,
           reason,
+          provider: provider || connectionState.provider || "",
           known: true,
         };
         updateConnectionUi();
@@ -4359,6 +5063,7 @@
             !!data.ready,
             data.model || "",
             data.reason || "",
+            data.provider || "",
           );
           return data;
         } catch (e) {
@@ -4367,7 +5072,21 @@
         }
       }
       function applyChatMeta(settings) {
-        $("chat-thinking-level").value = settings.thinking_level ?? "off";
+        if ("thinking_level" in settings) {
+          $("chat-thinking-level").value = settings.thinking_level ?? "off";
+        }
+        if (Array.isArray(settings.available_skills)) {
+          availableSkills = settings.available_skills.map((item) => item.name);
+        }
+        if (Array.isArray(settings.skills)) {
+          defaultSkills = settings.skills.map(String);
+        }
+        if (pendingSkill && !availableSkills.includes(pendingSkill)) {
+          clearPendingSkill();
+        }
+        if (settings.provider) {
+          connectionState.provider = settings.provider;
+        }
         updateChatModelOptions([], settings.model ?? "");
       }
       async function loadChatMeta() {
@@ -4402,6 +5121,12 @@
       async function loadSettings() {
         const r = await fetch("/api/settings");
         const s = await r.json();
+        availableSkills = (s.available_skills || []).map((skill) => skill.name);
+        defaultSkills = Array.isArray(s.skills) ? s.skills.map(String) : [];
+        connectionState.provider = s.provider ?? connectionState.provider;
+        if (pendingSkill && !availableSkills.includes(pendingSkill)) {
+          clearPendingSkill();
+        }
         $("agent_name").value = s.agent_name ?? "Mux";
         $("agent_role").value = s.agent_role ?? "ผู้ช่วย AI อเนกประสงค์";
         $("response_language").value = s.response_language ?? "auto";
@@ -4782,18 +5507,7 @@
         const item = event.target.closest("[data-history-id]");
         if (item) openConversation(item.dataset.historyId);
       });
-      $("new-chat").addEventListener("click", () => {
-        conversationId = null;
-        conversationCreatedAt = null;
-        conversationTitle = null;
-        messages.splice(0, messages.length);
-        emptyConversationMode = "new";
-        renderMessages();
-        updatePageTitle();
-        document.querySelector('[data-view="chat"]').click();
-        closeSidebar();
-        $("input").focus();
-      });
+      $("new-chat").addEventListener("click", () => startNewChat("new"));
       $("reset").addEventListener("click", async () => {
         if (!confirm(t("notice.resetConfirm"))) return;
         await fetch("/api/settings/reset", { method: "POST" });
