@@ -2195,7 +2195,9 @@ def chat():
             # Slash commands can apply a skill to one turn without changing
             # the skills saved in Settings.
             available_skills = {item["name"] for item in list_skills()}
-            settings["skills"] = [str(name) for name in request_skills if str(name) in available_skills]
+            settings["skills"] = list(dict.fromkeys(
+                name for name in map(str, request_skills) if name in available_skills
+            ))
         requested_thinking = body.get("thinking_level")
         if requested_thinking in {"off", "low", "medium", "high"}:
             settings["thinking_level"] = requested_thinking
