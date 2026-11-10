@@ -4669,7 +4669,7 @@
           await refreshConnectionState();
         } finally {
           removeTypingIndicator();
-          $("send").disabled = false;
+          chatBusy = false;
           $("send").textContent = "↑";
           updateSendState();
           $("input").focus();
