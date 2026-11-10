@@ -4462,6 +4462,48 @@
         event.preventDefault();
         runTerminalCommand();
       });
+      $("chat-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const content = $("input").value.trim();
+        if ((!content && !pendingAttachment) || chatBusy) return;
+        hideSlashMenu();
+        if (content.startsWith("/") && !pendingAttachment) {
+          const submittedInput = $("input").value;
+          const clearSubmittedInput = () => {
+            if ($("input").value !== submittedInput) return false;
+            $("input").value = "";
+            resizeInput();
+            updateSendState();
+            return true;
+          };
+          try {
+            const result = await runSlashCommand(content);
+            if (result?.send) {
+              if (!connectionState.connected) {
+                addCommandResult(
+                  t("slash.statusOff", {
+                    reason:
+                      connectionState.reason || t("status.notConnectedReason"),
+                  }),
+                  true,
+                );
+                return;
+              }
+              await sendChatMessage(result.prompt, result.skills);
+            } else if (clearSubmittedInput()) {
+              $("input").focus();
+            }
+          } catch (error) {
+            addCommandResult(
+              t("slash.switchFailed", { error: error.message }),
+              true,
+            );
+            clearSubmittedInput();
+          }
+          return;
+        }
+        await sendChatMessage(content);
+      });
       $("terminal-clear").addEventListener("click", clearTerminal);
       $("terminal-input").addEventListener("keydown", (event) => {
         if (event.key === "ArrowUp") {
@@ -4599,29 +4641,21 @@
           console.warn(t("chat.saveWarning"), error);
         }
       }
-      async function sendChatMessage() {
-        const content = $("input").value.trim();
-        if ((!content && !pendingAttachment) || chatBusy) return;
-        chatBusy = true;
-      async function sendChatMessage(
-        content,
-        requestedSkills = null,
-        explicitSkill = null,
-      ) {
+      async function sendChatMessage(content, requestedSkills = null) {
         const userMessage = {
           role: "user",
           content: content || t("chat.defaultAttachmentPrompt"),
         };
         if (pendingAttachment) userMessage.attachment = pendingAttachment;
-        const appliedSkill = explicitSkill ?? pendingSkill;
+        const appliedSkill = requestedSkills?.[requestedSkills.length - 1] ?? pendingSkill;
         const skills = requestedSkills?.length
           ? requestedSkills
           : pendingSkill
-            ? activeSkills()
+            ? [pendingSkill]
             : null;
         if (appliedSkill) userMessage.skill = appliedSkill;
         messages.push(userMessage);
-        addMessage("user", content, userMessage);
+        addMessage("user", userMessage.content, userMessage);
         addTypingIndicator();
         await saveConversation();
         $("input").value = "";
@@ -4629,18 +4663,21 @@
         $("file-input").value = "";
         $("attachment-chip").hidden = true;
         resizeInput();
+        chatBusy = true;
         $("send").disabled = true;
         $("send").textContent = "…";
         try {
+          const payload = {
+            messages,
+            thinking_level: $("chat-thinking-level").value,
+            command_mode: $("chat-command-mode").value,
+            model: $("chat-model-select").value,
+          };
+          if (skills?.length) payload.skills = skills;
           const r = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messages,
-              thinking_level: $("chat-thinking-level").value,
-              command_mode: $("chat-command-mode").value,
-              model: $("chat-model-select").value,
-            }),
+            body: JSON.stringify(payload),
           });
           const data = await r.json();
           if (!r.ok) throw new Error(data.error || t("chat.error"));
@@ -4670,6 +4707,8 @@
         } finally {
           removeTypingIndicator();
           chatBusy = false;
+          pendingSkill = null;
+          updateSkillChip();
           $("send").textContent = "↑";
           updateSendState();
           $("input").focus();
