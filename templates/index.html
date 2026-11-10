@@ -4452,7 +4452,7 @@
       $("chat-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const content = $("input").value.trim();
-        if ((!content && !pendingAttachment) || chatBusy) return;
+        if ((!content && !pendingAttachment) || $("send").disabled) return;
         hideSlashMenu();
         if (content.startsWith("/") && !pendingAttachment) {
           try {
