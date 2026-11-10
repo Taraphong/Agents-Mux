@@ -1675,6 +1675,130 @@
       .message.user {
         padding: 10px 15px;
       }
+      /* AI reply animation: a typing bubble fills the wait before the answer. */
+      .typing-indicator {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        max-width: min(100%, 520px);
+        padding: 11px 15px;
+        color: var(--muted);
+        font-size: 0.82rem;
+        letter-spacing: 0.01em;
+        border-color: rgba(129, 140, 248, 0.28);
+        background: rgba(24, 34, 56, 0.92);
+      }
+      .typing-avatar {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+        border-radius: 5px;
+        color: var(--indigo);
+        background: rgba(129, 140, 248, 0.12);
+        animation: typing-avatar-glow 1.8s ease-in-out infinite;
+      }
+      .typing-dots {
+        display: inline-flex;
+        align-items: flex-end;
+        gap: 4px;
+        height: 14px;
+        flex: 0 0 auto;
+      }
+      .typing-dots span {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--indigo);
+        opacity: 0.35;
+        animation: typing-bounce 1.15s ease-in-out infinite;
+      }
+      .typing-dots span:nth-child(2) {
+        animation-delay: 0.16s;
+      }
+      .typing-dots span:nth-child(3) {
+        animation-delay: 0.32s;
+      }
+      .typing-label {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .typing-elapsed {
+        flex: 0 0 auto;
+        color: var(--dim);
+        font-size: 0.74rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .send-round.is-loading {
+        animation: send-working 1s ease-in-out infinite;
+      }
+      .message.assistant > .message-text {
+        animation: assistant-reply-in 0.42s ease-out both;
+      }
+      @keyframes typing-bounce {
+        0%,
+        60%,
+        100% {
+          transform: translateY(0);
+          opacity: 0.35;
+        }
+        30% {
+          transform: translateY(-4px);
+          opacity: 1;
+        }
+      }
+      @keyframes typing-avatar-glow {
+        0%,
+        100% {
+          box-shadow: 0 0 0 rgba(129, 140, 248, 0);
+        }
+        50% {
+          box-shadow: 0 0 14px rgba(129, 140, 248, 0.5);
+        }
+      }
+      @keyframes send-working {
+        0%,
+        100% {
+          transform: scale(1);
+          box-shadow: 0 0 16px rgba(129, 140, 248, 0.22);
+        }
+        50% {
+          transform: scale(0.88);
+          box-shadow: 0 0 22px rgba(129, 140, 248, 0.55);
+        }
+      }
+      @keyframes assistant-reply-in {
+        from {
+          opacity: 0;
+          transform: translateY(3px);
+          filter: blur(1.5px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+          filter: none;
+        }
+      }
+      body.light-theme .typing-indicator {
+        background: #f8faff;
+        border-color: #c7d2fe;
+        color: #40516a;
+      }
+      body.light-theme .typing-avatar {
+        background: #eef0ff;
+        color: #4f46e5;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .typing-dots span,
+        .typing-avatar,
+        .send-round.is-loading,
+        .message.assistant > .message-text {
+          animation: none !important;
+        }
+      }
       @media (max-width: 700px) {
         .app {
           display: block;
@@ -2618,6 +2742,10 @@
           "chat.modelTitle": "เลือกโมเดล",
           "chat.modelLoading": "กำลังโหลดโมเดล...",
           "chat.send": "ส่ง",
+          "chat.typingThinking": "AI กำลังคิด",
+          "chat.typingWorking": "AI กำลังเรียบเรียงคำตอบ",
+          "chat.typingStillWorking": "AI ยังทำงานอยู่ กรุณารออีกนิด",
+          "chat.typingElapsed": "· {seconds} วิ",
           "chat.newConversationTitle": "บทสนทนาใหม่",
           "chat.defaultAttachmentPrompt": "ช่วยวิเคราะห์ไฟล์แนบนี้ให้หน่อย",
           "chat.error": "เกิดข้อผิดพลาด",
@@ -2882,6 +3010,10 @@
           "chat.modelTitle": "Choose model",
           "chat.modelLoading": "Loading models...",
           "chat.send": "Send",
+          "chat.typingThinking": "AI is thinking",
+          "chat.typingWorking": "AI is composing a reply",
+          "chat.typingStillWorking": "AI is still working — one moment",
+          "chat.typingElapsed": "· {seconds}s",
           "chat.newConversationTitle": "New conversation",
           "chat.defaultAttachmentPrompt": "Please analyze this attachment",
           "chat.error": "Something went wrong",
@@ -3139,6 +3271,8 @@
       let conversationCreatedAt = null;
       let conversationTitle = null;
       let pendingAttachment = null;
+      let typingIndicator = null;
+      let typingTicker = null;
       let connectionState = {
         connected: false,
         model: "",
@@ -3236,6 +3370,7 @@
         const el = document.createElement("div");
         el.className = `message ${role}`;
         const text = document.createElement("div");
+        text.className = "message-text";
         text.textContent = content;
         el.appendChild(text);
         if (role === "user" && meta?.attachment?.name) {
@@ -3276,6 +3411,74 @@
         }
         $("messages").appendChild(el);
         $("messages").scrollTop = $("messages").scrollHeight;
+      }
+      function addTypingIndicator() {
+        removeTypingIndicator();
+        const el = document.createElement("div");
+        el.className = "message assistant typing-indicator";
+        el.setAttribute("role", "status");
+        el.setAttribute("aria-live", "polite");
+        el.setAttribute("aria-label", t("chat.typingThinking"));
+
+        const avatar = document.createElement("span");
+        avatar.className = "typing-avatar";
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.textContent = "✦";
+
+        const dots = document.createElement("span");
+        dots.className = "typing-dots";
+        dots.setAttribute("aria-hidden", "true");
+        for (let i = 0; i < 3; i += 1) {
+          dots.appendChild(document.createElement("span"));
+        }
+
+        const label = document.createElement("span");
+        label.className = "typing-label";
+        label.textContent = t("chat.typingThinking");
+
+        const elapsed = document.createElement("span");
+        elapsed.className = "typing-elapsed";
+        elapsed.setAttribute("aria-hidden", "true");
+
+        el.append(avatar, dots, label, elapsed);
+        $("messages").appendChild(el);
+        $("messages").scrollTop = $("messages").scrollHeight;
+        $("messages").setAttribute("aria-busy", "true");
+        $("send").classList.add("is-loading");
+
+        const started = performance.now();
+        const update = () => {
+          const seconds = Math.round((performance.now() - started) / 1000);
+          const key =
+            seconds >= 25
+              ? "chat.typingStillWorking"
+              : seconds >= 7
+                ? "chat.typingWorking"
+                : "chat.typingThinking";
+          if (label.dataset.key !== key) {
+            label.dataset.key = key;
+            label.textContent = t(key);
+            el.setAttribute("aria-label", t(key));
+          }
+          elapsed.textContent =
+            seconds >= 2 ? t("chat.typingElapsed", { seconds }) : "";
+        };
+        update();
+        typingTicker = setInterval(update, 1000);
+        typingIndicator = el;
+        return el;
+      }
+      function removeTypingIndicator() {
+        if (typingTicker) {
+          clearInterval(typingTicker);
+          typingTicker = null;
+        }
+        if (typingIndicator) {
+          typingIndicator.remove();
+          typingIndicator = null;
+        }
+        $("messages").removeAttribute("aria-busy");
+        $("send").classList.remove("is-loading");
       }
       async function approveToolRequest(event) {
         const button = event.currentTarget;
@@ -3736,6 +3939,7 @@
         if (pendingAttachment) userMessage.attachment = pendingAttachment;
         messages.push(userMessage);
         addMessage("user", content, userMessage);
+        addTypingIndicator();
         await saveConversation();
         $("input").value = "";
         pendingAttachment = null;
@@ -3767,9 +3971,11 @@
             fallback_used: data.fallback_used,
           };
           messages.push(assistantMessage);
+          removeTypingIndicator();
           addMessage("assistant", data.answer, assistantMessage);
           await saveConversation();
         } catch (e) {
+          removeTypingIndicator();
           const errorMessage = {
             role: "assistant",
             content: t("chat.errorPrefix", { message: e.message }),
@@ -3779,6 +3985,7 @@
           await saveConversation();
           await refreshConnectionState();
         } finally {
+          removeTypingIndicator();
           $("send").disabled = false;
           $("send").textContent = "↑";
           $("input").focus();
@@ -4594,6 +4801,7 @@
         showNotice(t("notice.resetDone"));
       });
       function renderMessages() {
+        removeTypingIndicator();
         const container = $("messages");
         container.innerHTML = "";
         if (!messages.length) {
