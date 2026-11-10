@@ -2887,6 +2887,8 @@
           "slash.modelInfo": "Provider: {provider}\nModel: {model}\nสถานะ: {status}",
           "slash.modelsTitle": "Model ของ {provider}",
           "slash.modelsEmpty": "ไม่พบรายการ model",
+          "slash.modelsMore":
+            "มีโมเดลทั้งหมด {count} รายการ — แสดง 25 รายการแรก เลือกโมเดลจากตัวเลือกโมเดล",
           "slash.modelSwitched": "สลับไปใช้ {provider} / {model} แล้ว",
           "slash.switchFailed": "สลับ model ไม่สำเร็จ: {error}",
           "slash.pingResult": "Pong! เซิร์ฟเวอร์ตอบกลับใน {ms} ms",
@@ -3194,6 +3196,8 @@
           "slash.modelInfo": "Provider: {provider}\nModel: {model}\nStatus: {status}",
           "slash.modelsTitle": "Models for {provider}",
           "slash.modelsEmpty": "No models found",
+          "slash.modelsMore":
+            "{count} models available — showing the first 25. Choose a model from the model selector.",
           "slash.modelSwitched": "Switched to {provider} / {model}",
           "slash.switchFailed": "Could not switch model: {error}",
           "slash.pingResult": "Pong! The server responded in {ms} ms",
@@ -3698,6 +3702,7 @@
             send: true,
             prompt,
             skills: activeSkills(name),
+            skill: name,
           };
         }
         setPendingSkill(name);
@@ -3713,8 +3718,11 @@
           showSlashHelp();
           return { handled: true };
         }
-        if (availableSkills.includes(name)) {
-          return applySkillCommand(name, rest);
+        let skillName = availableSkills.includes(name)
+          ? name
+          : availableSkills.find((s) => s.toLowerCase() === name);
+        if (skillName) {
+          return applySkillCommand(skillName, rest);
         }
         switch (name) {
           case "help":
@@ -3808,19 +3816,14 @@
                   .slice(0, 25)
                   .map((item) => `• ${item.id || item}`)
                   .join("\n") || t("slash.modelsEmpty");
-              if (!response.ok) {
-                const reason = data.error || `HTTP ${response.status}`;
-                const fallback =
-                  data.source === "fallback"
-                    ? `\n${t("model.fallback")}\n${listing}`
-                    : "";
-                addCommandResult(`${reason}${fallback}`, true);
-                return { handled: true };
-              }
+              const moreNotice =
+                models.length > 25
+                  ? `\n${t("slash.modelsMore", { count: models.length })}`
+                  : "";
               addCommandResult(
                 `${t("slash.modelsTitle", {
                   provider: PROVIDER_LABELS_WEB[provider] || provider,
-                })}\n${listing}`,
+                })}\n${listing}${moreNotice}`,
               );
             } catch (error) {
               addCommandResult(
@@ -3937,7 +3940,7 @@
           }
           default:
             addCommandResult(t("slash.unknown", { command: name }), true);
-            return { handled: true };
+            return { handled: true, keepInput: true };
         }
       }
       function startNewChat(mode = "new") {
@@ -4590,16 +4593,17 @@
           console.warn(t("chat.saveWarning"), error);
         }
       }
-      async function sendChatMessage(content, requestedSkills = null) {
+      async function sendChatMessage(
+        content,
+        requestedSkills = null,
+        explicitSkill = null,
+      ) {
         const userMessage = {
           role: "user",
           content: content || t("chat.defaultAttachmentPrompt"),
         };
         if (pendingAttachment) userMessage.attachment = pendingAttachment;
-        const appliedSkill =
-          requestedSkills?.length
-            ? requestedSkills[requestedSkills.length - 1]
-            : pendingSkill;
+        const appliedSkill = explicitSkill ?? pendingSkill;
         const skills = requestedSkills?.length
           ? requestedSkills
           : pendingSkill
@@ -4670,12 +4674,25 @@
         if ((!content && !pendingAttachment) || $("send").disabled) return;
         hideSlashMenu();
         if (content.startsWith("/") && !pendingAttachment) {
+          const submitted = content;
           try {
             const result = await runSlashCommand(content);
             if (result?.send) {
-              await sendChatMessage(result.prompt, result.skills);
+              if (!connectionState.connected) {
+                addCommandResult(t("chatModel.notConnected"), true);
+                $("input").focus();
+                return;
+              }
+              await sendChatMessage(
+                result.prompt,
+                result.skills,
+                result.skill,
+              );
             } else {
-              if (!result?.keepInput) {
+              if (
+                !result?.keepInput &&
+                $("input").value.trim() === submitted
+              ) {
                 $("input").value = "";
                 resizeInput();
               }
@@ -4687,8 +4704,10 @@
               t("slash.switchFailed", { error: error.message }),
               true,
             );
-            $("input").value = "";
-            resizeInput();
+            if ($("input").value.trim() === submitted) {
+              $("input").value = "";
+              resizeInput();
+            }
             updateSendState();
           }
           return;
