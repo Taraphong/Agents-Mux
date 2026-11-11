@@ -3536,6 +3536,7 @@
       let availableSkills = [];
       let pendingSkill = null;
       let chatBusy = false;
+      let chatSessionToken = 0;
       let slashMatches = [];
       let slashIndex = 0;
       let keyProviders = [];
@@ -3991,7 +3992,15 @@
             return { handled: true, keepInput: true };
         }
       }
+      function invalidateChatSession() {
+        chatSessionToken += 1;
+        chatBusy = false;
+        removeTypingIndicator();
+        $("send").textContent = "↑";
+        updateSendState();
+      }
       function startNewChat(mode = "new") {
+        invalidateChatSession();
         conversationId = null;
         conversationCreatedAt = null;
         conversationTitle = null;
@@ -4654,12 +4663,14 @@
           $("attachment-chip").hidden = false;
         }
       });
-      async function saveConversation() {
-        if (!messages.length) return;
+      async function saveConversation(sessionToken = null) {
+        if (!messages.length) return null;
         try {
           const firstUser = messages.find((message) => message.role === "user");
           const title = firstUser?.content || t("chat.newConversationTitle");
-          setConversationTitle(title);
+          const isCurrent = () =>
+            sessionToken === null || sessionToken === chatSessionToken;
+          if (isCurrent()) setConversationTitle(title);
           const body = {
             id: conversationId,
             created_at: conversationCreatedAt,
@@ -4675,15 +4686,47 @@
           });
           if (response.ok) {
             const saved = await response.json();
-            conversationId = saved.id;
-            conversationCreatedAt = saved.created_at;
-            await loadHistoryList();
+            if (isCurrent()) {
+              conversationId = saved.id;
+              conversationCreatedAt = saved.created_at;
+              await loadHistoryList();
+            }
+            return saved;
           }
+        } catch (error) {
+          console.warn(t("chat.saveWarning"), error);
+        }
+        return null;
+      }
+      async function appendAssistantToHistory(id, assistantMessage) {
+        if (!id) return;
+        try {
+          const recordResponse = await fetch(`/api/history/${id}`);
+          if (!recordResponse.ok) return;
+          const record = await recordResponse.json();
+          const recordMessages = Array.isArray(record.messages)
+            ? record.messages.slice()
+            : [];
+          recordMessages.push(assistantMessage);
+          const response = await fetch("/api/history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: record.id,
+              created_at: record.created_at,
+              title: record.title,
+              messages: recordMessages.map(
+                ({ tool_request, approval_id, ...rest }) => rest,
+              ),
+            }),
+          });
+          if (response.ok) await loadHistoryList();
         } catch (error) {
           console.warn(t("chat.saveWarning"), error);
         }
       }
       async function sendChatMessage(content, requestedSkills = null) {
+        const sessionToken = chatSessionToken;
         const userMessage = {
           role: "user",
           content: content || t("chat.defaultAttachmentPrompt"),
@@ -4699,7 +4742,10 @@
         messages.push(userMessage);
         addMessage("user", userMessage.content, userMessage);
         addTypingIndicator();
-        await saveConversation();
+        const savedConversation = await saveConversation(sessionToken);
+        if (sessionToken !== chatSessionToken) return;
+        const targetConversationId =
+          savedConversation?.id || conversationId || null;
         $("input").value = "";
         pendingAttachment = null;
         $("file-input").value = "";
@@ -4732,11 +4778,22 @@
             approval_id: data.approval_id,
             fallback_used: data.fallback_used,
           };
+          if (sessionToken !== chatSessionToken) {
+            await appendAssistantToHistory(
+              targetConversationId,
+              assistantMessage,
+            );
+            return;
+          }
           messages.push(assistantMessage);
           removeTypingIndicator();
           addMessage("assistant", data.answer, assistantMessage);
-          await saveConversation();
+          await saveConversation(sessionToken);
         } catch (e) {
+          if (sessionToken !== chatSessionToken) {
+            console.warn(t("chat.saveWarning"), e);
+            return;
+          }
           removeTypingIndicator();
           const errorMessage = {
             role: "assistant",
@@ -4744,16 +4801,18 @@
           };
           messages.push(errorMessage);
           addMessage("assistant", errorMessage.content);
-          await saveConversation();
+          await saveConversation(sessionToken);
           await refreshConnectionState();
         } finally {
-          removeTypingIndicator();
-          chatBusy = false;
-          pendingSkill = null;
-          updateSkillChip();
-          $("send").textContent = "↑";
-          updateSendState();
-          $("input").focus();
+          if (sessionToken === chatSessionToken) {
+            removeTypingIndicator();
+            chatBusy = false;
+            pendingSkill = null;
+            updateSkillChip();
+            $("send").textContent = "↑";
+            updateSendState();
+            $("input").focus();
+          }
         }
       }
       function scheduleStatusText(value) {
@@ -5445,6 +5504,7 @@
           renderHistoryList((await response.json()).items || []);
       }
       async function openConversation(id) {
+        invalidateChatSession();
         const response = await fetch(`/api/history/${id}`);
         if (!response.ok) return;
         const record = await response.json();
@@ -5483,6 +5543,7 @@
         if (!response.ok)
           throw new Error(data.error || t("history.deleteFailed"));
         if (id === conversationId) {
+          invalidateChatSession();
           conversationId = null;
           conversationCreatedAt = null;
           messages.splice(0, messages.length);
