@@ -88,6 +88,7 @@ def load_persisted_logs() -> None:
 
 
 def skill_dir(name: str) -> Path:
+    """Resolve a skill name to its directory inside the skills root."""
     safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(name).strip().lower()).strip("-")
     if not safe_name:
         raise ValueError("ชื่อสกิลไม่ถูกต้อง")
@@ -104,6 +105,7 @@ def skill_path(name: str) -> Path:
 
 
 def list_skills() -> list[dict[str, str]]:
+    """Load every skill folder that contains a SKILL.md entrypoint."""
     root = (PROJECT_ROOT / SKILLS_ROOT).resolve()
     if not root.exists():
         return []
@@ -123,6 +125,7 @@ def list_skills() -> list[dict[str, str]]:
 
 
 def selected_skill_prompt(settings: dict[str, Any]) -> str:
+    """Build the skill guidance block for the skills selected in settings."""
     selected = settings.get("skills", [])
     if not isinstance(selected, list):
         return ""
@@ -227,11 +230,13 @@ DISCORD_TOKEN_FINGERPRINT = ""
 
 
 def normalize_provider(value: Any) -> str:
+    """Clamp an unknown provider name to a supported provider id."""
     provider = str(value or "openai").strip().lower()
     return provider if provider in PROVIDERS else "openai"
 
 
 def stored_api_keys(settings: dict[str, Any]) -> dict[str, str]:
+    """Return the per-provider API key map from settings."""
     raw = settings.get("api_keys")
     keys = raw if isinstance(raw, dict) else {}
     return {provider: str(keys.get(provider) or "").strip() for provider in PROVIDERS}
@@ -255,6 +260,7 @@ def migrate_legacy_api_key(settings: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_settings() -> dict[str, Any]:
+    """Load settings from disk, falling back to defaults on error."""
     settings = DEFAULT_SETTINGS.copy()
     if SETTINGS_FILE.exists():
         try:
@@ -265,10 +271,12 @@ def load_settings() -> dict[str, Any]:
 
 
 def save_settings(settings: dict[str, Any]) -> None:
+    """Write the current settings to disk as formatted JSON."""
     SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_schedules() -> list[dict[str, Any]]:
+    """Load the scheduled jobs list, tolerating a missing or broken file."""
     if not SCHEDULE_FILE.exists():
         return []
     try:
@@ -279,10 +287,12 @@ def load_schedules() -> list[dict[str, Any]]:
 
 
 def save_schedules(jobs: list[dict[str, Any]]) -> None:
+    """Write the scheduled jobs list to disk as formatted JSON."""
     SCHEDULE_FILE.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def cron_values(field: str, minimum: int, maximum: int) -> set[int]:
+    """Expand one cron field into the concrete values it matches."""
     values: set[int] = set()
     for part in field.split(","):
         if part == "*":
@@ -305,6 +315,7 @@ def cron_values(field: str, minimum: int, maximum: int) -> set[int]:
 
 
 def validate_cron(expression: str) -> str:
+    """Validate a five-field cron expression and return it normalized."""
     aliases = {"@hourly": "0 * * * *", "@daily": "0 0 * * *", "@midnight": "0 0 * * *"}
     expression = aliases.get(str(expression).strip().lower(), str(expression).strip())
     fields = expression.split()
@@ -316,6 +327,7 @@ def validate_cron(expression: str) -> str:
 
 
 def cron_matches(expression: str, now: datetime) -> bool:
+    """Return whether a cron expression fires at the given local time."""
     minute, hour, day_of_month, month, day_of_week = validate_cron(expression).split()
     if now.minute not in cron_values(minute, 0, 59):
         return False
@@ -332,6 +344,7 @@ def cron_matches(expression: str, now: datetime) -> bool:
 
 
 def update_schedule(job_id: str, **changes: Any) -> None:
+    """Apply field changes to one scheduled job and save the list."""
     with SCHEDULE_LOCK:
         jobs = load_schedules()
         for job in jobs:
@@ -342,6 +355,7 @@ def update_schedule(job_id: str, **changes: Any) -> None:
 
 
 def execute_schedule(job: dict[str, Any]) -> None:
+    """Run one scheduled job, store its answer, and record the outcome."""
     try:
         settings = load_settings()
         if job.get("model"):
@@ -388,6 +402,7 @@ def execute_schedule(job: dict[str, Any]) -> None:
 
 
 def schedule_loop() -> None:
+    """Check due jobs every 15 seconds and dispatch them in threads."""
     last_minute = ""
     while True:
         now = datetime.now().astimezone()
@@ -422,6 +437,7 @@ def schedule_loop() -> None:
 
 
 def send_discord_schedule_result(job: dict[str, Any], answer: str) -> None:
+    """Send a scheduled job result to its configured Discord channel."""
     channel_id = str(job.get("discord_channel_id") or "").strip()
     if not channel_id:
         return
@@ -431,6 +447,7 @@ def send_discord_schedule_result(job: dict[str, Any], answer: str) -> None:
         raise RuntimeError("Discord bot ยังไม่ได้เชื่อมต่อ")
 
     async def deliver() -> None:
+        """Send the scheduled result chunks to the Discord channel."""
         channel = DISCORD_BOT.get_channel(int(channel_id))
         if channel is None:
             channel = await DISCORD_BOT.fetch_channel(int(channel_id))
@@ -463,6 +480,7 @@ def start_scheduler() -> None:
 
 
 def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
+    """Resolve a user path inside the project while blocking protected files."""
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("ต้องระบุ path ภายในโปรเจกต์")
     candidate = (PROJECT_ROOT / raw_path).resolve()
@@ -535,6 +553,7 @@ def parse_command(command: str) -> list[str]:
 
 
 def request_tool_approval(name: str, arguments: dict[str, Any]) -> str:
+    """Create a short-lived approval token for a sensitive tool call."""
     approval_id = secrets.token_urlsafe(24)
     now = time.time()
     with PENDING_APPROVAL_LOCK:
@@ -548,6 +567,7 @@ def request_tool_approval(name: str, arguments: dict[str, Any]) -> str:
 
 
 def consume_tool_approval(approval_id: Any, name: str, arguments: dict[str, Any]) -> bool:
+    """Validate and consume a pending tool approval exactly once."""
     if not isinstance(approval_id, str) or not approval_id:
         return False
     now = time.time()
@@ -561,6 +581,7 @@ def consume_tool_approval(approval_id: Any, name: str, arguments: dict[str, Any]
 
 
 def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False) -> dict[str, Any]:
+    """Execute one local tool call after checking approvals and arguments."""
     requested_name = name
     name = TOOL_ALIASES.get(name, name)
     if requested_name != name:
@@ -699,10 +720,12 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
 
 
 def terminal_settings() -> dict[str, Any]:
+    """Return the settings used by the web terminal."""
     return load_settings()
 
 
 def terminal_is_enabled(settings: dict[str, Any] | None = None) -> bool:
+    """Return whether the web terminal is enabled in settings."""
     settings = settings if settings is not None else terminal_settings()
     return bool(settings.get("terminal_enabled", True))
 
@@ -729,6 +752,7 @@ def terminal_environment() -> dict[str, str]:
 
 
 def terminal_secret_values() -> list[str]:
+    """Collect secret values that terminal output must never expose."""
     settings = terminal_settings()
     values = {value for value in stored_api_keys(settings).values() if value}
     discord_token = get_discord_token(settings)
@@ -741,6 +765,7 @@ def terminal_secret_values() -> list[str]:
 
 
 def redact_terminal_output(text: str, secrets_found: list[str]) -> str:
+    """Replace every known secret in terminal output with a placeholder."""
     for secret in secrets_found:
         text = text.replace(secret, "••••••••")
     return text
@@ -760,6 +785,7 @@ def read_terminal_capture(handle: Any) -> tuple[str, bool]:
 
 
 def resolve_terminal_cwd(raw_path: Any) -> Path:
+    """Resolve a terminal working directory inside the project root."""
     value = str(raw_path or ".").strip() or "."
     if value in {"~", "~/"}:
         candidate = PROJECT_ROOT
@@ -777,11 +803,13 @@ def resolve_terminal_cwd(raw_path: Any) -> Path:
 
 
 def relative_terminal_cwd(path: Path) -> str:
+    """Render a terminal working directory relative to the project root."""
     relative = path.relative_to(PROJECT_ROOT)
     return "." if str(relative) == "." else relative.as_posix()
 
 
 def terminal_identity() -> tuple[str, str]:
+    """Return the shell user and host name shown in the terminal header."""
     try:
         user = getpass.getuser()
     except (KeyError, OSError):
@@ -825,6 +853,7 @@ def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, 
 
 
 def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
+    """Run one web terminal command and return its output and new cwd."""
     settings = terminal_settings()
     if not terminal_is_enabled(settings):
         raise PermissionError("หน้า Terminal ถูกปิดใช้งานอยู่ใน Settings")
@@ -889,6 +918,7 @@ def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
 
 
 def parse_tool_request(answer: str) -> dict[str, Any] | None:
+    """Return the first tool call found in an AI answer, if any."""
     requests = parse_tool_requests(answer)
     return requests[0] if requests else None
 
@@ -916,6 +946,7 @@ def parse_tool_requests(answer: str) -> list[dict[str, Any]]:
 
 
 def find_history_file(conversation_id: str) -> Path | None:
+    """Find the history file that stores one conversation id."""
     if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
         return None
     for path in HISTORY_ROOT.rglob(f"*_{conversation_id}.json"):
@@ -924,6 +955,7 @@ def find_history_file(conversation_id: str) -> Path | None:
 
 
 def save_history(payload: dict[str, Any]) -> dict[str, Any]:
+    """Create or update a conversation history file and return its record."""
     conversation_id = payload.get("id") or ""
     if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
         conversation_id = str(uuid.uuid4())
@@ -952,6 +984,7 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_history_record(conversation_id: str) -> dict[str, Any]:
+    """Read one conversation history record, or an empty dict if missing."""
     path = find_history_file(conversation_id)
     if path is None or not path.exists():
         return {}
@@ -999,6 +1032,7 @@ def schedule_conversation_id(job: dict[str, Any]) -> str:
 
 
 def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]:
+    """Fetch the available models for a provider, using its API key."""
     provider = normalize_provider(provider)
     key = get_api_key(provider, settings)
     if not key:
@@ -1036,6 +1070,7 @@ def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]
 
 
 def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
+    """Return the provider API key from settings or the environment."""
     provider = normalize_provider(provider)
     settings = settings if settings is not None else load_settings()
     key = stored_api_keys(settings).get(provider, "")
@@ -1045,6 +1080,7 @@ def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
 
 
 def key_is_configured(provider: str, settings: dict[str, Any] | None = None) -> bool:
+    """Return whether a provider has any usable API key."""
     return bool(get_api_key(provider, settings))
 
 
@@ -1073,6 +1109,7 @@ def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") 
 
 
 def key_fingerprint(key: str) -> str:
+    """Return a short stable fingerprint for a secret, safe to compare."""
     return hashlib.sha256(str(key).encode("utf-8")).hexdigest()[:16]
 
 
@@ -1103,10 +1140,12 @@ STATUS_MESSAGES = {
 
 
 def normalize_language(value: Any) -> str:
+    """Normalize a requested UI language to 'th' or 'en'."""
     return "en" if str(value or "").strip().lower().startswith("en") else "th"
 
 
 def status_message(language: str, key: str, **kwargs: Any) -> str:
+    """Format a localized readiness message from the shared status table."""
     messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["th"]
     template = messages.get(key) or STATUS_MESSAGES["th"].get(key, key)
     return template.format(**kwargs)
@@ -1181,6 +1220,7 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
 
 
 def provider_readiness(settings: dict[str, Any], language: str = "th") -> dict[str, Any]:
+    """Check locally, then remotely, whether the selected provider and model are usable."""
     provider = normalize_provider(settings.get("provider"))
     model = str(settings.get("model") or "").strip()
     label = PROVIDER_LABELS[provider]
@@ -1197,6 +1237,7 @@ def provider_readiness(settings: dict[str, Any], language: str = "th") -> dict[s
 
 
 def clean_messages(messages: list[dict[str, str]], settings: dict[str, Any]) -> list[dict[str, str]]:
+    """Merge attachments into message text and prepend the system prompt."""
     result = [{"role": "system", "content": settings.get("system_prompt", "")}] if settings.get("system_prompt") else []
     for item in messages:
         content = item.get("content", "")
@@ -1242,6 +1283,7 @@ def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: st
 
 
 def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
+    """Send one chat completion request to an OpenAI-compatible endpoint."""
     key = get_api_key(settings["provider"], settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key")
@@ -1268,6 +1310,7 @@ def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
 
 
 def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
+    """Send one generateContent request to Gemini with thinking options."""
     key = get_api_key("gemini", settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า Gemini API key")
@@ -1315,6 +1358,7 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
 
 
 def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
+    """Send one messages request to Anthropic with the configured settings."""
     key = get_api_key("anthropic", settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า Anthropic API key")
@@ -1338,6 +1382,7 @@ def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> 
 
 
 def call_provider(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
+    """Dispatch one chat turn to the provider selected in settings."""
     provider = settings["provider"].lower()
     if provider == "gemini":
         return call_gemini(messages, settings)
@@ -1347,12 +1392,14 @@ def call_provider(messages: list[dict[str, str]], settings: dict[str, Any]) -> t
 
 
 def get_discord_token(settings: dict[str, Any] | None = None) -> str:
+    """Return the Discord bot token from settings or the environment."""
     settings = settings if settings is not None else load_settings()
     configured = str(settings.get("discord_token") or "").strip()
     return configured or os.getenv("DISCORD_BOT_TOKEN", "").strip()
 
 
 def discord_status() -> dict[str, Any]:
+    """Report whether the Discord bot is enabled, configured, and connected."""
     token = get_discord_token()
     return {
         "enabled": bool(load_settings().get("discord_enabled")),
@@ -1362,11 +1409,13 @@ def discord_status() -> dict[str, Any]:
 
 
 def split_discord_message(text: str, limit: int = 2000) -> list[str]:
+    """Split a long reply into Discord-sized message chunks."""
     text = str(text or "")
     return [text[index:index + limit] for index in range(0, len(text), limit)] or ["(ไม่มีข้อความตอบกลับ)"]
 
 
 def stop_discord_bot() -> None:
+    """Ask the running Discord client to close, if it is connected."""
     if DISCORD_BOT is not None and DISCORD_LOOP is not None and not DISCORD_LOOP.is_closed():
         try:
             DISCORD_LOOP.call_soon_threadsafe(lambda: __import__("asyncio").create_task(DISCORD_BOT.close()))
@@ -1398,6 +1447,7 @@ def start_discord_bot() -> None:
 
     class AIClient(discord.Client):
         async def on_ready(self) -> None:
+            """Sync slash commands once and log the successful connection."""
             nonlocal commands_synced
             if not commands_synced:
                 try:
@@ -1409,6 +1459,7 @@ def start_discord_bot() -> None:
             log_event("discord.connected", "เชื่อมต่อ Discord bot แล้ว", user=str(self.user))
 
         async def on_message(self, message: Any) -> None:
+            """Reply to mentions, prefixed messages, and DMs through the agent."""
             if message.author == self.user:
                 return
             content = str(message.content or "").strip()
@@ -1431,17 +1482,20 @@ def start_discord_bot() -> None:
     command_tree = discord.app_commands.CommandTree(client)
 
     def is_server_admin(interaction: Any) -> bool:
+        """Return whether the interaction author has server administrator rights."""
         member = getattr(interaction, "user", None)
         permissions = getattr(member, "guild_permissions", None)
         return bool(getattr(permissions, "administrator", False))
 
     async def require_server_admin(interaction: Any) -> bool:
+        """Reject an interaction unless the author is a server administrator."""
         if is_server_admin(interaction):
             return True
         await interaction.response.send_message("คำสั่งนี้ใช้ได้เฉพาะผู้ดูแล server เท่านั้นครับ", ephemeral=True)
         return False
 
     async def check_model_availability(provider: str, model: str, settings: dict[str, Any]) -> dict[str, Any]:
+        """Check a provider and model off the event loop without saving settings."""
         probe_settings = dict(settings)
         probe_settings["provider"] = provider
         probe_settings["model"] = model
@@ -1531,6 +1585,7 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="ai", description="ส่งงานหรือพูดคุยกับ AI agent")
     async def ai_command(interaction: Any, prompt: str) -> None:
+        """Handle the /ai slash command."""
         await interaction.response.defer()
         answer = await ask_agent(str(interaction.channel_id), prompt, getattr(interaction.channel, "name", "Discord"))
         for chunk in split_discord_message(answer):
@@ -1538,6 +1593,7 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="clear", description="ล้างบริบทการสนทนาของห้องนี้")
     async def clear_command(interaction: Any) -> None:
+        """Handle the /clear slash command."""
         with DISCORD_CONTEXT_LOCK:
             DISCORD_CONTEXTS.pop(str(interaction.channel_id), None)
             DISCORD_CONVERSATION_IDS.pop(str(interaction.channel_id), None)
@@ -1545,6 +1601,7 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="new", description="เปิดแชทใหม่และสร้างประวัติใหม่บนเว็บ")
     async def new_command(interaction: Any) -> None:
+        """Handle the /new slash command."""
         context_key = str(interaction.channel_id)
         channel_title = getattr(interaction.channel, "name", "Discord")
         conversation_id = str(uuid.uuid4())
@@ -1561,6 +1618,7 @@ def start_discord_bot() -> None:
         )
 
     async def model_autocomplete(interaction: Any, current_text: str) -> list[Any]:
+        """Provide model id autocomplete choices for Discord commands."""
         settings = load_settings()
         selected = getattr(getattr(interaction, "namespace", None), "provider", settings.get("provider", "openai"))
         selected_provider = selected.value if hasattr(selected, "value") else selected
@@ -1588,6 +1646,7 @@ def start_discord_bot() -> None:
         discord.app_commands.Choice(name="Groq", value="groq"),
     ])
     async def models_command(interaction: Any, provider: discord.app_commands.Choice[str], model: str | None = None) -> None:
+        """Handle the /models slash command."""
         selected_provider = normalize_provider(provider.value)
         if model and not await require_server_admin(interaction):
             return
@@ -1625,12 +1684,14 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="ping", description="ตรวจสอบความหน่วงของ Discord bot")
     async def ping_command(interaction: Any) -> None:
+        """Handle the /ping slash command."""
         latency_ms = round(client.latency * 1000)
         await interaction.response.send_message(f"Pong! Discord latency: `{latency_ms} ms`")
 
     @command_tree.command(name="fallback", description="ตั้ง fallback model สำหรับห้อง Discord นี้")
     @discord.app_commands.autocomplete(model=model_autocomplete)
     async def fallback_command(interaction: Any, model: str | None = None) -> None:
+        """Handle the /fallback slash command for a channel."""
         current = load_settings()
         channel_key = str(interaction.channel_id)
         channel_fallbacks = current.get("discord_fallback_models")
@@ -1665,6 +1726,7 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="thread", description="สร้างห้องย่อยสำหรับหัวข้อใหม่")
     async def thread_command(interaction: Any, name: str) -> None:
+        """Handle the /thread slash command."""
         channel = interaction.channel
         if not hasattr(channel, "create_thread"):
             await interaction.response.send_message("คำสั่งนี้ใช้ในห้องข้อความของ server เท่านั้นครับ", ephemeral=True)
@@ -1681,6 +1743,7 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="status", description="ตรวจสอบสถานะ AI agent")
     async def status_command(interaction: Any) -> None:
+        """Handle the /status slash command."""
         await interaction.response.defer()
         current = load_settings()
         availability = await check_model_availability(
@@ -1693,6 +1756,7 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="model", description="ดู provider และ model ที่ agent ใช้งาน")
     async def model_command(interaction: Any) -> None:
+        """Handle the /model slash command."""
         await interaction.response.defer()
         current = load_settings()
         availability = await check_model_availability(
@@ -1705,6 +1769,7 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="invite", description="สร้างลิงก์เชิญ bot ด้วยสิทธิ Administrator")
     async def invite_command(interaction: Any) -> None:
+        """Handle the /invite slash command."""
         if not await require_server_admin(interaction):
             return
         permissions = discord.Permissions(administrator=True)
@@ -1721,6 +1786,7 @@ def start_discord_bot() -> None:
 
     @command_tree.command(name="help", description="แสดงคำสั่งของ AI agent")
     async def help_command(interaction: Any) -> None:
+        """Handle the /help slash command."""
         await interaction.response.send_message(
             "คำสั่งของ AI agent:\n"
             "`/ai prompt` ส่งงานหรือคุยกับ AI\n"
@@ -1741,6 +1807,7 @@ def start_discord_bot() -> None:
     DISCORD_TOKEN_FINGERPRINT = key_fingerprint(token)
 
     def run_client() -> None:
+        """Run the Discord client in its own event loop for the bot thread."""
         global DISCORD_LOOP
         import asyncio
         DISCORD_LOOP = asyncio.new_event_loop()
@@ -1758,6 +1825,7 @@ def start_discord_bot() -> None:
 
 @app.get("/api/tools")
 def tools_get():
+    """List the local tools and which ones require user approval."""
     return jsonify({
         "scope": str(PROJECT_ROOT),
         "tools": [
@@ -1775,6 +1843,7 @@ def tools_get():
 
 @app.post("/api/tools/execute")
 def tools_execute():
+    """Execute a local tool call after validating its approval token."""
     body = request.get_json(silent=True) or {}
     name = body.get("name")
     arguments = body.get("arguments", {})
@@ -1799,6 +1868,7 @@ def tools_execute():
 
 @app.get("/api/terminal/info")
 def terminal_info():
+    """Report terminal availability, identity, shell, and working scope."""
     settings = terminal_settings()
     user, host = terminal_identity()
     return jsonify({
@@ -1814,6 +1884,7 @@ def terminal_info():
 
 @app.post("/api/terminal/exec")
 def terminal_exec():
+    """Run one terminal command submitted by the web UI."""
     body = request.get_json(silent=True) or {}
     command = body.get("command")
     if not isinstance(command, str):
@@ -1829,6 +1900,7 @@ def terminal_exec():
 
 @app.get("/api/logs")
 def logs_get():
+    """Return the in-memory diagnostic log entries."""
     with APP_LOG_LOCK:
         items = list(APP_LOGS)
     return jsonify({"items": items})
@@ -1849,11 +1921,13 @@ def logs_delete():
 
 @app.get("/api/schedules")
 def schedules_get():
+    """List scheduled jobs and the server timezone."""
     return jsonify({"items": load_schedules(), "timezone": datetime.now().astimezone().tzname()})
 
 
 @app.post("/api/schedules")
 def schedules_create():
+    """Create a scheduled job from the settings UI payload."""
     body = request.get_json(silent=True) or {}
     name = str(body.get("name", "")).strip()
     prompt = str(body.get("prompt", "")).strip()
@@ -1876,6 +1950,7 @@ def schedules_create():
 
 @app.patch("/api/schedules/<job_id>")
 def schedules_update(job_id: str):
+    """Update fields of one scheduled job from the settings UI."""
     body = request.get_json(silent=True) or {}
     with SCHEDULE_LOCK:
         jobs = load_schedules()
@@ -1906,6 +1981,7 @@ def schedules_update(job_id: str):
 
 @app.post("/api/schedules/<job_id>/run")
 def schedules_run(job_id: str):
+    """Start a scheduled job immediately in a background thread."""
     jobs = load_schedules()
     job = next((item for item in jobs if item.get("id") == job_id), None)
     if not job:
@@ -1925,6 +2001,7 @@ def schedules_run(job_id: str):
 
 @app.delete("/api/schedules/<job_id>")
 def schedules_delete(job_id: str):
+    """Delete one scheduled job by id."""
     with SCHEDULE_LOCK:
         jobs = load_schedules()
         remaining = [job for job in jobs if job.get("id") != job_id]
@@ -1936,11 +2013,13 @@ def schedules_delete(job_id: str):
 
 @app.get("/")
 def index():
+    """Render the single-page web application."""
     return render_template("index.html")
 
 
 @app.get("/api/settings")
 def settings_get():
+    """Return settings with secrets masked for the settings UI."""
     settings = load_settings()
     provider = normalize_provider(settings.get("provider"))
     key = get_api_key(provider, settings)
@@ -1959,11 +2038,13 @@ def settings_get():
 
 @app.get("/api/skills")
 def skills_get():
+    """List the available skills with their content."""
     return jsonify({"items": list_skills()})
 
 
 @app.get("/api/skills/<name>")
 def skill_get(name: str):
+    """Return one skill's content by name."""
     try:
         path = skill_path(name)
         if not path.exists():
@@ -1975,6 +2056,7 @@ def skill_get(name: str):
 
 @app.post("/api/skills")
 def skills_create():
+    """Create a new skill from the settings UI payload."""
     body = request.get_json(silent=True) or {}
     try:
         result = run_local_tool("create_skill", {"name": body.get("name", ""), "content": body.get("content", "")}, approved=True)
@@ -1985,6 +2067,7 @@ def skills_create():
 
 @app.put("/api/skills/<name>")
 def skills_update(name: str):
+    """Replace the content of an existing skill."""
     body = request.get_json(silent=True) or {}
     content = body.get("content", "")
     if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
@@ -2001,6 +2084,7 @@ def skills_update(name: str):
 
 @app.delete("/api/skills/<name>")
 def skills_delete(name: str):
+    """Delete a skill folder by name."""
     try:
         path = skill_path(name)
         if not path.exists():
@@ -2020,6 +2104,7 @@ def status_get():
 
 @app.get("/api/history")
 def history_list():
+    """Return history summaries sorted by most recently updated."""
     records = []
     if HISTORY_ROOT.exists():
         for path in HISTORY_ROOT.rglob("*.json"):
@@ -2034,6 +2119,7 @@ def history_list():
 
 @app.get("/api/history/<conversation_id>")
 def history_get(conversation_id: str):
+    """Return one full conversation record by id."""
     path = find_history_file(conversation_id)
     if not path or not path.exists():
         return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
@@ -2042,6 +2128,7 @@ def history_get(conversation_id: str):
 
 @app.patch("/api/history/<conversation_id>")
 def history_update(conversation_id: str):
+    """Rename, lock, or pin one conversation record."""
     path = find_history_file(conversation_id)
     if not path or not path.exists():
         return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
@@ -2063,6 +2150,7 @@ def history_update(conversation_id: str):
 
 @app.delete("/api/history/<conversation_id>")
 def history_delete(conversation_id: str):
+    """Delete one conversation record unless it is locked."""
     path = find_history_file(conversation_id)
     if not path or not path.exists():
         return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
@@ -2075,6 +2163,7 @@ def history_delete(conversation_id: str):
 
 @app.post("/api/history")
 def history_save():
+    """Store a conversation payload sent by the web UI."""
     body = request.get_json(silent=True) or {}
     if not isinstance(body.get("messages"), list):
         return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
@@ -2083,6 +2172,7 @@ def history_save():
 
 @app.get("/api/models")
 def models_get():
+    """Return provider models, falling back to a static list on failure."""
     settings = load_settings()
     provider = normalize_provider(request.args.get("provider", settings.get("provider", "openai")))
     try:
@@ -2139,6 +2229,7 @@ def settings_put():
 
 @app.post("/api/settings/test")
 def settings_test():
+    """Test submitted settings against the provider without saving them."""
     settings = load_settings()
     body = request.get_json(silent=True) or {}
     # Test submitted settings without persisting credentials first. This lets
@@ -2174,6 +2265,7 @@ def settings_test():
 
 @app.post("/api/settings/reset")
 def settings_reset():
+    """Delete the persisted settings file and clear the status cache."""
     if SETTINGS_FILE.exists():
         SETTINGS_FILE.unlink()
     STATUS_CACHE.clear()
