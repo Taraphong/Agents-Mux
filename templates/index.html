@@ -3543,6 +3543,10 @@
       let conversationId = null;
       let conversationCreatedAt = null;
       let conversationTitle = null;
+      let persistedMessageCount = 0;
+      let historyLoadToken = 0;
+      const pendingHistoryAppends = new Map();
+      let pendingAppendFlush = null;
       let pendingAttachment = null;
       let typingIndicator = null;
       let typingTicker = null;
@@ -3994,6 +3998,7 @@
       }
       function invalidateChatSession() {
         chatSessionToken += 1;
+        historyLoadToken += 1;
         chatBusy = false;
         removeTypingIndicator();
         $("send").textContent = "↑";
@@ -4004,6 +4009,7 @@
         conversationId = null;
         conversationCreatedAt = null;
         conversationTitle = null;
+        persistedMessageCount = 0;
         messages.splice(0, messages.length);
         emptyConversationMode = mode;
         clearPendingSkill();
@@ -4663,73 +4669,151 @@
           $("attachment-chip").hidden = false;
         }
       });
+      function newMessageId() {
+        try {
+          if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+            return crypto.randomUUID();
+          }
+        } catch (error) {
+          /* fall back to a timestamp-based id */
+        }
+        return `msg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      }
+      function historyMessagePayload({ tool_request, approval_id, ...rest } = {}) {
+        return rest;
+      }
+      async function appendMessagesToHistory(id, newMessages) {
+        if (!id || !newMessages.length) return { ok: true };
+        try {
+          const response = await fetch(
+            `/api/history/${encodeURIComponent(id)}/messages`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages: newMessages.map(historyMessagePayload),
+              }),
+            },
+          );
+          if (response.status === 404) return { ok: false, missing: true };
+          if (!response.ok) throw new Error(t("chat.saveWarning"));
+          return { ok: true, record: await response.json() };
+        } catch (error) {
+          console.warn(t("chat.saveWarning"), error);
+          return { ok: false, error };
+        }
+      }
+      function queuePendingAppend(id, newMessages) {
+        if (!id || !newMessages.length) return;
+        const queued = pendingHistoryAppends.get(id) || [];
+        const queuedIds = new Set(
+          queued.map((message) => message.message_id).filter(Boolean),
+        );
+        for (const message of newMessages) {
+          if (message.message_id && queuedIds.has(message.message_id)) continue;
+          queued.push(message);
+          if (message.message_id) queuedIds.add(message.message_id);
+        }
+        pendingHistoryAppends.set(id, queued);
+        if (conversationId === id) showNotice(t("chat.saveWarning"), true);
+      }
+      async function flushPendingAppends(id = null) {
+        while (pendingAppendFlush) await pendingAppendFlush;
+        const ids = id ? [id] : [...pendingHistoryAppends.keys()];
+        if (!ids.some((target) => pendingHistoryAppends.has(target))) return;
+        pendingAppendFlush = (async () => {
+          for (const targetId of ids) {
+            const queued = pendingHistoryAppends.get(targetId);
+            if (!queued?.length) {
+              pendingHistoryAppends.delete(targetId);
+              continue;
+            }
+            const result = await appendMessagesToHistory(targetId, queued);
+            if (result.ok || result.missing) {
+              pendingHistoryAppends.delete(targetId);
+            }
+          }
+        })();
+        try {
+          await pendingAppendFlush;
+        } finally {
+          pendingAppendFlush = null;
+        }
+      }
       async function saveConversation(sessionToken = null) {
         if (!messages.length) return null;
-        try {
-          const firstUser = messages.find((message) => message.role === "user");
-          const title = firstUser?.content || t("chat.newConversationTitle");
-          const isCurrent = () =>
-            sessionToken === null || sessionToken === chatSessionToken;
-          if (isCurrent()) setConversationTitle(title);
-          const body = {
-            id: conversationId,
-            created_at: conversationCreatedAt,
-            title,
-            messages: messages.map(
-              ({ tool_request, approval_id, ...rest }) => rest,
-            ),
-          };
-          const response = await fetch("/api/history", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-          if (response.ok) {
+        const targetConversationId = conversationId;
+        const isCurrent = () =>
+          sessionToken === null || sessionToken === chatSessionToken;
+        const firstUser = messages.find((message) => message.role === "user");
+        const title = firstUser?.content || t("chat.newConversationTitle");
+        if (!targetConversationId) {
+          const snapshot = messages.slice();
+          try {
+            const response = await fetch("/api/history", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title,
+                messages: snapshot.map(historyMessagePayload),
+              }),
+            });
+            if (!response.ok) throw new Error(t("chat.saveWarning"));
             const saved = await response.json();
             if (isCurrent()) {
+              setConversationTitle(title);
               conversationId = saved.id;
               conversationCreatedAt = saved.created_at;
+              persistedMessageCount = snapshot.length;
               await loadHistoryList();
             }
             return saved;
+          } catch (error) {
+            console.warn(t("chat.saveWarning"), error);
+            return null;
           }
-        } catch (error) {
-          console.warn(t("chat.saveWarning"), error);
         }
-        return null;
+        const pending = messages.slice(persistedMessageCount);
+        if (!pending.length) {
+          return {
+            id: targetConversationId,
+            created_at: conversationCreatedAt,
+            title: conversationTitle,
+          };
+        }
+        const result = await appendMessagesToHistory(
+          targetConversationId,
+          pending,
+        );
+        if (!result.ok) return null;
+        if (isCurrent()) {
+          conversationCreatedAt =
+            result.record?.created_at || conversationCreatedAt;
+          persistedMessageCount = Math.min(
+            persistedMessageCount + pending.length,
+            messages.length,
+          );
+          await loadHistoryList();
+        }
+        return result.record || { id: targetConversationId };
       }
       async function appendAssistantToHistory(id, assistantMessage) {
-        if (!id) return;
-        try {
-          const recordResponse = await fetch(`/api/history/${id}`);
-          if (!recordResponse.ok) return;
-          const record = await recordResponse.json();
-          const recordMessages = Array.isArray(record.messages)
-            ? record.messages.slice()
-            : [];
-          recordMessages.push(assistantMessage);
-          const response = await fetch("/api/history", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              id: record.id,
-              created_at: record.created_at,
-              title: record.title,
-              messages: recordMessages.map(
-                ({ tool_request, approval_id, ...rest }) => rest,
-              ),
-            }),
-          });
-          if (response.ok) await loadHistoryList();
-        } catch (error) {
-          console.warn(t("chat.saveWarning"), error);
+        if (!id) return false;
+        const result = await appendMessagesToHistory(id, [assistantMessage]);
+        if (result.ok) {
+          await loadHistoryList();
+          return true;
         }
+        if (result.missing) return false;
+        queuePendingAppend(id, [assistantMessage]);
+        return false;
       }
       async function sendChatMessage(content, requestedSkills = null) {
         const sessionToken = chatSessionToken;
         const userMessage = {
           role: "user",
           content: content || t("chat.defaultAttachmentPrompt"),
+          message_id: newMessageId(),
         };
         if (pendingAttachment) userMessage.attachment = pendingAttachment;
         const appliedSkill = requestedSkills?.[requestedSkills.length - 1] ?? pendingSkill;
@@ -4742,19 +4826,26 @@
         messages.push(userMessage);
         addMessage("user", userMessage.content, userMessage);
         addTypingIndicator();
-        const savedConversation = await saveConversation(sessionToken);
-        if (sessionToken !== chatSessionToken) return;
-        const targetConversationId =
-          savedConversation?.id || conversationId || null;
-        $("input").value = "";
-        pendingAttachment = null;
-        $("file-input").value = "";
-        $("attachment-chip").hidden = true;
-        resizeInput();
         chatBusy = true;
         $("send").disabled = true;
         $("send").textContent = "…";
+        let targetConversationId = null;
         try {
+          const savedConversation = await saveConversation(sessionToken);
+          if (sessionToken !== chatSessionToken) return;
+          if (!savedConversation?.id) {
+            addMessage(
+              "assistant",
+              t("chat.errorPrefix", { message: t("chat.saveWarning") }),
+            );
+            return;
+          }
+          targetConversationId = savedConversation.id;
+          $("input").value = "";
+          pendingAttachment = null;
+          $("file-input").value = "";
+          $("attachment-chip").hidden = true;
+          resizeInput();
           const payload = {
             messages,
             thinking_level: $("chat-thinking-level").value,
@@ -4772,6 +4863,7 @@
           const assistantMessage = {
             role: "assistant",
             content: data.answer,
+            message_id: newMessageId(),
             duration_ms: data.duration_ms,
             usage: data.usage,
             tool_request: data.tool_request,
@@ -4779,6 +4871,11 @@
             fallback_used: data.fallback_used,
           };
           if (sessionToken !== chatSessionToken) {
+            if (conversationId === targetConversationId) {
+              messages.push(assistantMessage);
+              removeTypingIndicator();
+              addMessage("assistant", data.answer, assistantMessage);
+            }
             await appendAssistantToHistory(
               targetConversationId,
               assistantMessage,
@@ -4788,20 +4885,43 @@
           messages.push(assistantMessage);
           removeTypingIndicator();
           addMessage("assistant", data.answer, assistantMessage);
-          await saveConversation(sessionToken);
-        } catch (e) {
-          if (sessionToken !== chatSessionToken) {
-            console.warn(t("chat.saveWarning"), e);
-            return;
+          const saved = await saveConversation(sessionToken);
+          if (!saved) {
+            queuePendingAppend(targetConversationId, [assistantMessage]);
+            showNotice(t("chat.saveWarning"), true);
           }
-          removeTypingIndicator();
+        } catch (e) {
           const errorMessage = {
             role: "assistant",
             content: t("chat.errorPrefix", { message: e.message }),
+            message_id: newMessageId(),
           };
+          if (sessionToken !== chatSessionToken) {
+            if (
+              targetConversationId &&
+              conversationId === targetConversationId
+            ) {
+              messages.push(errorMessage);
+              addMessage("assistant", errorMessage.content);
+            }
+            if (targetConversationId) {
+              await appendAssistantToHistory(
+                targetConversationId,
+                errorMessage,
+              );
+            }
+            return;
+          }
+          removeTypingIndicator();
           messages.push(errorMessage);
           addMessage("assistant", errorMessage.content);
-          await saveConversation(sessionToken);
+          const saved = targetConversationId
+            ? await saveConversation(sessionToken)
+            : null;
+          if (!saved && targetConversationId) {
+            queuePendingAppend(targetConversationId, [errorMessage]);
+            showNotice(t("chat.saveWarning"), true);
+          }
           await refreshConnectionState();
         } finally {
           if (sessionToken === chatSessionToken) {
@@ -5500,14 +5620,19 @@
       }
       async function loadHistoryList() {
         const response = await fetch("/api/history");
-        if (response.ok)
+        if (response.ok) {
           renderHistoryList((await response.json()).items || []);
+          if (pendingHistoryAppends.size) flushPendingAppends();
+        }
       }
       async function openConversation(id) {
-        invalidateChatSession();
+        const loadToken = ++historyLoadToken;
+        if (pendingHistoryAppends.has(id)) await flushPendingAppends(id);
         const response = await fetch(`/api/history/${id}`);
         if (!response.ok) return;
         const record = await response.json();
+        if (loadToken !== historyLoadToken) return;
+        invalidateChatSession();
         conversationId = record.id;
         conversationCreatedAt = record.created_at;
         setConversationTitle(
@@ -5515,7 +5640,27 @@
             record.messages?.find((message) => message.role === "user")
               ?.content,
         );
-        messages.splice(0, messages.length, ...(record.messages || []));
+        const recordMessages = Array.isArray(record.messages)
+          ? record.messages
+          : [];
+        messages.splice(0, messages.length, ...recordMessages);
+        persistedMessageCount = recordMessages.length;
+        const pending = pendingHistoryAppends.get(id) || [];
+        if (pending.length) {
+          const savedIds = new Set(
+            recordMessages.map((message) => message.message_id).filter(Boolean),
+          );
+          const recovered = pending.filter(
+            (message) =>
+              !message.message_id || !savedIds.has(message.message_id),
+          );
+          if (recovered.length) {
+            messages.push(...recovered);
+            showNotice(t("chat.saveWarning"), true);
+          } else {
+            pendingHistoryAppends.delete(id);
+          }
+        }
         emptyConversationMode = "new";
         renderMessages();
         renderHistoryList(
@@ -5542,10 +5687,12 @@
         const data = await response.json();
         if (!response.ok)
           throw new Error(data.error || t("history.deleteFailed"));
+        pendingHistoryAppends.delete(id);
         if (id === conversationId) {
           invalidateChatSession();
           conversationId = null;
           conversationCreatedAt = null;
+          persistedMessageCount = 0;
           messages.splice(0, messages.length);
           emptyConversationMode = "deleted";
           renderMessages();
@@ -5641,6 +5788,9 @@
         if (item) openConversation(item.dataset.historyId);
       });
       $("new-chat").addEventListener("click", () => startNewChat("new"));
+      window.addEventListener("online", () => {
+        if (pendingHistoryAppends.size) flushPendingAppends();
+      });
       $("reset").addEventListener("click", async () => {
         if (!confirm(t("notice.resetConfirm"))) return;
         await fetch("/api/settings/reset", { method: "POST" });
