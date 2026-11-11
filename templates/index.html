@@ -588,12 +588,19 @@
         color: #fecdd3;
       }
       .notice {
+        position: fixed;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        width: min(560px, calc(100% - 32px));
         padding: 12px 14px;
         border-radius: 10px;
-        margin-bottom: 16px;
+        margin-bottom: 0;
         background: #102d28;
         color: #a7f3d0;
         display: none;
+        box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
       }
       .notice.error {
         background: #3b1d29;
@@ -2249,6 +2256,12 @@
           </div>
         </header>
         <div class="content">
+          <div
+            id="notice"
+            class="notice"
+            role="status"
+            aria-live="polite"
+          ></div>
           <section id="chat-view" class="view active">
             <div class="messages">
               <div id="messages">
@@ -2348,7 +2361,6 @@
             </div>
           </section>
           <section id="settings-view" class="view">
-            <div id="notice" class="notice"></div>
             <div class="card">
               <h2 data-i18n="settings.providerTitle">ผู้ให้บริการและโมเดล</h2>
               <p class="hint" data-i18n="settings.providerHint">
