@@ -3545,9 +3545,10 @@
       let conversationTitle = null;
       let persistedMessageCount = 0;
       let historyLoadToken = 0;
+      let conversationGeneration = null;
       const pendingHistoryAppends = new Map();
       let pendingAppendFlush = null;
-      let pendingAttachment = null;
+      let failedSend = null; // { message, skills }
       let typingIndicator = null;
       let typingTicker = null;
       let connectionState = {
@@ -3999,6 +4000,7 @@
       function invalidateChatSession() {
         chatSessionToken += 1;
         historyLoadToken += 1;
+        failedSend = null;
         chatBusy = false;
         removeTypingIndicator();
         $("send").textContent = "↑";
@@ -4010,6 +4012,7 @@
         conversationCreatedAt = null;
         conversationTitle = null;
         persistedMessageCount = 0;
+        failedSend = null;
         messages.splice(0, messages.length);
         emptyConversationMode = mode;
         clearPendingSkill();
@@ -4682,7 +4685,7 @@
       function historyMessagePayload({ tool_request, approval_id, ...rest } = {}) {
         return rest;
       }
-      async function appendMessagesToHistory(id, newMessages) {
+      async function appendMessagesToHistory(id, newMessages, generation) {
         if (!id || !newMessages.length) return { ok: true };
         try {
           const response = await fetch(
@@ -4692,10 +4695,15 @@
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 messages: newMessages.map(historyMessagePayload),
+                generation,
               }),
             },
           );
           if (response.status === 404) return { ok: false, missing: true };
+          if (response.status === 409) {
+            console.warn(t("chat.saveWarning"), "append conflict, generation mismatch");
+            return { ok: false, conflict: true };
+          }
           if (!response.ok) throw new Error(t("chat.saveWarning"));
           return { ok: true, record: await response.json() };
         } catch (error) {
@@ -4705,6 +4713,7 @@
       }
       function queuePendingAppend(id, newMessages) {
         if (!id || !newMessages.length) return;
+        const generation = newMessages[0]?.generation || conversationGeneration;
         const queued = pendingHistoryAppends.get(id) || [];
         const queuedIds = new Set(
           queued.map((message) => message.message_id).filter(Boolean),
@@ -4714,23 +4723,39 @@
           queued.push(message);
           if (message.message_id) queuedIds.add(message.message_id);
         }
-        pendingHistoryAppends.set(id, queued);
+        pendingHistoryAppends.set(id, { generation, messages: queued });
         if (conversationId === id) showNotice(t("chat.saveWarning"), true);
       }
       async function flushPendingAppends(id = null) {
         while (pendingAppendFlush) await pendingAppendFlush;
-        const ids = id ? [id] : [...pendingHistoryAppends.keys()];
-        if (!ids.some((target) => pendingHistoryAppends.has(target))) return;
+        const targetIds = id ? [id] : [...pendingHistoryAppends.keys()];
+        if (!targetIds.some((target) => pendingHistoryAppends.has(target))) return;
         pendingAppendFlush = (async () => {
-          for (const targetId of ids) {
-            const queued = pendingHistoryAppends.get(targetId);
-            if (!queued?.length) {
+          for (const targetId of targetIds) {
+            const entry = pendingHistoryAppends.get(targetId);
+            if (!entry?.messages?.length) {
               pendingHistoryAppends.delete(targetId);
               continue;
             }
-            const result = await appendMessagesToHistory(targetId, queued);
+            const queued = entry.messages;
+            // Slice an immutable batch now; newly queued messages after this
+            // point stay in the entry for the next flush.
+            const batch = queued.splice(0, queued.length);
+            const result = await appendMessagesToHistory(
+              targetId,
+              batch,
+              entry.generation,
+            );
             if (result.ok || result.missing) {
-              pendingHistoryAppends.delete(targetId);
+              // Remove only the batch we just sent.
+              // Re-store the remainder if anything was left (shouldn't happen often,
+              // but protects against partial sends / network glitches).
+              pendingHistoryAppends.set(targetId, entry);
+              if (result.missing) {
+                pendingHistoryAppends.delete(targetId);
+              }
+            } else {
+              // Conflict – keep the entry as‑is so the next retry sends the same batch.
             }
           }
         })();
@@ -4756,6 +4781,7 @@
               body: JSON.stringify({
                 title,
                 messages: snapshot.map(historyMessagePayload),
+                generation: conversationGeneration,
               }),
             });
             if (!response.ok) throw new Error(t("chat.saveWarning"));
@@ -4764,6 +4790,7 @@
               setConversationTitle(title);
               conversationId = saved.id;
               conversationCreatedAt = saved.created_at;
+              conversationGeneration = saved.generation || conversationGeneration;
               persistedMessageCount = snapshot.length;
               await loadHistoryList();
             }
@@ -4784,11 +4811,13 @@
         const result = await appendMessagesToHistory(
           targetConversationId,
           pending,
+          conversationGeneration,
         );
         if (!result.ok) return null;
         if (isCurrent()) {
           conversationCreatedAt =
             result.record?.created_at || conversationCreatedAt;
+          conversationGeneration = result.record?.generation || conversationGeneration;
           persistedMessageCount = Math.min(
             persistedMessageCount + pending.length,
             messages.length,
@@ -4834,6 +4863,10 @@
           const savedConversation = await saveConversation(sessionToken);
           if (sessionToken !== chatSessionToken) return;
           if (!savedConversation?.id) {
+            // Initial save failed: keep the user message in messages but
+            // do NOT send the AI request. Record the failure so a retry
+            // can reuse the exact same message (same message_id).
+            failedSend = { message: userMessage, skills };
             addMessage(
               "assistant",
               t("chat.errorPrefix", { message: t("chat.saveWarning") }),
@@ -4891,38 +4924,101 @@
             showNotice(t("chat.saveWarning"), true);
           }
         } catch (e) {
-          const errorMessage = {
-            role: "assistant",
-            content: t("chat.errorPrefix", { message: e.message }),
-            message_id: newMessageId(),
-          };
-          if (sessionToken !== chatSessionToken) {
-            if (
-              targetConversationId &&
-              conversationId === targetConversationId
-            ) {
-              messages.push(errorMessage);
-              addMessage("assistant", errorMessage.content);
+          if (!failedSend) {
+            // Unexpected error after a successful save – just render the error.
+            const errorMessage = {
+              role: "assistant",
+              content: t("chat.errorPrefix", { message: e.message }),
+              message_id: newMessageId(),
+            };
+            if (sessionToken !== chatSessionToken) {
+              if (
+                targetConversationId &&
+                conversationId === targetConversationId
+              ) {
+                messages.push(errorMessage);
+                addMessage("assistant", errorMessage.content);
+              }
+              if (targetConversationId) {
+                await appendAssistantToHistory(
+                  targetConversationId,
+                  errorMessage,
+                );
+              }
+              return;
             }
-            if (targetConversationId) {
-              await appendAssistantToHistory(
-                targetConversationId,
-                errorMessage,
-              );
+            messages.push(errorMessage);
+            addMessage("assistant", errorMessage.content);
+            const saved = targetConversationId
+              ? await saveConversation(sessionToken)
+              : null;
+            if (!saved && targetConversationId) {
+              queuePendingAppend(targetConversationId, [errorMessage]);
+              showNotice(t("chat.saveWarning"), true);
             }
+            await refreshConnectionState();
             return;
           }
+          // We have a failedSend from an earlier initial-save failure.
+          // Retry: reuse the exact same user message (same message_id) and
+          // the same skills; do not append a duplicate.
+          const { message: retryMessage, skills: retrySkills } = failedSend;
+          // Remove the error message we added after the initial save failure
+          // and replace it with the AI reply.
+          const errorIdx = messages.findIndex(
+            (m) => m.role === "assistant" && m.content.includes(t("chat.saveWarning")),
+          );
+          if (errorIdx >= 0) messages.splice(errorIdx, 1);
+          // Re-push the retry user message (preserving its message_id)
+          messages.push(retryMessage);
+          // Clear the failedSend flag so further sends don't retry again.
+          failedSend = null;
+          // Now proceed with the AI request using the (now-present) retryMessage
+          // as part of messages. We already have the payload ready; just send it.
+          const payload = {
+            messages,
+            thinking_level: $("chat-thinking-level").value,
+            command_mode: $("chat-command-mode").value,
+            model: $("chat-model-select").value,
+          };
+          if (retrySkills?.length) payload.skills = retrySkills;
+          const r = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || t("chat.error"));
+          const assistantMessage = {
+            role: "assistant",
+            content: data.answer,
+            message_id: newMessageId(),
+            duration_ms: data.duration_ms,
+            usage: data.usage,
+            tool_request: data.tool_request,
+            approval_id: data.approval_id,
+            fallback_used: data.fallback_used,
+          };
+          if (sessionToken !== chatSessionToken) {
+            if (conversationId === targetConversationId) {
+              messages.push(assistantMessage);
+              removeTypingIndicator();
+              addMessage("assistant", data.answer, assistantMessage);
+            }
+            await appendAssistantToHistory(
+              targetConversationId,
+              assistantMessage,
+            );
+            return;
+          }
+          messages.push(assistantMessage);
           removeTypingIndicator();
-          messages.push(errorMessage);
-          addMessage("assistant", errorMessage.content);
-          const saved = targetConversationId
-            ? await saveConversation(sessionToken)
-            : null;
-          if (!saved && targetConversationId) {
-            queuePendingAppend(targetConversationId, [errorMessage]);
+          addMessage("assistant", data.answer, assistantMessage);
+          const saved = await saveConversation(sessionToken);
+          if (!saved) {
+            queuePendingAppend(targetConversationId, [assistantMessage]);
             showNotice(t("chat.saveWarning"), true);
           }
-          await refreshConnectionState();
         } finally {
           if (sessionToken === chatSessionToken) {
             removeTypingIndicator();
@@ -5635,6 +5731,7 @@
         invalidateChatSession();
         conversationId = record.id;
         conversationCreatedAt = record.created_at;
+        conversationGeneration = record.generation || record.created_at;
         setConversationTitle(
           record.title ||
             record.messages?.find((message) => message.role === "user")

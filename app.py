@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ LOGGER = logging.getLogger("ai-web")
 LOG_FILE = Path(os.getenv("AI_WEB_LOG_FILE", "logs/app-log.jsonl"))
 SETTINGS_FILE = Path(os.getenv("AI_WEB_SETTINGS_FILE", ".app-settings.json"))
 HISTORY_ROOT = Path(os.getenv("AI_WEB_HISTORY_DIR", "history"))
+HISTORY_LOCK_FILE = HISTORY_ROOT / ".history.lock"
 SCHEDULE_FILE = Path(os.getenv("AI_WEB_SCHEDULE_FILE", "scheduled-jobs.json"))
 SCHEDULE_LOCK = threading.Lock()
 HISTORY_LOCK = threading.Lock()
@@ -956,9 +958,44 @@ def find_history_file(conversation_id: str) -> Path | None:
     return None
 
 
+class HistoryConflict(Exception):
+    """Raised when an append targets a conversation record that was replaced."""
+
+
+@contextmanager
+def history_mutation_lock():
+    """Serialize history mutations in this process and across processes.
+
+    HISTORY_LOCK keeps threads in this process apart; the file lock extends the
+    same guarantee to other worker processes that share HISTORY_ROOT.
+    """
+    with HISTORY_LOCK:
+        try:
+            HISTORY_ROOT.mkdir(parents=True, exist_ok=True)
+            handle = open(HISTORY_LOCK_FILE, "a+", encoding="utf-8")
+        except OSError as exc:
+            log_event("history.error", "เปิดไฟล์ lock ของประวัติไม่สำเร็จ", error=str(exc))
+            yield
+            return
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
+
+
+def history_generation(record: dict[str, Any]) -> str | None:
+    """Return the identity token callers use to bind appends to a record."""
+    value = record.get("generation") or record.get("created_at")
+    return value if isinstance(value, str) and value else None
+
+
 def save_history(payload: dict[str, Any]) -> dict[str, Any]:
     """Create or update a conversation history file and return its record."""
-    with HISTORY_LOCK:
+    with history_mutation_lock():
         return _save_history_unlocked(payload)
 
 
@@ -1014,6 +1051,13 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
                 if message_id:
                     known_ids.add(message_id)
     created_at = payload.get("created_at") or now.isoformat(timespec="seconds")
+    # New records (no existing file) get a generation; legacy records keep theirs.
+    if not existing_record:
+        record_generation = str(uuid.uuid4())
+    else:
+        # Preserve the existing generation so appends that were started against
+        # the old record still validate against it.
+        record_generation = existing_record.get("generation")
     path = existing or HISTORY_ROOT / now.strftime("%Y-%m-%d") / f"{now.strftime('%H-%M-%S')}_{conversation_id}.json"
     record = {
         "id": conversation_id,
@@ -1023,17 +1067,20 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
         "locked": bool(existing_record.get("locked", False)),
         "pinned": bool(existing_record.get("pinned", False)),
         "messages": messages,
+        "generation": record_generation,
     }
     _write_history_record(path, record)
     return record
 
 
-def append_history_messages(conversation_id: str, new_messages: list[dict[str, Any]]) -> dict[str, Any] | None:
+def append_history_messages(conversation_id: str, new_messages: list[dict[str, Any]], generation: str | None = None) -> dict[str, Any] | None:
     """Append messages to an existing conversation, or return None if it is gone.
 
     The read-modify-write happens under HISTORY_LOCK, so an append can never
     recreate a conversation deleted at the same time. Messages carrying a
-    message_id are appended idempotently.
+    message_id are appended idempotently. The optional *generation* parameter
+    must match the generation stored in the record; otherwise HistoryConflict
+    is raised so the caller can retry or stop instead of appending to stale data.
     """
     if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
         return None
@@ -1047,6 +1094,11 @@ def append_history_messages(conversation_id: str, new_messages: list[dict[str, A
             return None
         if not isinstance(record, dict):
             return None
+        record_generation = history_generation(record)
+        if generation is not None and record_generation != generation:
+            raise HistoryConflict(
+                f"Record generation {record_generation!r} does not match append generation {generation!r}"
+            )
         record_messages = record.get("messages") if isinstance(record.get("messages"), list) else []
         known_ids = {
             message.get("message_id")
@@ -2256,9 +2308,13 @@ def history_append(conversation_id: str):
     """Append messages to a conversation that still exists."""
     body = request.get_json(silent=True) or {}
     messages = body.get("messages")
+    generation = body.get("generation")
     if not isinstance(messages, list) or not messages:
         return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
-    record = append_history_messages(conversation_id, messages)
+    try:
+        record = append_history_messages(conversation_id, messages, generation)
+    except HistoryConflict:
+        return jsonify({"error": "เกิดความขัดแย้งข้อมูล: บันทึกถูกปรับปรุงโดยผู้อื่น กรุณาโหลดใหม่"}), 409
     if record is None:
         return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
     return jsonify(record)
