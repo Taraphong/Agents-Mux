@@ -83,7 +83,7 @@ A skill used through a slash command applies only to that request and does not c
 
 The **Terminal** page runs shell commands directly on the server as the user running the app, starting in the project folder and supporting `cd` within the project. Commands time out after 60 seconds, output is capped at 100 KB, credential-like environment variables are removed, and known API keys/tokens are redacted from the output. The page can be disabled in **Settings**.
 
-> ⚠️ This app has no login. Anyone who can open the web interface can use the terminal. Only expose it on a trusted network.
+> ⚠️ The web interface requires a password (`AI_WEB_PASSWORD`). The terminal runs commands as the app user, so still only expose it on a trusted network.
 
 ### Discord bot
 

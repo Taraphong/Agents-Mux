@@ -3,6 +3,7 @@ import asyncio
 import fcntl
 import getpass
 import hashlib
+import hmac
 import json
 import logging
 import re
@@ -17,18 +18,56 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from collections import deque
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv()
 
 app = Flask(__name__)
+
+AUTH_PASSWORD = os.getenv("AI_WEB_PASSWORD", "").strip()
+AUTH_PASSWORD_HASH = os.getenv("AI_WEB_PASSWORD_HASH", "").strip()
+AUTH_PASSWORD_VERIFIER = AUTH_PASSWORD_HASH or (generate_password_hash(AUTH_PASSWORD) if AUTH_PASSWORD else "")
+LOGIN_MAX_ATTEMPTS = 10
+LOGIN_WINDOW_SECONDS = 5 * 60
+LOGIN_ATTEMPTS: dict[str, deque[float]] = {}
+LOGIN_ATTEMPTS_LOCK = threading.Lock()
+
+
+def session_secret_key() -> str:
+    """Return the key that signs session cookies."""
+    explicit = os.getenv("AI_WEB_SESSION_SECRET", "").strip()
+    if explicit:
+        return explicit
+    material = AUTH_PASSWORD_HASH or AUTH_PASSWORD
+    if material:
+        return hashlib.sha256(f"ai-web-session:{material}".encode("utf-8")).hexdigest()
+    return secrets.token_hex(32)
+
+
+def session_lifetime_hours() -> int:
+    """Return the configured session lifetime in hours."""
+    try:
+        return max(1, min(24 * 30, int(os.getenv("AI_WEB_SESSION_HOURS", "24"))))
+    except (TypeError, ValueError):
+        return 24
+
+
+app.secret_key = session_secret_key()
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("AI_WEB_HTTPS", "").strip().lower() in {"1", "true", "yes"},
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=session_lifetime_hours()),
+)
+
 APP_LOGS: list[dict[str, Any]] = []
 APP_LOG_LOCK = threading.Lock()
 LOGGER = logging.getLogger("ai-web")
@@ -165,6 +204,116 @@ def log_event(event: str, message: str, **details: Any) -> None:
 
 
 load_persisted_logs()
+
+
+def password_configured() -> bool:
+    """Return whether a login password has been configured."""
+    return bool(AUTH_PASSWORD_VERIFIER)
+
+
+def verify_login_password(candidate: Any) -> bool:
+    """Check a submitted password against the configured verifier."""
+    if not AUTH_PASSWORD_VERIFIER or not isinstance(candidate, str) or not candidate:
+        return False
+    try:
+        return check_password_hash(AUTH_PASSWORD_VERIFIER, candidate)
+    except (TypeError, ValueError):
+        return False
+
+
+def is_authenticated() -> bool:
+    """Return whether the current session passed the login check."""
+    return bool(session.get("authenticated"))
+
+
+def csrf_token() -> str:
+    """Return this session's CSRF token, creating one when needed."""
+    token = session.get("csrf_token")
+    if not isinstance(token, str) or not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+
+def csrf_is_valid() -> bool:
+    """Compare the submitted CSRF token with the session token."""
+    expected = session.get("csrf_token")
+    provided = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token") or ""
+    return bool(
+        isinstance(expected, str)
+        and expected
+        and provided
+        and hmac.compare_digest(expected, str(provided))
+    )
+
+
+def login_is_rate_limited(ip: str) -> bool:
+    """Return whether an IP has too many recent failed login attempts."""
+    now = time.time()
+    with LOGIN_ATTEMPTS_LOCK:
+        attempts = LOGIN_ATTEMPTS.setdefault(ip, deque())
+        while attempts and now - attempts[0] > LOGIN_WINDOW_SECONDS:
+            attempts.popleft()
+        return len(attempts) >= LOGIN_MAX_ATTEMPTS
+
+
+def record_login_failure(ip: str) -> None:
+    """Remember one failed login attempt for an IP."""
+    with LOGIN_ATTEMPTS_LOCK:
+        LOGIN_ATTEMPTS.setdefault(ip, deque()).append(time.time())
+
+
+def clear_login_failures(ip: str) -> None:
+    """Forget failed login attempts after a successful login."""
+    with LOGIN_ATTEMPTS_LOCK:
+        LOGIN_ATTEMPTS.pop(ip, None)
+
+
+def safe_next_url(raw: Any) -> str:
+    """Return a local redirect target, or an empty string when unsafe."""
+    value = str(raw or "").strip()
+    if not value.startswith("/") or value.startswith("//") or "\\" in value:
+        return ""
+    return value
+
+
+def request_expects_json() -> bool:
+    """Return whether the request targets an API route."""
+    return request.path.startswith("/api/")
+
+
+@app.before_request
+def guard_request() -> Any:
+    """Require a login session and a CSRF token for protected requests."""
+    if request.endpoint in {"login", "static"}:
+        return None
+    if not password_configured():
+        if request_expects_json():
+            return jsonify({"error": "ยังไม่ได้ตั้งรหัสผ่านสำหรับเข้าเว็บ (ตั้ง AI_WEB_PASSWORD ใน .env)"}), 503
+        return render_template("login.html", configured=False, error="", next_url=""), 503
+    if not is_authenticated():
+        if request_expects_json():
+            return jsonify({"error": "กรุณาเข้าสู่ระบบก่อนใช้งาน"}), 401
+        target = request.full_path if request.query_string else request.path
+        return redirect(url_for("login", next=safe_next_url(target)))
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and not csrf_is_valid():
+        if request_expects_json():
+            return jsonify({"error": "โทเคนความปลอดภัยไม่ถูกต้อง กรุณารีโหลดหน้าแล้วลองใหม่"}), 403
+        return render_template("login.html", configured=True, error="โทเคนความปลอดภัยไม่ถูกต้อง กรุณาลองใหม่", next_url=""), 403
+    session.permanent = True
+    return None
+
+
+@app.after_request
+def add_security_headers(response: Any) -> Any:
+    """Send basic browser hardening headers with every response."""
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
+
+
+app.jinja_env.globals["csrf_token"] = csrf_token
 
 DEFAULT_SETTINGS = {
     "agent_name": "Mux",
@@ -2212,6 +2361,41 @@ def schedules_delete(job_id: str):
         if len(remaining) == len(jobs):
             return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
         save_schedules(remaining)
+    return jsonify({"ok": True})
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Authenticate the owner with the configured password."""
+    next_url = safe_next_url(request.values.get("next") or "")
+    if not password_configured():
+        return render_template("login.html", configured=False, error="", next_url=next_url), 503
+    if request.method == "GET":
+        if is_authenticated():
+            return redirect(next_url or url_for("index"))
+        return render_template("login.html", configured=True, error="", next_url=next_url)
+    if not csrf_is_valid():
+        return render_template("login.html", configured=True, error="เซสชันหมดอายุ กรุณาลองใหม่อีกครั้ง", next_url=next_url), 400
+    ip = request.remote_addr or "unknown"
+    if login_is_rate_limited(ip):
+        return render_template("login.html", configured=True, error="พยายามเข้าสู่ระบบหลายครั้งเกินไป กรุณารอ 5 นาที", next_url=next_url), 429
+    if not verify_login_password(request.form.get("password")):
+        record_login_failure(ip)
+        log_event("auth.login_failed", "เข้าสู่ระบบไม่สำเร็จ", ip=ip)
+        return render_template("login.html", configured=True, error="รหัสผ่านไม่ถูกต้อง", next_url=next_url), 401
+    session.clear()
+    session["authenticated"] = True
+    session["csrf_token"] = secrets.token_urlsafe(32)
+    session.permanent = True
+    clear_login_failures(ip)
+    log_event("auth.login", "เข้าสู่ระบบสำเร็จ", ip=ip)
+    return redirect(next_url or url_for("index"))
+
+
+@app.post("/api/logout")
+def logout():
+    """Clear the login session."""
+    session.clear()
     return jsonify({"ok": True})
 
 

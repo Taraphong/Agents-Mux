@@ -110,7 +110,7 @@ fi
 ok "ติดตั้งเสร็จสิ้น"
 printf '\n'
 printf 'ขั้นตอนถัดไป:\n'
-printf '  1) ใส่ API key ของผู้ให้บริการใน %s\n' "$APP_DIR/.env"
+printf '  1) ตั้ง AI_WEB_PASSWORD และใส่ API key ของผู้ให้บริการใน %s\n' "$APP_DIR/.env"
 printf '  2) เริ่มเซิร์ฟเวอร์:  ./start_web.sh --start\n'
 if [ -n "$LINKED" ]; then
   printf '     หรือใช้คำสั่งสั้น:  startweb --start  (ติดตั้งไว้ที่ %s)\n' "$LINKED"

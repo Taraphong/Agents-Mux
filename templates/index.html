@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content="{{ csrf_token() }}" />
     <title>AI Control Center</title>
     <style>
       :root {
@@ -2262,6 +2263,17 @@
             >
               ☼
             </button>
+            <button
+              type="button"
+              class="header-icon"
+              id="logout"
+              title="ออกจากระบบ"
+              aria-label="ออกจากระบบ"
+              data-i18n-title="nav.logout"
+              data-i18n-aria-label="nav.logout"
+            >
+              ⏻
+            </button>
           </div>
         </header>
         <div
@@ -2846,6 +2858,25 @@
     </div>
     <script>
       const $ = (id) => document.getElementById(id);
+      const CSRF_TOKEN =
+        document.querySelector('meta[name="csrf-token"]')?.content || "";
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = async (resource, options = {}) => {
+        const method = String(
+          options.method ||
+            (typeof resource === "object" && resource?.method) ||
+            "GET",
+        ).toUpperCase();
+        let requestOptions = options;
+        if (CSRF_TOKEN && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+          const headers = new Headers(options.headers || {});
+          headers.set("X-CSRF-Token", CSRF_TOKEN);
+          requestOptions = { ...options, headers };
+        }
+        const response = await nativeFetch(resource, requestOptions);
+        if (response.status === 401) window.location.href = "/login";
+        return response;
+      };
       const LANGUAGE_STORAGE_KEY = "ai-control-center-language";
       const SUPPORTED_LANGUAGES = ["th", "en"];
       const I18N = {
@@ -2858,6 +2889,7 @@
           "nav.schedule": "◷ งานตามเวลา",
           "nav.logs": "▤ Log ระบบ",
           "nav.about": "ⓘ เกี่ยวกับ",
+          "nav.logout": "ออกจากระบบ",
           "sidebar.history": "ประวัติการพูดคุย",
           "history.renameTitle": "เปลี่ยนชื่อประวัติ",
           "history.renamePlaceholder": "ชื่อประวัติใหม่",
@@ -3171,6 +3203,7 @@
           "nav.schedule": "◷ Scheduled jobs",
           "nav.logs": "▤ System logs",
           "nav.about": "ⓘ About",
+          "nav.logout": "Sign out",
           "sidebar.history": "Conversation history",
           "history.renameTitle": "Rename conversation",
           "history.renamePlaceholder": "New conversation name",
@@ -3497,6 +3530,13 @@
           "ai-control-center-theme",
           light ? "light" : "dark",
         );
+      });
+      $("logout").addEventListener("click", async () => {
+        try {
+          await fetch("/api/logout", { method: "POST" });
+        } finally {
+          window.location.href = "/login";
+        }
       });
       const messages = [];
       const PROVIDER_LABELS_WEB = {

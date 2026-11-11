@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>เข้าสู่ระบบ · AI Control Center</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0f14;
+        --card: #121821;
+        --border: #263140;
+        --text: #e6edf3;
+        --muted: #8b98a9;
+        --accent: #4f8cff;
+        --danger: #ff6b6b;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main {
+        width: min(440px, 100%);
+        padding: 28px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--card);
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.25rem;
+      }
+      p {
+        margin: 12px 0;
+        color: var(--muted);
+        line-height: 1.55;
+        font-size: 0.9rem;
+      }
+      label {
+        display: block;
+        margin: 20px 0 6px;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      input {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #0d131b;
+        color: var(--text);
+        font: inherit;
+      }
+      input:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      button {
+        width: 100%;
+        margin-top: 18px;
+        padding: 12px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover {
+        filter: brightness(1.08);
+      }
+      .error {
+        color: var(--danger);
+      }
+      .hint {
+        font-size: 0.8rem;
+      }
+      code {
+        display: inline;
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: #0d131b;
+        color: var(--text);
+        font-size: 0.82rem;
+      }
+      pre {
+        overflow-x: auto;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #0d131b;
+        color: var(--text);
+        font-size: 0.78rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>AI Control Center</h1>
+      {% if not configured %}
+      <p class="error">ยังไม่ได้ตั้งรหัสผ่านสำหรับเข้าเว็บ</p>
+      <p>ตั้งค่าในไฟล์ <code>.env</code> แล้วรีสตาร์ตเซิร์ฟเวอร์</p>
+      <pre>AI_WEB_PASSWORD=รหัสผ่านที่ต้องการ</pre>
+      <p>หรือใช้ password hash (แนะนำเมื่อไฟล์ .env อาจถูกอ่าน):</p>
+      <pre>python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('รหัสผ่าน'))"</pre>
+      <pre>AI_WEB_PASSWORD_HASH=...</pre>
+      <p class="hint">
+        จนกว่าจะตั้งรหัสผ่าน ระบบจะไม่ให้เข้าใช้งานจากทุกช่องทาง
+      </p>
+      {% else %}
+      <p>กรอกรหัสผ่านเพื่อเข้าใช้งานระบบ</p>
+      <form method="post" action="/login">
+        <input
+          type="hidden"
+          name="csrf_token"
+          value="{{ csrf_token() }}"
+        />
+        <input type="hidden" name="next" value="{{ next_url }}" />
+        <label for="password">รหัสผ่าน</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          autofocus
+        />
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+        <button type="submit">เข้าสู่ระบบ</button>
+      </form>
+      {% endif %}
+    </main>
+  </body>
+</html>
