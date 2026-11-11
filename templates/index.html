@@ -5000,7 +5000,7 @@
             fallback_used: data.fallback_used,
           };
           if (sessionToken !== chatSessionToken) {
-            if (conversationId === targetConversationId) {
+            if (targetConversationId && conversationId === targetConversationId) {
               messages.push(assistantMessage);
               removeTypingIndicator();
               addMessage("assistant", data.answer, assistantMessage);
