@@ -2291,7 +2291,6 @@
                   id="input"
                   placeholder="ส่งข้อความถึง AI..."
                   data-i18n-placeholder="chat.placeholder"
-                  required
                 ></textarea>
                 <div class="chat-tools">
                   <div class="chat-tools-left">
@@ -3549,6 +3548,7 @@
       const pendingHistoryAppends = new Map();
       let pendingAppendFlush = null;
       let failedSend = null; // { message, skills }
+      let pendingAttachment = null;
       let typingIndicator = null;
       let typingTicker = null;
       let connectionState = {
@@ -5400,11 +5400,17 @@
               `<option value="${escapeHtml(model.id || model)}">${escapeHtml(model.name || model.id || model)}</option>`,
           )
           .join("");
-        if (
-          selected &&
-          choices.some((model) => (model.id || model) === selected)
-        )
-          select.value = selected;
+        const selectedIsListed =
+          selected && choices.some((model) => (model.id || model) === selected);
+        if (selected && !selectedIsListed) {
+          // Keep the configured model selectable even when the provider's list
+          // does not include it, so sending never silently switches models.
+          select.insertAdjacentHTML(
+            "beforeend",
+            `<option value="${escapeHtml(selected)}">${escapeHtml(selected)}</option>`,
+          );
+        }
+        if (selected) select.value = selected;
         currentChatModels = choices;
         currentChatSelected = select.value;
       }
