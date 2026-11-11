@@ -3536,13 +3536,19 @@
       let availableSkills = [];
       let pendingSkill = null;
       let chatBusy = false;
+      let chatSessionToken = 0;
       let slashMatches = [];
       let slashIndex = 0;
       let keyProviders = [];
       let conversationId = null;
       let conversationCreatedAt = null;
       let conversationTitle = null;
-      let pendingAttachment = null;
+      let persistedMessageCount = 0;
+      let historyLoadToken = 0;
+      let conversationGeneration = null;
+      const pendingHistoryAppends = new Map();
+      let pendingAppendFlush = null;
+      let failedSend = null; // { message, skills }
       let typingIndicator = null;
       let typingTicker = null;
       let connectionState = {
@@ -3991,10 +3997,22 @@
             return { handled: true, keepInput: true };
         }
       }
+      function invalidateChatSession() {
+        chatSessionToken += 1;
+        historyLoadToken += 1;
+        failedSend = null;
+        chatBusy = false;
+        removeTypingIndicator();
+        $("send").textContent = "↑";
+        updateSendState();
+      }
       function startNewChat(mode = "new") {
+        invalidateChatSession();
         conversationId = null;
         conversationCreatedAt = null;
         conversationTitle = null;
+        persistedMessageCount = 0;
+        failedSend = null;
         messages.splice(0, messages.length);
         emptyConversationMode = mode;
         clearPendingSkill();
@@ -4654,39 +4672,198 @@
           $("attachment-chip").hidden = false;
         }
       });
-      async function saveConversation() {
-        if (!messages.length) return;
+      function newMessageId() {
         try {
-          const firstUser = messages.find((message) => message.role === "user");
-          const title = firstUser?.content || t("chat.newConversationTitle");
-          setConversationTitle(title);
-          const body = {
-            id: conversationId,
-            created_at: conversationCreatedAt,
-            title,
-            messages: messages.map(
-              ({ tool_request, approval_id, ...rest }) => rest,
-            ),
-          };
-          const response = await fetch("/api/history", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-          if (response.ok) {
-            const saved = await response.json();
-            conversationId = saved.id;
-            conversationCreatedAt = saved.created_at;
-            await loadHistoryList();
+          if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+            return crypto.randomUUID();
           }
         } catch (error) {
+          /* fall back to a timestamp-based id */
+        }
+        return `msg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      }
+      function historyMessagePayload({ tool_request, approval_id, ...rest } = {}) {
+        return rest;
+      }
+      async function appendMessagesToHistory(id, newMessages, generation) {
+        if (!id || !newMessages.length) return { ok: true };
+        try {
+          const response = await fetch(
+            `/api/history/${encodeURIComponent(id)}/messages`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages: newMessages.map(historyMessagePayload),
+                generation,
+              }),
+            },
+          );
+          if (response.status === 404) return { ok: false, missing: true };
+          if (response.status === 409) {
+            console.warn(t("chat.saveWarning"), "append conflict, generation mismatch");
+            return { ok: false, conflict: true };
+          }
+          if (!response.ok) throw new Error(t("chat.saveWarning"));
+          return { ok: true, record: await response.json() };
+        } catch (error) {
           console.warn(t("chat.saveWarning"), error);
+          return { ok: false, error };
         }
       }
+      function queuePendingAppend(id, newMessages, generation = null) {
+        if (!id || !newMessages.length) return;
+        const entry = pendingHistoryAppends.get(id);
+        const queued = entry?.messages ? entry.messages : [];
+        const queuedIds = new Set(
+          queued.map((message) => message.message_id).filter(Boolean),
+        );
+        for (const message of newMessages) {
+          if (message.message_id && queuedIds.has(message.message_id)) continue;
+          queued.push(message);
+          if (message.message_id) queuedIds.add(message.message_id);
+        }
+        // Keep the generation captured for this conversation record so retries
+        // keep validating against it even after the active chat changes.
+        const targetGeneration =
+          entry?.generation ||
+          generation ||
+          newMessages[0]?.generation ||
+          (conversationId === id ? conversationGeneration : null);
+        pendingHistoryAppends.set(id, {
+          generation: targetGeneration,
+          messages: queued,
+        });
+        if (conversationId === id) showNotice(t("chat.saveWarning"), true);
+      }
+      async function flushPendingAppends(id = null) {
+        while (pendingAppendFlush) await pendingAppendFlush;
+        const targetIds = id ? [id] : [...pendingHistoryAppends.keys()];
+        if (!targetIds.some((target) => pendingHistoryAppends.has(target))) return;
+        pendingAppendFlush = (async () => {
+          for (const targetId of targetIds) {
+            const entry = pendingHistoryAppends.get(targetId);
+            if (!entry?.messages?.length) {
+              pendingHistoryAppends.delete(targetId);
+              continue;
+            }
+            const queued = entry.messages;
+            // Slice an immutable batch now; newly queued messages after this
+            // point stay in the entry for the next flush.
+            const batch = queued.splice(0, queued.length);
+            const result = await appendMessagesToHistory(
+              targetId,
+              batch,
+              entry.generation,
+            );
+            if (result.ok || result.missing) {
+              // Remove only the batch we just sent.
+              // Re-store the remainder if anything was left (shouldn't happen often,
+              // but protects against partial sends / network glitches).
+              pendingHistoryAppends.set(targetId, entry);
+              if (result.missing) {
+                pendingHistoryAppends.delete(targetId);
+              }
+            } else {
+              // Conflict/error – restore the batch ahead of anything queued
+              // while the request was in flight so the retry resends it first.
+              entry.messages.unshift(...batch);
+              pendingHistoryAppends.set(targetId, entry);
+            }
+          }
+        })();
+        try {
+          await pendingAppendFlush;
+        } finally {
+          pendingAppendFlush = null;
+        }
+      }
+      async function saveConversation(sessionToken = null) {
+        if (!messages.length) return null;
+        const targetConversationId = conversationId;
+        const isCurrent = () =>
+          sessionToken === null || sessionToken === chatSessionToken;
+        const firstUser = messages.find((message) => message.role === "user");
+        const title = firstUser?.content || t("chat.newConversationTitle");
+        if (!targetConversationId) {
+          const snapshot = messages.slice();
+          try {
+            const response = await fetch("/api/history", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title,
+                messages: snapshot.map(historyMessagePayload),
+                generation: conversationGeneration,
+              }),
+            });
+            if (!response.ok) throw new Error(t("chat.saveWarning"));
+            const saved = await response.json();
+            if (isCurrent()) {
+              setConversationTitle(title);
+              conversationId = saved.id;
+              conversationCreatedAt = saved.created_at;
+              conversationGeneration = saved.generation || conversationGeneration;
+              persistedMessageCount = snapshot.length;
+              await loadHistoryList();
+            }
+            return saved;
+          } catch (error) {
+            console.warn(t("chat.saveWarning"), error);
+            return null;
+          }
+        }
+        const pending = messages.slice(persistedMessageCount);
+        if (!pending.length) {
+          return {
+            id: targetConversationId,
+            created_at: conversationCreatedAt,
+            title: conversationTitle,
+          };
+        }
+        const result = await appendMessagesToHistory(
+          targetConversationId,
+          pending,
+          conversationGeneration,
+        );
+        if (!result.ok) return null;
+        if (isCurrent()) {
+          conversationCreatedAt =
+            result.record?.created_at || conversationCreatedAt;
+          conversationGeneration = result.record?.generation || conversationGeneration;
+          persistedMessageCount = Math.min(
+            persistedMessageCount + pending.length,
+            messages.length,
+          );
+          await loadHistoryList();
+        }
+        return result.record || { id: targetConversationId };
+      }
+      async function appendAssistantToHistory(
+        id,
+        assistantMessage,
+        generation = null,
+      ) {
+        if (!id) return false;
+        const result = await appendMessagesToHistory(
+          id,
+          [assistantMessage],
+          generation,
+        );
+        if (result.ok) {
+          await loadHistoryList();
+          return true;
+        }
+        if (result.missing) return false;
+        queuePendingAppend(id, [assistantMessage], generation);
+        return false;
+      }
       async function sendChatMessage(content, requestedSkills = null) {
+        const sessionToken = chatSessionToken;
         const userMessage = {
           role: "user",
           content: content || t("chat.defaultAttachmentPrompt"),
+          message_id: newMessageId(),
         };
         if (pendingAttachment) userMessage.attachment = pendingAttachment;
         const appliedSkill = requestedSkills?.[requestedSkills.length - 1] ?? pendingSkill;
@@ -4699,16 +4876,35 @@
         messages.push(userMessage);
         addMessage("user", userMessage.content, userMessage);
         addTypingIndicator();
-        await saveConversation();
-        $("input").value = "";
-        pendingAttachment = null;
-        $("file-input").value = "";
-        $("attachment-chip").hidden = true;
-        resizeInput();
         chatBusy = true;
         $("send").disabled = true;
         $("send").textContent = "…";
+        let targetConversationId = null;
+        // Generation of the record these messages belong to, captured before
+        // the session can change.
+        let targetGeneration = null;
         try {
+          const savedConversation = await saveConversation(sessionToken);
+          if (sessionToken !== chatSessionToken) return;
+          if (!savedConversation?.id) {
+            // Initial save failed: keep the user message in messages but
+            // do NOT send the AI request. Record the failure so a retry
+            // can reuse the exact same message (same message_id).
+            failedSend = { message: userMessage, skills, sessionToken };
+            addMessage(
+              "assistant",
+              t("chat.errorPrefix", { message: t("chat.saveWarning") }),
+            );
+            return;
+          }
+          targetConversationId = savedConversation.id;
+          targetGeneration =
+            savedConversation.generation || conversationGeneration || null;
+          $("input").value = "";
+          pendingAttachment = null;
+          $("file-input").value = "";
+          $("attachment-chip").hidden = true;
+          resizeInput();
           const payload = {
             messages,
             thinking_level: $("chat-thinking-level").value,
@@ -4726,34 +4922,160 @@
           const assistantMessage = {
             role: "assistant",
             content: data.answer,
+            message_id: newMessageId(),
             duration_ms: data.duration_ms,
             usage: data.usage,
             tool_request: data.tool_request,
             approval_id: data.approval_id,
             fallback_used: data.fallback_used,
           };
+          if (sessionToken !== chatSessionToken) {
+            if (targetConversationId && conversationId === targetConversationId) {
+              messages.push(assistantMessage);
+              removeTypingIndicator();
+              addMessage("assistant", data.answer, assistantMessage);
+            }
+            await appendAssistantToHistory(
+              targetConversationId,
+              assistantMessage,
+              targetGeneration,
+            );
+            return;
+          }
           messages.push(assistantMessage);
           removeTypingIndicator();
           addMessage("assistant", data.answer, assistantMessage);
-          await saveConversation();
+          const saved = await saveConversation(sessionToken);
+          if (!saved) {
+            queuePendingAppend(
+              targetConversationId,
+              [assistantMessage],
+              targetGeneration,
+            );
+            showNotice(t("chat.saveWarning"), true);
+          }
         } catch (e) {
-          removeTypingIndicator();
-          const errorMessage = {
-            role: "assistant",
-            content: t("chat.errorPrefix", { message: e.message }),
+          // Only consume failure state recorded by this request's own session,
+          // so a newer chat cannot be retried with an older prompt.
+          const pendingFailure =
+            failedSend && failedSend.sessionToken === sessionToken
+              ? failedSend
+              : null;
+          if (!pendingFailure) {
+            // Unexpected error after a successful save – just render the error.
+            const errorMessage = {
+              role: "assistant",
+              content: t("chat.errorPrefix", { message: e.message }),
+              message_id: newMessageId(),
+            };
+            if (sessionToken !== chatSessionToken) {
+              if (
+                targetConversationId &&
+                conversationId === targetConversationId
+              ) {
+                messages.push(errorMessage);
+                addMessage("assistant", errorMessage.content);
+              }
+              if (targetConversationId) {
+                await appendAssistantToHistory(
+                  targetConversationId,
+                  errorMessage,
+                  targetGeneration,
+                );
+              }
+              return;
+            }
+            messages.push(errorMessage);
+            addMessage("assistant", errorMessage.content);
+            const saved = targetConversationId
+              ? await saveConversation(sessionToken)
+              : null;
+            if (!saved && targetConversationId) {
+              queuePendingAppend(
+                targetConversationId,
+                [errorMessage],
+                targetGeneration,
+              );
+              showNotice(t("chat.saveWarning"), true);
+            }
+            await refreshConnectionState();
+            return;
+          }
+          // We have a failedSend from an earlier initial-save failure in this
+          // same session. Retry: reuse the exact same user message (same
+          // message_id) and the same skills; do not append a duplicate.
+          const { message: retryMessage, skills: retrySkills } = pendingFailure;
+          // Remove the error message we added after the initial save failure
+          // and replace it with the AI reply.
+          const errorIdx = messages.findIndex(
+            (m) => m.role === "assistant" && m.content.includes(t("chat.saveWarning")),
+          );
+          if (errorIdx >= 0) messages.splice(errorIdx, 1);
+          // Re-push the retry user message (preserving its message_id)
+          messages.push(retryMessage);
+          // Clear the failedSend flag so further sends don't retry again.
+          if (failedSend === pendingFailure) failedSend = null;
+          // Now proceed with the AI request using the (now-present) retryMessage
+          // as part of messages. We already have the payload ready; just send it.
+          const payload = {
+            messages,
+            thinking_level: $("chat-thinking-level").value,
+            command_mode: $("chat-command-mode").value,
+            model: $("chat-model-select").value,
           };
-          messages.push(errorMessage);
-          addMessage("assistant", errorMessage.content);
-          await saveConversation();
-          await refreshConnectionState();
-        } finally {
+          if (retrySkills?.length) payload.skills = retrySkills;
+          const r = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || t("chat.error"));
+          const assistantMessage = {
+            role: "assistant",
+            content: data.answer,
+            message_id: newMessageId(),
+            duration_ms: data.duration_ms,
+            usage: data.usage,
+            tool_request: data.tool_request,
+            approval_id: data.approval_id,
+            fallback_used: data.fallback_used,
+          };
+          if (sessionToken !== chatSessionToken) {
+            if (targetConversationId && conversationId === targetConversationId) {
+              messages.push(assistantMessage);
+              removeTypingIndicator();
+              addMessage("assistant", data.answer, assistantMessage);
+            }
+            await appendAssistantToHistory(
+              targetConversationId,
+              assistantMessage,
+              targetGeneration,
+            );
+            return;
+          }
+          messages.push(assistantMessage);
           removeTypingIndicator();
-          chatBusy = false;
-          pendingSkill = null;
-          updateSkillChip();
-          $("send").textContent = "↑";
-          updateSendState();
-          $("input").focus();
+          addMessage("assistant", data.answer, assistantMessage);
+          const saved = await saveConversation(sessionToken);
+          if (!saved) {
+            queuePendingAppend(
+              targetConversationId,
+              [assistantMessage],
+              targetGeneration,
+            );
+            showNotice(t("chat.saveWarning"), true);
+          }
+        } finally {
+          if (sessionToken === chatSessionToken) {
+            removeTypingIndicator();
+            chatBusy = false;
+            pendingSkill = null;
+            updateSkillChip();
+            $("send").textContent = "↑";
+            updateSendState();
+            $("input").focus();
+          }
         }
       }
       function scheduleStatusText(value) {
@@ -5441,21 +5763,48 @@
       }
       async function loadHistoryList() {
         const response = await fetch("/api/history");
-        if (response.ok)
+        if (response.ok) {
           renderHistoryList((await response.json()).items || []);
+          if (pendingHistoryAppends.size) flushPendingAppends();
+        }
       }
       async function openConversation(id) {
+        const loadToken = ++historyLoadToken;
+        if (pendingHistoryAppends.has(id)) await flushPendingAppends(id);
         const response = await fetch(`/api/history/${id}`);
         if (!response.ok) return;
         const record = await response.json();
+        if (loadToken !== historyLoadToken) return;
+        invalidateChatSession();
         conversationId = record.id;
         conversationCreatedAt = record.created_at;
+        conversationGeneration = record.generation || record.created_at;
         setConversationTitle(
           record.title ||
             record.messages?.find((message) => message.role === "user")
               ?.content,
         );
-        messages.splice(0, messages.length, ...(record.messages || []));
+        const recordMessages = Array.isArray(record.messages)
+          ? record.messages
+          : [];
+        messages.splice(0, messages.length, ...recordMessages);
+        persistedMessageCount = recordMessages.length;
+        const pending = pendingHistoryAppends.get(id)?.messages || [];
+        if (pending.length) {
+          const savedIds = new Set(
+            recordMessages.map((message) => message.message_id).filter(Boolean),
+          );
+          const recovered = pending.filter(
+            (message) =>
+              !message.message_id || !savedIds.has(message.message_id),
+          );
+          if (recovered.length) {
+            messages.push(...recovered);
+            showNotice(t("chat.saveWarning"), true);
+          } else {
+            pendingHistoryAppends.delete(id);
+          }
+        }
         emptyConversationMode = "new";
         renderMessages();
         renderHistoryList(
@@ -5482,9 +5831,12 @@
         const data = await response.json();
         if (!response.ok)
           throw new Error(data.error || t("history.deleteFailed"));
+        pendingHistoryAppends.delete(id);
         if (id === conversationId) {
+          invalidateChatSession();
           conversationId = null;
           conversationCreatedAt = null;
+          persistedMessageCount = 0;
           messages.splice(0, messages.length);
           emptyConversationMode = "deleted";
           renderMessages();
@@ -5580,6 +5932,9 @@
         if (item) openConversation(item.dataset.historyId);
       });
       $("new-chat").addEventListener("click", () => startNewChat("new"));
+      window.addEventListener("online", () => {
+        if (pendingHistoryAppends.size) flushPendingAppends();
+      });
       $("reset").addEventListener("click", async () => {
         if (!confirm(t("notice.resetConfirm"))) return;
         await fetch("/api/settings/reset", { method: "POST" });
