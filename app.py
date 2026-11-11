@@ -788,9 +788,12 @@ def redact_terminal_output(text: str, secrets_found: list[str]) -> str:
 SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
 
 
-def redact_secrets(text: str) -> str:
+def redact_secrets(text: str, api_key: str | None = None) -> str:
     """Remove API keys and tokens from text before it is returned or logged."""
     value = SECRET_QUERY_PATTERN.sub(r"\1••••••••", str(text))
+    # Redact the submitted request's API key if provided
+    if api_key:
+        value = value.replace(api_key, "••••••••")
     try:
         secrets_found = terminal_secret_values()
     except (OSError, ValueError):
@@ -2399,8 +2402,9 @@ def models_get():
         models = list_models(provider, settings)
         return jsonify({"provider": provider, "models": models, "source": "api"})
     except (requests.RequestException, RuntimeError, KeyError, TypeError) as exc:
+        api_key = get_api_key(provider, settings)
         fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
-        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": redact_secrets(str(exc))}), 502
+        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": redact_secrets(str(exc), api_key=api_key)}), 502
 
 
 @app.put("/api/settings")
@@ -2477,10 +2481,12 @@ def settings_test():
                 detail = str((payload.get("error") or {}).get("message") or payload.get("message") or "")[:300]
             except ValueError:
                 detail = exc.response.text[:300]
-        message = redact_secrets(detail or str(exc))
+        api_key = get_api_key(provider, settings)
+        message = redact_secrets(detail or str(exc), api_key=api_key)
         return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: {message}"}), 502
     except (requests.RequestException, KeyError, IndexError, RuntimeError) as exc:
-        return jsonify({"ok": False, "provider": provider, "error": redact_secrets(str(exc))}), 502
+        api_key = get_api_key(provider, settings)
+        return jsonify({"ok": False, "provider": provider, "error": redact_secrets(str(exc), api_key=api_key)}), 502
 
 
 @app.post("/api/settings/reset")
@@ -2595,14 +2601,16 @@ def chat():
         return jsonify({"answer": answer, "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
         log_event("provider.error", "ผู้ให้บริการตอบกลับด้วย HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
+        api_key = get_api_key(provider, settings)
         if exc.response is not None and exc.response.status_code in {429, 503}:
             provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "ผู้ให้บริการ")
-            return jsonify({"error": f"{provider_label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้งในอีกสักครู่ หรือเลือกโมเดลอื่น"}), 503
-        detail = redact_secrets(exc.response.text)[:500] if exc.response is not None else redact_secrets(str(exc))
+            return jsonify({"error": f"{provider_label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น"}), 503
+        detail = redact_secrets(exc.response.text if exc.response is not None else str(exc), api_key=api_key)[:500]
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
+        api_key = get_api_key(provider, settings)
         log_event("chat.error", "ประมวลผลข้อความไม่สำเร็จ", error=str(exc))
-        return jsonify({"error": redact_secrets(str(exc))}), 500
+        return jsonify({"error": redact_secrets(str(exc), api_key=api_key)}), 500
 
 
 if os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower() in {"1", "true", "yes"}:
