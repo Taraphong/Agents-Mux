@@ -4711,10 +4711,10 @@
           return { ok: false, error };
         }
       }
-      function queuePendingAppend(id, newMessages) {
+      function queuePendingAppend(id, newMessages, generation = null) {
         if (!id || !newMessages.length) return;
-        const generation = newMessages[0]?.generation || conversationGeneration;
-        const queued = pendingHistoryAppends.get(id) || [];
+        const entry = pendingHistoryAppends.get(id);
+        const queued = entry?.messages ? entry.messages : [];
         const queuedIds = new Set(
           queued.map((message) => message.message_id).filter(Boolean),
         );
@@ -4723,7 +4723,17 @@
           queued.push(message);
           if (message.message_id) queuedIds.add(message.message_id);
         }
-        pendingHistoryAppends.set(id, { generation, messages: queued });
+        // Keep the generation captured for this conversation record so retries
+        // keep validating against it even after the active chat changes.
+        const targetGeneration =
+          entry?.generation ||
+          generation ||
+          newMessages[0]?.generation ||
+          (conversationId === id ? conversationGeneration : null);
+        pendingHistoryAppends.set(id, {
+          generation: targetGeneration,
+          messages: queued,
+        });
         if (conversationId === id) showNotice(t("chat.saveWarning"), true);
       }
       async function flushPendingAppends(id = null) {
@@ -4755,7 +4765,10 @@
                 pendingHistoryAppends.delete(targetId);
               }
             } else {
-              queued.unshift(...batch);
+              // Conflict/error – restore the batch ahead of anything queued
+              // while the request was in flight so the retry resends it first.
+              entry.messages.unshift(...batch);
+              pendingHistoryAppends.set(targetId, entry);
             }
           }
         })();
@@ -4826,15 +4839,23 @@
         }
         return result.record || { id: targetConversationId };
       }
-      async function appendAssistantToHistory(id, assistantMessage) {
+      async function appendAssistantToHistory(
+        id,
+        assistantMessage,
+        generation = null,
+      ) {
         if (!id) return false;
-        const result = await appendMessagesToHistory(id, [assistantMessage]);
+        const result = await appendMessagesToHistory(
+          id,
+          [assistantMessage],
+          generation,
+        );
         if (result.ok) {
           await loadHistoryList();
           return true;
         }
         if (result.missing) return false;
-        queuePendingAppend(id, [assistantMessage]);
+        queuePendingAppend(id, [assistantMessage], generation);
         return false;
       }
       async function sendChatMessage(content, requestedSkills = null) {
@@ -4859,6 +4880,9 @@
         $("send").disabled = true;
         $("send").textContent = "…";
         let targetConversationId = null;
+        // Generation of the record these messages belong to, captured before
+        // the session can change.
+        let targetGeneration = null;
         try {
           const savedConversation = await saveConversation(sessionToken);
           if (sessionToken !== chatSessionToken) return;
@@ -4866,7 +4890,7 @@
             // Initial save failed: keep the user message in messages but
             // do NOT send the AI request. Record the failure so a retry
             // can reuse the exact same message (same message_id).
-            failedSend = { message: userMessage, skills };
+            failedSend = { message: userMessage, skills, sessionToken };
             addMessage(
               "assistant",
               t("chat.errorPrefix", { message: t("chat.saveWarning") }),
@@ -4874,6 +4898,8 @@
             return;
           }
           targetConversationId = savedConversation.id;
+          targetGeneration =
+            savedConversation.generation || conversationGeneration || null;
           $("input").value = "";
           pendingAttachment = null;
           $("file-input").value = "";
@@ -4904,7 +4930,7 @@
             fallback_used: data.fallback_used,
           };
           if (sessionToken !== chatSessionToken) {
-            if (conversationId === targetConversationId) {
+            if (targetConversationId && conversationId === targetConversationId) {
               messages.push(assistantMessage);
               removeTypingIndicator();
               addMessage("assistant", data.answer, assistantMessage);
@@ -4912,6 +4938,7 @@
             await appendAssistantToHistory(
               targetConversationId,
               assistantMessage,
+              targetGeneration,
             );
             return;
           }
@@ -4920,11 +4947,21 @@
           addMessage("assistant", data.answer, assistantMessage);
           const saved = await saveConversation(sessionToken);
           if (!saved) {
-            queuePendingAppend(targetConversationId, [assistantMessage]);
+            queuePendingAppend(
+              targetConversationId,
+              [assistantMessage],
+              targetGeneration,
+            );
             showNotice(t("chat.saveWarning"), true);
           }
         } catch (e) {
-          if (!failedSend) {
+          // Only consume failure state recorded by this request's own session,
+          // so a newer chat cannot be retried with an older prompt.
+          const pendingFailure =
+            failedSend && failedSend.sessionToken === sessionToken
+              ? failedSend
+              : null;
+          if (!pendingFailure) {
             // Unexpected error after a successful save – just render the error.
             const errorMessage = {
               role: "assistant",
@@ -4943,6 +4980,7 @@
                 await appendAssistantToHistory(
                   targetConversationId,
                   errorMessage,
+                  targetGeneration,
                 );
               }
               return;
@@ -4953,16 +4991,20 @@
               ? await saveConversation(sessionToken)
               : null;
             if (!saved && targetConversationId) {
-              queuePendingAppend(targetConversationId, [errorMessage]);
+              queuePendingAppend(
+                targetConversationId,
+                [errorMessage],
+                targetGeneration,
+              );
               showNotice(t("chat.saveWarning"), true);
             }
             await refreshConnectionState();
             return;
           }
-          // We have a failedSend from an earlier initial-save failure.
-          // Retry: reuse the exact same user message (same message_id) and
-          // the same skills; do not append a duplicate.
-          const { message: retryMessage, skills: retrySkills } = failedSend;
+          // We have a failedSend from an earlier initial-save failure in this
+          // same session. Retry: reuse the exact same user message (same
+          // message_id) and the same skills; do not append a duplicate.
+          const { message: retryMessage, skills: retrySkills } = pendingFailure;
           // Remove the error message we added after the initial save failure
           // and replace it with the AI reply.
           const errorIdx = messages.findIndex(
@@ -4972,7 +5014,7 @@
           // Re-push the retry user message (preserving its message_id)
           messages.push(retryMessage);
           // Clear the failedSend flag so further sends don't retry again.
-          failedSend = null;
+          if (failedSend === pendingFailure) failedSend = null;
           // Now proceed with the AI request using the (now-present) retryMessage
           // as part of messages. We already have the payload ready; just send it.
           const payload = {
@@ -5008,6 +5050,7 @@
             await appendAssistantToHistory(
               targetConversationId,
               assistantMessage,
+              targetGeneration,
             );
             return;
           }
@@ -5016,7 +5059,11 @@
           addMessage("assistant", data.answer, assistantMessage);
           const saved = await saveConversation(sessionToken);
           if (!saved) {
-            queuePendingAppend(targetConversationId, [assistantMessage]);
+            queuePendingAppend(
+              targetConversationId,
+              [assistantMessage],
+              targetGeneration,
+            );
             showNotice(t("chat.saveWarning"), true);
           }
         } finally {
@@ -5742,7 +5789,7 @@
           : [];
         messages.splice(0, messages.length, ...recordMessages);
         persistedMessageCount = recordMessages.length;
-        const pending = pendingHistoryAppends.get(id) || [];
+        const pending = pendingHistoryAppends.get(id)?.messages || [];
         if (pending.length) {
           const savedIds = new Set(
             recordMessages.map((message) => message.message_id).filter(Boolean),

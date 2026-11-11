@@ -970,13 +970,14 @@ def history_mutation_lock():
     same guarantee to other worker processes that share HISTORY_ROOT.
     """
     with HISTORY_LOCK:
+        HISTORY_ROOT.mkdir(parents=True, exist_ok=True)
         try:
-            HISTORY_ROOT.mkdir(parents=True, exist_ok=True)
             handle = open(HISTORY_LOCK_FILE, "a+", encoding="utf-8")
         except OSError as exc:
+            # Without the cross-process lock a mutation could race another
+            # writer, so fail the request instead of proceeding unlocked.
             log_event("history.error", "เปิดไฟล์ lock ของประวัติไม่สำเร็จ", error=str(exc))
-            yield
-            return
+            raise
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             yield
