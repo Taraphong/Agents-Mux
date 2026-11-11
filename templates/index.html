@@ -189,6 +189,7 @@
         background: #202b49;
       }
       .layout {
+        position: relative;
         min-width: 0;
         height: 100vh;
         min-height: 0;
@@ -606,6 +607,13 @@
       .notice.error {
         background: #3b1d29;
         color: #fecdd3;
+      }
+      @media (min-width: 701px) {
+        /* Center the notice within the content pane, not the whole window. */
+        .notice {
+          position: absolute;
+          width: min(560px, calc(100% - 32px));
+        }
       }
       .toggle {
         display: flex;
@@ -2243,13 +2251,13 @@
             </button>
           </div>
         </header>
+        <div
+          id="notice"
+          class="notice"
+          role="status"
+          aria-live="polite"
+        ></div>
         <div class="content">
-          <div
-            id="notice"
-            class="notice"
-            role="status"
-            aria-live="polite"
-          ></div>
           <section id="chat-view" class="view active">
             <div class="messages">
               <div id="messages">
