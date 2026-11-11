@@ -4,16 +4,64 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>เข้าสู่ระบบ · AI Control Center</title>
+    <script>
+      /* Apply the saved theme before first paint to avoid a flash. */
+      (function () {
+        try {
+          var theme = localStorage.getItem("ai-control-center-theme");
+          document.documentElement.dataset.theme =
+            theme === "light" ? "light" : "dark";
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
     <style>
       :root {
         color-scheme: dark;
-        --bg: #0b0f14;
-        --card: #121821;
-        --border: #263140;
+        --bg: #05070c;
+        --bg-2: #0b0f14;
+        --card: rgba(18, 24, 33, 0.86);
+        --card-border: #263140;
         --text: #e6edf3;
         --muted: #8b98a9;
         --accent: #4f8cff;
+        --accent-2: #22d3ee;
         --danger: #ff6b6b;
+        --field: #0d131b;
+        --field-border: #263140;
+        --code: #0d131b;
+        --orb-a: #1d3fa8;
+        --orb-b: #0e7490;
+        --orb-c: #4c1d95;
+        --orb-opacity: 0.55;
+        --grid: rgba(148, 163, 184, 0.07);
+        --shadow: 0 32px 90px -35px rgba(0, 0, 0, 0.95);
+        --sheen: rgba(255, 255, 255, 0.45);
+        --toggle-bg: rgba(255, 255, 255, 0.06);
+      }
+      html[data-theme="light"] {
+        color-scheme: light;
+        --bg: #eef2f7;
+        --bg-2: #f8fbfe;
+        --card: rgba(255, 255, 255, 0.9);
+        --card-border: #d3dde8;
+        --text: #0f172a;
+        --muted: #5b6b80;
+        --accent: #2563eb;
+        --accent-2: #0891b2;
+        --danger: #dc2626;
+        --field: #f8fafc;
+        --field-border: #c3d0de;
+        --code: #eef2f8;
+        --orb-a: #bfdbfe;
+        --orb-b: #bae6fd;
+        --orb-c: #ddd6fe;
+        --orb-opacity: 0.8;
+        --grid: rgba(15, 23, 42, 0.06);
+        --shadow: 0 30px 70px -40px rgba(15, 23, 42, 0.45);
+        --sheen: rgba(255, 255, 255, 0.75);
+        --toggle-bg: rgba(255, 255, 255, 0.7);
       }
       * {
         box-sizing: border-box;
@@ -21,23 +69,214 @@
       body {
         margin: 0;
         min-height: 100vh;
+        min-height: 100dvh;
         display: grid;
         place-items: center;
-        padding: 24px;
-        background: var(--bg);
+        padding: 88px 24px 40px;
+        background:
+          radial-gradient(
+            circle at 15% 0%,
+            color-mix(in srgb, var(--accent) 16%, transparent) 0,
+            transparent 45%
+          ),
+          var(--bg);
         color: var(--text);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        overflow-x: hidden;
+        transition:
+          background-color 0.35s ease,
+          color 0.35s ease;
+      }
+      /* Ambient background: drifting light orbs and a faint grid. */
+      .backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .backdrop::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(to right, var(--grid) 1px, transparent 1px),
+          linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+        background-size: 46px 46px;
+        mask-image: radial-gradient(circle at 50% 40%, #000 0%, transparent 78%);
+        -webkit-mask-image: radial-gradient(
+          circle at 50% 40%,
+          #000 0%,
+          transparent 78%
+        );
+      }
+      .orb {
+        position: absolute;
+        display: block;
+        border-radius: 50%;
+        filter: blur(70px);
+        opacity: var(--orb-opacity);
+        transition:
+          background-color 0.4s ease,
+          opacity 0.4s ease;
+        will-change: transform;
+      }
+      .orb-a {
+        width: 46vmax;
+        height: 46vmax;
+        top: -16vmax;
+        left: -12vmax;
+        background: var(--orb-a);
+        animation: drift-a 16s ease-in-out infinite;
+      }
+      .orb-b {
+        width: 34vmax;
+        height: 34vmax;
+        right: -10vmax;
+        top: 18vmax;
+        background: var(--orb-b);
+        animation: drift-b 20s ease-in-out infinite;
+      }
+      .orb-c {
+        width: 28vmax;
+        height: 28vmax;
+        bottom: -14vmax;
+        left: 34vmax;
+        background: var(--orb-c);
+        animation: drift-c 24s ease-in-out infinite;
+      }
+      .corner-controls {
+        position: fixed;
+        top: 18px;
+        right: 18px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        z-index: 5;
+        animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      .lang-select,
+      .icon-button {
+        height: 34px;
+        border: 1px solid var(--card-border);
+        border-radius: 9px;
+        background: var(--toggle-bg);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.78rem;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+        transition:
+          border-color 0.2s ease,
+          color 0.2s ease,
+          transform 0.2s ease,
+          background-color 0.35s ease;
+      }
+      .lang-select {
+        padding: 0 8px;
+      }
+      .lang-select option {
+        background: var(--bg-2);
+        color: var(--text);
+      }
+      .icon-button {
+        width: 34px;
+        display: grid;
+        place-items: center;
+        font-size: 1rem;
+        line-height: 1;
+        padding: 0;
+      }
+      .icon-button:hover,
+      .lang-select:hover {
+        border-color: var(--accent);
+        transform: translateY(-1px);
+      }
+      .icon-button:active {
+        transform: scale(0.94);
       }
       main {
+        position: relative;
         width: min(440px, 100%);
-        padding: 28px;
-        border: 1px solid var(--border);
-        border-radius: 16px;
+        padding: 30px;
+        border: 1px solid var(--card-border);
+        border-radius: 18px;
         background: var(--card);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+        overflow: hidden;
+        animation: card-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+        transition:
+          background-color 0.35s ease,
+          border-color 0.35s ease,
+          box-shadow 0.35s ease;
+      }
+      main::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          var(--accent),
+          var(--accent-2),
+          transparent
+        );
+        opacity: 0.8;
+      }
+      main > * {
+        animation: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      main > :nth-child(1) {
+        animation-delay: 0.08s;
+      }
+      main > :nth-child(2) {
+        animation-delay: 0.14s;
+      }
+      main > :nth-child(3) {
+        animation-delay: 0.2s;
+      }
+      main > :nth-child(4) {
+        animation-delay: 0.26s;
+      }
+      main > :nth-child(5) {
+        animation-delay: 0.32s;
+      }
+      main > :nth-child(n + 6) {
+        animation-delay: 0.38s;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .brand-mark {
+        flex: 0 0 auto;
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #fff;
+        font-size: 1.25rem;
+        font-weight: 700;
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+        animation: glow 3.4s ease-in-out infinite;
       }
       h1 {
         margin: 0;
-        font-size: 1.25rem;
+        font-size: 1.2rem;
+        letter-spacing: -0.01em;
+      }
+      .brand-sub {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 0.76rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
       }
       p {
         margin: 12px 0;
@@ -45,42 +284,154 @@
         line-height: 1.55;
         font-size: 0.9rem;
       }
+      .lede {
+        margin-top: 20px;
+      }
       label {
         display: block;
         margin: 20px 0 6px;
         color: var(--muted);
         font-size: 0.85rem;
       }
+      .field {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
       input {
         width: 100%;
-        padding: 12px;
-        border: 1px solid var(--border);
+        padding: 12px 74px 12px 12px;
+        border: 1px solid var(--field-border);
         border-radius: 10px;
-        background: #0d131b;
+        background: var(--field);
         color: var(--text);
         font: inherit;
+        transition:
+          border-color 0.2s ease,
+          box-shadow 0.2s ease,
+          background-color 0.35s ease;
       }
       input:focus {
-        outline: 2px solid var(--accent);
-        outline-offset: 1px;
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px
+          color-mix(in srgb, var(--accent) 26%, transparent);
       }
-      button {
+      .reveal {
+        position: absolute;
+        right: 6px;
+        padding: 5px 9px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.74rem;
+        cursor: pointer;
+        transition:
+          color 0.2s ease,
+          background-color 0.2s ease;
+      }
+      .reveal:hover {
+        color: var(--text);
+        background: color-mix(in srgb, var(--accent) 16%, transparent);
+      }
+      button[type="submit"] {
+        position: relative;
         width: 100%;
-        margin-top: 18px;
+        margin-top: 20px;
         padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
         border: 0;
         border-radius: 10px;
-        background: var(--accent);
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
         color: #fff;
         font: inherit;
         font-weight: 600;
         cursor: pointer;
+        overflow: hidden;
+        box-shadow: 0 10px 26px -12px
+          color-mix(in srgb, var(--accent) 80%, transparent);
+        transition:
+          transform 0.18s ease,
+          box-shadow 0.18s ease,
+          filter 0.18s ease;
       }
-      button:hover {
-        filter: brightness(1.08);
+      button[type="submit"]::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          110deg,
+          transparent 25%,
+          var(--sheen) 50%,
+          transparent 75%
+        );
+        transform: translateX(-130%);
+        transition: transform 0.75s ease;
+      }
+      button[type="submit"]:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.06);
+        box-shadow: 0 16px 34px -14px
+          color-mix(in srgb, var(--accent) 85%, transparent);
+      }
+      button[type="submit"]:hover::after {
+        transform: translateX(130%);
+      }
+      button[type="submit"]:active {
+        transform: translateY(0) scale(0.985);
+      }
+      button[type="submit"]:focus-visible {
+        outline: 2px solid var(--text);
+        outline-offset: 2px;
+      }
+      .spinner {
+        display: none;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      form.is-loading .spinner {
+        display: block;
+      }
+      form.is-loading button[type="submit"] {
+        cursor: progress;
       }
       .error {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        padding: 9px 11px;
+        border: 1px solid
+          color-mix(in srgb, var(--danger) 45%, transparent);
+        border-radius: 9px;
+        background: color-mix(in srgb, var(--danger) 12%, transparent);
         color: var(--danger);
+        font-size: 0.85rem;
+      }
+      .error::before {
+        content: "!";
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        width: 16px;
+        height: 16px;
+        margin-top: 1px;
+        border-radius: 50%;
+        background: currentColor;
+        color: var(--bg);
+        font-size: 0.68rem;
+        font-weight: 800;
+      }
+      .shake {
+        animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
       }
       .hint {
         font-size: 0.8rem;
@@ -89,58 +440,412 @@
         display: inline;
         padding: 2px 6px;
         border-radius: 6px;
-        background: #0d131b;
+        background: var(--code);
         color: var(--text);
         font-size: 0.82rem;
       }
       pre {
         overflow-x: auto;
         padding: 10px;
-        border: 1px solid var(--border);
+        border: 1px solid var(--card-border);
         border-radius: 8px;
-        background: #0d131b;
+        background: var(--code);
         color: var(--text);
         font-size: 0.78rem;
+        animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      @keyframes card-in {
+        from {
+          opacity: 0;
+          transform: translateY(18px) scale(0.97);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @keyframes glow {
+        0%,
+        100% {
+          box-shadow: 0 0 14px -2px
+            color-mix(in srgb, var(--accent) 45%, transparent);
+        }
+        50% {
+          box-shadow: 0 0 26px 2px
+            color-mix(in srgb, var(--accent-2) 55%, transparent);
+        }
+      }
+      @keyframes shake {
+        10%,
+        90% {
+          transform: translateX(-2px);
+        }
+        20%,
+        80% {
+          transform: translateX(4px);
+        }
+        30%,
+        50%,
+        70% {
+          transform: translateX(-6px);
+        }
+        40%,
+        60% {
+          transform: translateX(6px);
+        }
+      }
+      @keyframes drift-a {
+        0%,
+        100% {
+          transform: translate3d(0, 0, 0) scale(1);
+        }
+        50% {
+          transform: translate3d(6vmax, 4vmax, 0) scale(1.1);
+        }
+      }
+      @keyframes drift-b {
+        0%,
+        100% {
+          transform: translate3d(0, 0, 0) scale(1);
+        }
+        50% {
+          transform: translate3d(-5vmax, -6vmax, 0) scale(1.08);
+        }
+      }
+      @keyframes drift-c {
+        0%,
+        100% {
+          transform: translate3d(0, 0, 0) scale(1);
+        }
+        50% {
+          transform: translate3d(-4vmax, -3vmax, 0) scale(1.12);
+        }
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+      @media (max-width: 480px) {
+        body {
+          padding: 76px 16px 24px;
+        }
+        main {
+          padding: 24px 20px;
+        }
       }
     </style>
   </head>
   <body>
+    <div class="backdrop" aria-hidden="true">
+      <span class="orb orb-a"></span>
+      <span class="orb orb-b"></span>
+      <span class="orb orb-c"></span>
+    </div>
+
+    <div class="corner-controls">
+      <select
+        id="language-select"
+        class="lang-select"
+        aria-label="ภาษา"
+        data-i18n-aria-label="login.language"
+      >
+        <option value="th">ไทย</option>
+        <option value="en">English</option>
+      </select>
+      <button
+        type="button"
+        id="theme-toggle"
+        class="icon-button"
+        aria-label="สลับธีม"
+        title="สลับธีม"
+        data-i18n-aria-label="login.theme"
+        data-i18n-title="login.theme"
+      >
+        ☾
+      </button>
+    </div>
+
     <main>
-      <h1>AI Control Center</h1>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">⌁</span>
+        <div>
+          <h1>AI Control Center</h1>
+          <span class="brand-sub" data-i18n="login.subtitle"
+            >ศูนย์ควบคุม AI ส่วนตัว</span
+          >
+        </div>
+      </div>
+
       {% if not configured %}
-      <p class="error">ยังไม่ได้ตั้งรหัสผ่านสำหรับเข้าเว็บ</p>
-      <p>ตั้งค่าในไฟล์ <code>.env</code> แล้วรีสตาร์ตเซิร์ฟเวอร์</p>
+      <p class="error" data-i18n-error="ยังไม่ได้ตั้งรหัสผ่านสำหรับเข้าเว็บ">
+        ยังไม่ได้ตั้งรหัสผ่านสำหรับเข้าเว็บ
+      </p>
+      <p>
+        <span data-i18n="login.setupPrefix">ตั้งค่าในไฟล์ </span
+        ><code>.env</code>
+        <span data-i18n="login.setupSuffix"> แล้วรีสตาร์ตเซิร์ฟเวอร์</span>
+      </p>
       <pre>AI_WEB_PASSWORD=รหัสผ่านที่ต้องการ</pre>
-      <p>หรือใช้ password hash (แนะนำเมื่อไฟล์ .env อาจถูกอ่าน):</p>
+      <p data-i18n="login.orHash">
+        หรือใช้ password hash (แนะนำเมื่อไฟล์ .env อาจถูกอ่าน):
+      </p>
       <pre>python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('รหัสผ่าน'))"</pre>
       <pre>AI_WEB_PASSWORD_HASH=...</pre>
-      <p class="hint">
+      <p class="hint" data-i18n="login.failClosed">
         จนกว่าจะตั้งรหัสผ่าน ระบบจะไม่ให้เข้าใช้งานจากทุกช่องทาง
       </p>
       {% else %}
-      <p>กรอกรหัสผ่านเพื่อเข้าใช้งานระบบ</p>
-      <form method="post" action="/login">
+      <p class="lede" data-i18n="login.lede">กรอกรหัสผ่านเพื่อเข้าใช้งานระบบ</p>
+      <form method="post" action="/login" autocomplete="on">
         <input
           type="hidden"
           name="csrf_token"
           value="{{ csrf_token() }}"
         />
         <input type="hidden" name="next" value="{{ next_url }}" />
-        <label for="password">รหัสผ่าน</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autocomplete="current-password"
-          required
-          autofocus
-        />
+        <label for="password" data-i18n="login.password">รหัสผ่าน</label>
+        <div class="field">
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            autofocus
+          />
+          <button
+            type="button"
+            id="toggle-password"
+            class="reveal"
+            aria-pressed="false"
+            data-i18n="login.show"
+          >
+            แสดง
+          </button>
+        </div>
         {% if error %}
-        <p class="error">{{ error }}</p>
+        <p class="error shake" data-i18n-error="{{ error }}">{{ error }}</p>
         {% endif %}
-        <button type="submit">เข้าสู่ระบบ</button>
+        <button type="submit">
+          <span data-i18n="login.submit">เข้าสู่ระบบ</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
       </form>
       {% endif %}
     </main>
+
+    <script>
+      (function () {
+        var LANGUAGE_KEY = "ai-control-center-language";
+        var THEME_KEY = "ai-control-center-theme";
+        var SUPPORTED_LANGUAGES = ["th", "en"];
+
+        var I18N = {
+          th: {
+            "doc.title": "เข้าสู่ระบบ · AI Control Center",
+            "login.subtitle": "ศูนย์ควบคุม AI ส่วนตัว",
+            "login.lede": "กรอกรหัสผ่านเพื่อเข้าใช้งานระบบ",
+            "login.password": "รหัสผ่าน",
+            "login.submit": "เข้าสู่ระบบ",
+            "login.show": "แสดง",
+            "login.hide": "ซ่อน",
+            "login.loading": "กำลังเข้าสู่ระบบ",
+            "login.theme": "สลับธีม",
+            "login.language": "ภาษา",
+            "login.setupPrefix": "ตั้งค่าในไฟล์ ",
+            "login.setupSuffix": " แล้วรีสตาร์ตเซิร์ฟเวอร์",
+            "login.orHash":
+              "หรือใช้ password hash (แนะนำเมื่อไฟล์ .env อาจถูกอ่าน):",
+            "login.failClosed":
+              "จนกว่าจะตั้งรหัสผ่าน ระบบจะไม่ให้เข้าใช้งานจากทุกช่องทาง",
+            "error.notConfigured": "ยังไม่ได้ตั้งรหัสผ่านสำหรับเข้าเว็บ",
+            "error.csrf": "เซสชันหมดอายุ กรุณาลองใหม่อีกครั้ง",
+            "error.token": "โทเคนความปลอดภัยไม่ถูกต้อง กรุณาใหม่",
+            "error.rate":
+              "พยายามเข้าสู่ระบบหลายครั้งเกินไป กรุณารอ 5 นาที",
+            "error.password": "รหัสผ่านไม่ถูกต้อง",
+          },
+          en: {
+            "doc.title": "Sign in · AI Control Center",
+            "login.subtitle": "Private AI control center",
+            "login.lede": "Enter your password to use the system.",
+            "login.password": "Password",
+            "login.submit": "Sign in",
+            "login.show": "Show",
+            "login.hide": "Hide",
+            "login.loading": "Signing in",
+            "login.theme": "Toggle theme",
+            "login.language": "Language",
+            "login.setupPrefix": "Set it in the ",
+            "login.setupSuffix": " file, then restart the server.",
+            "login.orHash":
+              "Or use a password hash (recommended when .env may be readable):",
+            "login.failClosed":
+              "Until a password is configured, the system stays closed to every client.",
+            "error.notConfigured": "No password has been set for this web app",
+            "error.csrf": "Session expired. Please try again.",
+            "error.token": "Invalid security token. Please try again.",
+            "error.rate": "Too many login attempts. Please wait 5 minutes.",
+            "error.password": "Incorrect password",
+          },
+        };
+
+        /* Map the Thai strings the server may return to translation keys. */
+        var SERVER_ERROR_KEYS = {
+          "ยังไม่ได้ตั้งรหัสผ่านสำหรับเข้าเว็บ": "error.notConfigured",
+          "เซสชันหมดอายุ กรุณาลองใหม่อีกครั้ง": "error.csrf",
+          "โทเคนความปลอดภัยไม่ถูกต้อง กรุณาใหม่": "error.token",
+          "พยายามเข้าสู่ระบบหลายครั้งเกินไป กรุณารอ 5 นาที": "error.rate",
+          "รหัสผ่านไม่ถูกต้อง": "error.password",
+        };
+
+        function readStorage(key) {
+          try {
+            return localStorage.getItem(key);
+          } catch (error) {
+            return null;
+          }
+        }
+
+        function writeStorage(key, value) {
+          try {
+            localStorage.setItem(key, value);
+          } catch (error) {
+            /* Private mode or blocked storage: keep the in-memory choice. */
+          }
+        }
+
+        var savedLanguage = readStorage(LANGUAGE_KEY);
+        var currentLanguage = SUPPORTED_LANGUAGES.indexOf(savedLanguage) >= 0
+          ? savedLanguage
+          : "th";
+
+        function t(key) {
+          var dictionary = I18N[currentLanguage] || I18N.th;
+          return dictionary[key] !== undefined ? dictionary[key] : I18N.th[key] || key;
+        }
+
+        var passwordInput = document.getElementById("password");
+        var togglePassword = document.getElementById("toggle-password");
+        var languageSelect = document.getElementById("language-select");
+        var themeToggle = document.getElementById("theme-toggle");
+        var form = document.querySelector("form");
+
+        function applyLanguage() {
+          document.documentElement.lang = currentLanguage;
+          document.title = t("doc.title");
+          document.querySelectorAll("[data-i18n]").forEach(function (element) {
+            element.textContent = t(element.dataset.i18n);
+          });
+          document
+            .querySelectorAll("[data-i18n-title]")
+            .forEach(function (element) {
+              element.title = t(element.dataset.i18nTitle);
+            });
+          document
+            .querySelectorAll("[data-i18n-aria-label]")
+            .forEach(function (element) {
+              element.setAttribute(
+                "aria-label",
+                t(element.dataset.i18nAriaLabel)
+              );
+            });
+          document
+            .querySelectorAll("[data-i18n-error]")
+            .forEach(function (element) {
+              var key = SERVER_ERROR_KEYS[element.dataset.i18nError];
+              if (key) element.textContent = t(key);
+            });
+          if (togglePassword) {
+            togglePassword.textContent = t(
+              togglePassword.getAttribute("aria-pressed") === "true"
+                ? "login.hide"
+                : "login.show"
+            );
+          }
+          if (languageSelect) languageSelect.value = currentLanguage;
+        }
+
+        function applyTheme(theme) {
+          document.documentElement.dataset.theme = theme;
+          if (themeToggle) {
+            themeToggle.textContent = theme === "light" ? "☀" : "☾";
+          }
+        }
+
+        if (languageSelect) {
+          languageSelect.value = currentLanguage;
+          languageSelect.addEventListener("change", function (event) {
+            currentLanguage =
+              SUPPORTED_LANGUAGES.indexOf(event.target.value) >= 0
+                ? event.target.value
+                : "th";
+            writeStorage(LANGUAGE_KEY, currentLanguage);
+            applyLanguage();
+          });
+        }
+
+        if (themeToggle) {
+          applyTheme(document.documentElement.dataset.theme || "dark");
+          themeToggle.addEventListener("click", function () {
+            var next =
+              document.documentElement.dataset.theme === "light"
+                ? "dark"
+                : "light";
+            applyTheme(next);
+            writeStorage(THEME_KEY, next);
+          });
+        }
+
+        if (togglePassword && passwordInput) {
+          togglePassword.addEventListener("click", function () {
+            var revealed = passwordInput.type === "password";
+            passwordInput.type = revealed ? "text" : "password";
+            togglePassword.setAttribute(
+              "aria-pressed",
+              revealed ? "true" : "false"
+            );
+            togglePassword.textContent = t(
+              revealed ? "login.hide" : "login.show"
+            );
+            passwordInput.focus();
+          });
+        }
+
+        if (form) {
+          form.addEventListener("submit", function () {
+            form.classList.add("is-loading");
+            var submit = form.querySelector('button[type="submit"]');
+            if (submit) {
+              submit.setAttribute("aria-busy", "true");
+              var label = submit.querySelector("[data-i18n]");
+              if (label) label.textContent = t("login.loading");
+            }
+          });
+        }
+
+        applyLanguage();
+      })();
+    </script>
   </body>
 </html>
