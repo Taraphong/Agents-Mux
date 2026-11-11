@@ -47,7 +47,7 @@ PENDING_TOOL_REQUESTS: dict[str, dict[str, Any]] = {}
 PENDING_APPROVAL_LOCK = threading.Lock()
 APPROVAL_TTL_SECONDS = 15 * 60
 MAX_PENDING_APPROVALS = 50
-APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command", "create_schedule", "update_schedule"}
+APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command", "create_skill", "create_schedule", "update_schedule"}
 SCHEDULE_LOCK_FILE = Path(f"{SCHEDULE_FILE}.lock")
 SCHEDULE_CONTEXT_MESSAGES = 40
 SCHEDULE_RUNNING: set[str] = set()
@@ -143,11 +143,11 @@ def log_event(event: str, message: str, **details: Any) -> None:
     for key, value in details.items():
         if key.lower() in {"api_key", "authorization", "token", "content"}:
             continue
-        safe_details[key] = str(value)[:500]
+        safe_details[key] = redact_secrets(str(value))[:500]
     record = {
         "time": datetime.now().astimezone().isoformat(timespec="seconds"),
         "event": str(event)[:60],
-        "message": str(message)[:500],
+        "message": redact_secrets(str(message))[:500],
         "details": safe_details,
     }
     try:
@@ -392,12 +392,17 @@ def execute_schedule(job: dict[str, Any]) -> None:
                 {"role": "assistant", "content": answer, "duration_ms": duration_ms, "usage": usage, "schedule_id": job["id"]},
             ],
         })
-        send_discord_schedule_result(job, answer)
+        try:
+            send_discord_schedule_result(job, answer)
+        except Exception as exc:
+            # The answer is already saved in history, so a Discord delivery
+            # problem must not mark the AI run itself as failed.
+            log_event("schedule.discord_error", f"ส่งผลงานตามเวลา {job['name']} ไป Discord ไม่สำเร็จ", job=job["id"], error=str(exc))
         update_schedule(job["id"], last_status="สำเร็จ", last_error="", last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
         log_event("schedule.success", f"งานตามเวลา {job['name']} สำเร็จ", job=job["id"], duration_ms=duration_ms)
     except Exception as exc:
         log_event("schedule.error", f"งานตามเวลา {job.get('name', job.get('id', ''))} ล้มเหลว", error=str(exc))
-        update_schedule(job["id"], last_status="ล้มเหลว", last_error=str(exc)[:500], last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+        update_schedule(job["id"], last_status="ล้มเหลว", last_error=redact_secrets(str(exc))[:500], last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
     finally:
         job_id = job.get("id") if isinstance(job, dict) else None
         if job_id:
@@ -601,7 +606,12 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         path = skill_path(skill_name)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content.strip() + "\n", encoding="utf-8")
-        result = {"tool": name, "name": path.parent.name, "path": str(path.relative_to(PROJECT_ROOT))}
+        try:
+            display_path = str(path.relative_to(PROJECT_ROOT))
+        except ValueError:
+            # AI_WEB_SKILLS_DIR may point outside the project; report it as is.
+            display_path = str(path)
+        result = {"tool": name, "name": path.parent.name, "path": display_path}
         log_event("tool.success", f"สร้างสกิล {path.parent.name} สำเร็จ", tool=name, path=result["path"])
         return result
     if name == "create_schedule":
@@ -773,6 +783,19 @@ def redact_terminal_output(text: str, secrets_found: list[str]) -> str:
     for secret in secrets_found:
         text = text.replace(secret, "••••••••")
     return text
+
+
+SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
+
+
+def redact_secrets(text: str) -> str:
+    """Remove API keys and tokens from text before it is returned or logged."""
+    value = SECRET_QUERY_PATTERN.sub(r"\1••••••••", str(text))
+    try:
+        secrets_found = terminal_secret_values()
+    except (OSError, ValueError):
+        secrets_found = []
+    return redact_terminal_output(value, secrets_found)
 
 
 def read_terminal_capture(handle: Any) -> tuple[str, bool]:
@@ -1060,9 +1083,11 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
         # the old record still validate against it.
         record_generation = existing_record.get("generation")
     path = existing or HISTORY_ROOT / now.strftime("%Y-%m-%d") / f"{now.strftime('%H-%M-%S')}_{conversation_id}.json"
+    raw_title = payload.get("title")
+    title = raw_title.strip()[:100] if isinstance(raw_title, str) and raw_title.strip() else "บทสนทนาใหม่"
     record = {
         "id": conversation_id,
-        "title": (payload.get("title") or "บทสนทนาใหม่")[:100],
+        "title": title,
         "created_at": created_at,
         "updated_at": now.isoformat(timespec="seconds"),
         "locked": bool(existing_record.get("locked", False)),
@@ -1122,6 +1147,24 @@ def append_history_messages(conversation_id: str, new_messages: list[dict[str, A
             record["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
             _write_history_record(path, record)
         return record
+
+
+def save_discord_turn(conversation_id: str, title: str, context_messages: list[dict[str, Any]]) -> None:
+    """Persist only the newest Discord exchange so earlier history survives.
+
+    The Discord context is a bounded deque, so saving the whole deque would
+    truncate the conversation record on every reply.
+    """
+    turn = [
+        message for message in context_messages[-2:]
+        if isinstance(message, dict) and message.get("role") in {"user", "assistant"}
+    ]
+    if not turn:
+        return
+    if load_history_record(conversation_id):
+        append_history_messages(conversation_id, turn)
+        return
+    save_history({"id": conversation_id, "title": title, "messages": list(context_messages)})
 
 
 def load_history_record(conversation_id: str) -> dict[str, Any]:
@@ -1423,6 +1466,13 @@ def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: st
     return result
 
 
+def is_openai_reasoning_model(provider: str, model: str) -> bool:
+    """Return whether an OpenAI model is a reasoning model (o-series or GPT-5)."""
+    if normalize_provider(provider) != "openai":
+        return False
+    return bool(re.match(r"^(?:o[0-9]|gpt-5)", str(model or "").strip().lower()))
+
+
 def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     """Send one chat completion request to an OpenAI-compatible endpoint."""
     key = get_api_key(settings["provider"], settings)
@@ -1430,14 +1480,20 @@ def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key")
 
     base_url = get_base_url(settings["provider"], settings)
-    payload = {
-        "model": settings["model"],
+    model = str(settings["model"])
+    reasoning_model = is_openai_reasoning_model(settings["provider"], model)
+    payload: dict[str, Any] = {
+        "model": model,
         "messages": messages,
-        "temperature": settings["temperature"],
-        "max_tokens": settings["max_tokens"],
-        "top_p": settings["top_p"],
     }
-    if settings.get("thinking_level") in {"low", "medium", "high"} and (settings["model"].startswith(("o", "gpt-5"))):
+    if reasoning_model:
+        # Reasoning models reject max_tokens, temperature, and top_p.
+        payload["max_completion_tokens"] = settings["max_tokens"]
+    else:
+        payload["temperature"] = settings["temperature"]
+        payload["max_tokens"] = settings["max_tokens"]
+        payload["top_p"] = settings["top_p"]
+    if reasoning_model and settings.get("thinking_level") in {"low", "medium", "high"}:
         payload["reasoning_effort"] = settings["thinking_level"]
     response = requests.post(
         f"{base_url}/chat/completions",
@@ -1646,7 +1702,7 @@ def start_discord_bot() -> None:
         """Run one agent turn while keeping a short per-channel conversation."""
         with DISCORD_CONTEXT_LOCK:
             context = DISCORD_CONTEXTS.setdefault(context_key, deque(maxlen=12))
-            context.append({"role": "user", "content": content})
+            context.append({"role": "user", "content": content, "message_id": str(uuid.uuid4())})
             messages = list(context)
         try:
             settings_for_chat = load_settings()
@@ -1708,14 +1764,18 @@ def start_discord_bot() -> None:
                 ])
                 answer, _usage = await asyncio.to_thread(call_provider, messages, settings_for_chat)
             with DISCORD_CONTEXT_LOCK:
-                DISCORD_CONTEXTS[context_key].append({"role": "assistant", "content": answer})
+                DISCORD_CONTEXTS[context_key].append({
+                    "role": "assistant",
+                    "content": answer,
+                    "message_id": str(uuid.uuid4()),
+                })
                 conversation_id = DISCORD_CONVERSATION_IDS.setdefault(context_key, str(uuid.uuid4()))
                 history_messages = list(DISCORD_CONTEXTS[context_key])
-            save_history({
-                "id": conversation_id,
-                "title": f"Discord · {channel_title}"[:100],
-                "messages": history_messages,
-            })
+            save_discord_turn(
+                conversation_id,
+                f"Discord · {channel_title}"[:100],
+                history_messages,
+            )
             log_event("discord.message", "ตอบข้อความจาก Discord แล้ว", channel=context_key)
             if fallback_used:
                 log_event("discord.fallback", "ใช้ fallback model สำหรับ Discord", model=fallback_used, channel=context_key)
@@ -2340,7 +2400,7 @@ def models_get():
         return jsonify({"provider": provider, "models": models, "source": "api"})
     except (requests.RequestException, RuntimeError, KeyError, TypeError) as exc:
         fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
-        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": str(exc)}), 502
+        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": redact_secrets(str(exc))}), 502
 
 
 @app.put("/api/settings")
@@ -2348,7 +2408,7 @@ def settings_put():
     """Persist editable settings, including the configured fallback provider."""
     body = request.get_json(silent=True) or {}
     current = load_settings()
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled"}
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -2417,10 +2477,10 @@ def settings_test():
                 detail = str((payload.get("error") or {}).get("message") or payload.get("message") or "")[:300]
             except ValueError:
                 detail = exc.response.text[:300]
-        message = detail or str(exc)
+        message = redact_secrets(detail or str(exc))
         return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: {message}"}), 502
     except (requests.RequestException, KeyError, IndexError, RuntimeError) as exc:
-        return jsonify({"ok": False, "provider": provider, "error": str(exc)}), 502
+        return jsonify({"ok": False, "provider": provider, "error": redact_secrets(str(exc))}), 502
 
 
 @app.post("/api/settings/reset")
@@ -2538,11 +2598,11 @@ def chat():
         if exc.response is not None and exc.response.status_code in {429, 503}:
             provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "ผู้ให้บริการ")
             return jsonify({"error": f"{provider_label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้งในอีกสักครู่ หรือเลือกโมเดลอื่น"}), 503
-        detail = exc.response.text[:500] if exc.response is not None else str(exc)
+        detail = redact_secrets(exc.response.text[:500] if exc.response is not None else str(exc))
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
-    except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError) as exc:
+    except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
         log_event("chat.error", "ประมวลผลข้อความไม่สำเร็จ", error=str(exc))
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": redact_secrets(str(exc))}), 500
 
 
 if os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower() in {"1", "true", "yes"}:
