@@ -36,6 +36,7 @@ SETTINGS_FILE = Path(os.getenv("AI_WEB_SETTINGS_FILE", ".app-settings.json"))
 HISTORY_ROOT = Path(os.getenv("AI_WEB_HISTORY_DIR", "history"))
 SCHEDULE_FILE = Path(os.getenv("AI_WEB_SCHEDULE_FILE", "scheduled-jobs.json"))
 SCHEDULE_LOCK = threading.Lock()
+HISTORY_LOCK = threading.Lock()
 PROJECT_ROOT = Path(__file__).resolve().parent
 SKILLS_ROOT = Path(os.getenv("AI_WEB_SKILLS_DIR", "skills"))
 TOOL_MAX_READ_BYTES = 200_000
@@ -382,6 +383,7 @@ def execute_schedule(job: dict[str, Any]) -> None:
             "id": conversation_id,
             "title": record.get("title") or f"⏰ {job['name']}",
             "created_at": record.get("created_at"),
+            "base_message_count": len(previous_messages),
             "messages": [
                 *previous_messages,
                 prompt_message,
@@ -956,6 +958,24 @@ def find_history_file(conversation_id: str) -> Path | None:
 
 def save_history(payload: dict[str, Any]) -> dict[str, Any]:
     """Create or update a conversation history file and return its record."""
+    with HISTORY_LOCK:
+        return _save_history_unlocked(payload)
+
+
+def _write_history_record(path: Path, record: dict[str, Any]) -> None:
+    """Write one history record atomically so readers never see a partial file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+
+def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
+    """Create or replace a history record while HISTORY_LOCK is held."""
     conversation_id = payload.get("id") or ""
     if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
         conversation_id = str(uuid.uuid4())
@@ -967,6 +987,32 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
             existing_record = json.loads(existing.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             existing_record = {}
+    messages = list(payload.get("messages") or [])
+    existing_messages = existing_record.get("messages") if isinstance(existing_record.get("messages"), list) else []
+    base_count = payload.get("base_message_count")
+    if isinstance(base_count, int) and not isinstance(base_count, bool) and 0 <= base_count <= len(existing_messages):
+        # The caller built its snapshot from the first base_count messages. Keep any
+        # messages appended or saved after that snapshot instead of overwriting them.
+        if len(messages) <= len(existing_messages) and all(
+            left == right for left, right in zip(messages, existing_messages)
+        ):
+            # A retry of an already-merged snapshot must not append the tail twice.
+            messages = list(existing_messages)
+        else:
+            known_ids = {
+                message.get("message_id")
+                for message in messages
+                if isinstance(message, dict) and message.get("message_id")
+            }
+            for message in existing_messages[base_count:]:
+                message_id = message.get("message_id") if isinstance(message, dict) else None
+                if message_id and message_id in known_ids:
+                    continue
+                if message in messages:
+                    continue
+                messages.append(message)
+                if message_id:
+                    known_ids.add(message_id)
     created_at = payload.get("created_at") or now.isoformat(timespec="seconds")
     path = existing or HISTORY_ROOT / now.strftime("%Y-%m-%d") / f"{now.strftime('%H-%M-%S')}_{conversation_id}.json"
     record = {
@@ -976,11 +1022,53 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
         "updated_at": now.isoformat(timespec="seconds"),
         "locked": bool(existing_record.get("locked", False)),
         "pinned": bool(existing_record.get("pinned", False)),
-        "messages": payload.get("messages", []),
+        "messages": messages,
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    _write_history_record(path, record)
     return record
+
+
+def append_history_messages(conversation_id: str, new_messages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Append messages to an existing conversation, or return None if it is gone.
+
+    The read-modify-write happens under HISTORY_LOCK, so an append can never
+    recreate a conversation deleted at the same time. Messages carrying a
+    message_id are appended idempotently.
+    """
+    if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+        return None
+    with HISTORY_LOCK:
+        path = find_history_file(conversation_id)
+        if path is None or not path.exists():
+            return None
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(record, dict):
+            return None
+        record_messages = record.get("messages") if isinstance(record.get("messages"), list) else []
+        known_ids = {
+            message.get("message_id")
+            for message in record_messages
+            if isinstance(message, dict) and message.get("message_id")
+        }
+        added = False
+        for message in new_messages:
+            if not isinstance(message, dict):
+                continue
+            message_id = message.get("message_id")
+            if message_id and message_id in known_ids:
+                continue
+            record_messages.append(message)
+            if message_id:
+                known_ids.add(message_id)
+            added = True
+        if added:
+            record["messages"] = record_messages
+            record["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
+            _write_history_record(path, record)
+        return record
 
 
 def load_history_record(conversation_id: str) -> dict[str, Any]:
@@ -2129,36 +2217,51 @@ def history_get(conversation_id: str):
 @app.patch("/api/history/<conversation_id>")
 def history_update(conversation_id: str):
     """Rename, lock, or pin one conversation record."""
-    path = find_history_file(conversation_id)
-    if not path or not path.exists():
-        return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
-    record = json.loads(path.read_text(encoding="utf-8"))
-    body = request.get_json(silent=True) or {}
-    if record.get("locked") and "title" in body:
-        return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนเปลี่ยนชื่อ"}), 423
-    if "title" in body:
-        title = str(body["title"]).strip()
-        if title:
-            record["title"] = title[:100]
-    if "locked" in body:
-        record["locked"] = bool(body["locked"])
-    if "pinned" in body:
-        record["pinned"] = bool(body["pinned"])
-    path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
-    return jsonify(record)
+    with HISTORY_LOCK:
+        path = find_history_file(conversation_id)
+        if not path or not path.exists():
+            return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+        record = json.loads(path.read_text(encoding="utf-8"))
+        body = request.get_json(silent=True) or {}
+        if record.get("locked") and "title" in body:
+            return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนเปลี่ยนชื่อ"}), 423
+        if "title" in body:
+            title = str(body["title"]).strip()
+            if title:
+                record["title"] = title[:100]
+        if "locked" in body:
+            record["locked"] = bool(body["locked"])
+        if "pinned" in body:
+            record["pinned"] = bool(body["pinned"])
+        _write_history_record(path, record)
+        return jsonify(record)
 
 
 @app.delete("/api/history/<conversation_id>")
 def history_delete(conversation_id: str):
     """Delete one conversation record unless it is locked."""
-    path = find_history_file(conversation_id)
-    if not path or not path.exists():
+    with HISTORY_LOCK:
+        path = find_history_file(conversation_id)
+        if not path or not path.exists():
+            return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if record.get("locked"):
+            return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนลบ"}), 423
+        path.unlink()
+        return jsonify({"ok": True})
+
+
+@app.post("/api/history/<conversation_id>/messages")
+def history_append(conversation_id: str):
+    """Append messages to a conversation that still exists."""
+    body = request.get_json(silent=True) or {}
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
+    record = append_history_messages(conversation_id, messages)
+    if record is None:
         return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
-    record = json.loads(path.read_text(encoding="utf-8"))
-    if record.get("locked"):
-        return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนลบ"}), 423
-    path.unlink()
-    return jsonify({"ok": True})
+    return jsonify(record)
 
 
 @app.post("/api/history")
