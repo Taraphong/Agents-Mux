@@ -2598,7 +2598,7 @@ def chat():
         if exc.response is not None and exc.response.status_code in {429, 503}:
             provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "ผู้ให้บริการ")
             return jsonify({"error": f"{provider_label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้งในอีกสักครู่ หรือเลือกโมเดลอื่น"}), 503
-        detail = redact_secrets(exc.response.text[:500] if exc.response is not None else str(exc))
+        detail = redact_secrets(exc.response.text)[:500] if exc.response is not None else redact_secrets(str(exc))
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
         log_event("chat.error", "ประมวลผลข้อความไม่สำเร็จ", error=str(exc))
