@@ -4755,7 +4755,7 @@
                 pendingHistoryAppends.delete(targetId);
               }
             } else {
-              // Conflict – keep the entry as‑is so the next retry sends the same batch.
+              queued.unshift(...batch);
             }
           }
         })();
