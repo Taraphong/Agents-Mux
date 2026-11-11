@@ -2506,9 +2506,11 @@ def chat():
     if not messages or not isinstance(messages, list):
         return jsonify({"error": "กรุณาส่งข้อความ"}), 400
 
+    provider = "openai"
     try:
         log_event("chat.start", "เริ่มประมวลผลข้อความ", message_count=len(messages))
         settings = load_settings()
+        provider = str(settings.get("provider", "openai")).lower()
         request_skills = body.get("skills")
         if isinstance(request_skills, list):
             # Slash commands can apply a skill to one turn without changing
