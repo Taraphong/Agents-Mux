@@ -5651,6 +5651,7 @@
       let currentAuthSessions = [];
       let currentAuthConfirmed = false;
       let currentAuthOffline = "";
+      let authLoadSequence = 0;
       function formatAuthTime(value) {
         if (!value) return t("auth.unknownTime");
         const parsed = new Date(value);
@@ -5658,20 +5659,22 @@
           ? t("auth.unknownTime")
           : parsed.toLocaleString();
       }
-      function renderAuthSessions(status = null, items = null, error = "") {
+      function renderAuthSessions(status = null, items = null, offlineKey = "") {
+        const fromLoad =
+          Boolean(status) || Array.isArray(items) || Boolean(offlineKey);
         if (status) {
           currentAuthStatus = status;
           currentAuthConfirmed = typeof status.enabled === "boolean";
         }
         if (Array.isArray(items)) currentAuthSessions = items;
-        currentAuthOffline = error;
+        if (fromLoad) currentAuthOffline = offlineKey;
         const container = $("auth-sessions");
         const keyButton = $("auth-generate-key");
         container.innerHTML = "";
         if (currentAuthOffline) {
           const failure = document.createElement("p");
           failure.className = "hint";
-          failure.textContent = currentAuthOffline;
+          failure.textContent = t(currentAuthOffline);
           container.appendChild(failure);
         }
         if (currentAuthConfirmed && currentAuthStatus.enabled === false) {
@@ -5719,13 +5722,14 @@
         });
       }
       async function loadAuthSessions() {
+        const loadId = ++authLoadSequence;
         try {
           const [statusResponse, sessionsResponse] = await Promise.all([
             fetch("/api/auth/status"),
             fetch("/api/auth/sessions"),
           ]);
           if (!statusResponse.ok || !sessionsResponse.ok) {
-            throw new Error(t("auth.offline"));
+            throw new Error("auth.offline");
           }
           const [status, data] = await Promise.all([
             statusResponse.json(),
@@ -5735,11 +5739,13 @@
             typeof status.enabled !== "boolean" ||
             !Array.isArray(data.items)
           ) {
-            throw new Error(t("auth.offline"));
+            throw new Error("auth.offline");
           }
+          if (loadId !== authLoadSequence) return;
           renderAuthSessions(status, data.items);
         } catch (error) {
-          renderAuthSessions(null, null, t("auth.offline"));
+          if (loadId !== authLoadSequence) return;
+          renderAuthSessions(null, null, "auth.offline");
         }
       }
       async function createPairingKey() {
