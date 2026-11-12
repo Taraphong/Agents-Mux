@@ -99,12 +99,64 @@ warn_if_stale() {
   done
 }
 
-tls_scheme() {
-  if [ -f "$APP_DIR/.env" ] && grep -Eq '^[[:space:]]*AI_WEB_TLS_(CERT|KEY)=[^[:space:]]' "$APP_DIR/.env"; then
-    echo "https"
+# Read one KEY=value entry from .env the way python-dotenv does for the common
+# cases: the last entry wins, surrounding quotes are removed, and an unquoted
+# value stops at a " #" comment.
+dotenv_value() {
+  local key="$1" line value
+  [ -f "$APP_DIR/.env" ] || return 0
+  line="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=" "$APP_DIR/.env" 2>/dev/null | tail -n 1)"
+  [ -n "$line" ] || return 0
+  value="${line#*=}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  case "$value" in
+    \"*\") value="${value#\"}"; value="${value%%\"*}" ;;
+    \'*\') value="${value#\'}"; value="${value%%\'*}" ;;
+    *) value="${value%%[[:space:]]#*}" ;;
+  esac
+  printf '%s' "${value%"${value##*[![:space:]]}"}"
+}
+
+# Effective value app.py sees: an exported variable wins over .env because
+# python-dotenv does not override the environment. Quotes are not part of the
+# value, so a quoted empty string counts as empty.
+tls_config_value() {
+  local key="$1" value
+  if value="$(printenv "$key")"; then
+    :
   else
-    echo "http"
+    value="$(dotenv_value "$key")"
   fi
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  case "$value" in
+    \"*\") value="${value#\"}"; value="${value%\"}" ;;
+    \'*\') value="${value#\'}"; value="${value%\'}" ;;
+  esac
+  printf '%s' "$value"
+}
+
+# Match tls_configuration() in app.py, including its precedence: certificate
+# files first, then the adhoc certificate, otherwise plain HTTP.
+tls_scheme() {
+  local cert key adhoc
+  cert="$(tls_config_value AI_WEB_TLS_CERT)"
+  key="$(tls_config_value AI_WEB_TLS_KEY)"
+  if [ -n "$cert" ] || [ -n "$key" ]; then
+    # app.py refuses to start when only one of the pair is set.
+    if [ -n "$cert" ] && [ -n "$key" ]; then
+      echo "https"
+    else
+      echo "http"
+    fi
+    return 0
+  fi
+  adhoc="$(tls_config_value AI_WEB_TLS_ADHOC)"
+  case "$(printf '%s' "$adhoc" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) echo "https" ;;
+    *) echo "http" ;;
+  esac
 }
 
 status_line() {
