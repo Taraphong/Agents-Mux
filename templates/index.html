@@ -3112,6 +3112,7 @@
           "auth.disabled":
             "Web auth ปิดอยู่ (AI_WEB_AUTH=off) — ไม่ต้องจับคู่อุปกรณ์",
           "auth.offline": "โหลดสถานะอุปกรณ์ไม่สำเร็จ",
+          "auth.logoutFailed": "ออกจากระบบไม่สำเร็จ กรุณาลองใหม่",
           "settings.save": "บันทึกการตั้งค่า",
           "settings.test": "ทดสอบการเชื่อมต่อ",
           "settings.reset": "รีเซ็ต",
@@ -3446,6 +3447,7 @@
           "auth.disabled":
             "Web auth is off (AI_WEB_AUTH=off) — no pairing required",
           "auth.offline": "Could not load device status",
+          "auth.logoutFailed": "Could not sign out. Please try again.",
           "settings.save": "Save settings",
           "settings.test": "Test connection",
           "settings.reset": "Reset",
@@ -5645,8 +5647,10 @@
           );
         }
       }
-      let currentAuthStatus = { enabled: true, authenticated: true };
+      let currentAuthStatus = { enabled: null, authenticated: false };
       let currentAuthSessions = [];
+      let currentAuthConfirmed = false;
+      let currentAuthOffline = "";
       function formatAuthTime(value) {
         if (!value) return t("auth.unknownTime");
         const parsed = new Date(value);
@@ -5654,25 +5658,38 @@
           ? t("auth.unknownTime")
           : parsed.toLocaleString();
       }
-      function renderAuthSessions(status = {}, items = []) {
-        currentAuthStatus = status || {};
-        currentAuthSessions = Array.isArray(items) ? items : [];
+      function renderAuthSessions(status = null, items = null, error = "") {
+        if (status) {
+          currentAuthStatus = status;
+          currentAuthConfirmed = typeof status.enabled === "boolean";
+        }
+        if (Array.isArray(items)) currentAuthSessions = items;
+        currentAuthOffline = error;
         const container = $("auth-sessions");
+        const keyButton = $("auth-generate-key");
         container.innerHTML = "";
-        if (status && status.enabled === false) {
-          $("auth-generate-key").disabled = true;
+        if (currentAuthOffline) {
+          const failure = document.createElement("p");
+          failure.className = "hint";
+          failure.textContent = currentAuthOffline;
+          container.appendChild(failure);
+        }
+        if (currentAuthConfirmed && currentAuthStatus.enabled === false) {
+          keyButton.disabled = true;
           const note = document.createElement("p");
           note.className = "hint";
           note.textContent = t("auth.disabled");
           container.appendChild(note);
           return;
         }
-        $("auth-generate-key").disabled = false;
+        keyButton.disabled = !currentAuthConfirmed || Boolean(currentAuthOffline);
         if (!currentAuthSessions.length) {
-          const empty = document.createElement("p");
-          empty.className = "hint";
-          empty.textContent = t("auth.empty");
-          container.appendChild(empty);
+          if (currentAuthConfirmed && !currentAuthOffline) {
+            const empty = document.createElement("p");
+            empty.className = "hint";
+            empty.textContent = t("auth.empty");
+            container.appendChild(empty);
+          }
           return;
         }
         currentAuthSessions.forEach((item) => {
@@ -5707,12 +5724,22 @@
             fetch("/api/auth/status"),
             fetch("/api/auth/sessions"),
           ]);
-          if (!sessionsResponse.ok) throw new Error(t("auth.offline"));
-          const status = await statusResponse.json();
-          const data = await sessionsResponse.json();
-          renderAuthSessions(status, data.items || []);
+          if (!statusResponse.ok || !sessionsResponse.ok) {
+            throw new Error(t("auth.offline"));
+          }
+          const [status, data] = await Promise.all([
+            statusResponse.json(),
+            sessionsResponse.json(),
+          ]);
+          if (
+            typeof status.enabled !== "boolean" ||
+            !Array.isArray(data.items)
+          ) {
+            throw new Error(t("auth.offline"));
+          }
+          renderAuthSessions(status, data.items);
         } catch (error) {
-          renderAuthSessions({ enabled: true }, []);
+          renderAuthSessions(null, null, t("auth.offline"));
         }
       }
       async function createPairingKey() {
@@ -5756,11 +5783,15 @@
       }
       async function authLogout() {
         try {
-          await fetch("/api/auth/logout", { method: "POST" });
+          const response = await fetch("/api/auth/logout", { method: "POST" });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || t("auth.logoutFailed"));
+          }
+          window.location.href = data.redirect || "/pair";
         } catch (error) {
-          /* still navigate so the pairing page can be offered again */
+          showNotice(error.message || t("auth.logoutFailed"), true);
         }
-        window.location.href = "/pair";
       }
       $("auth-generate-key").addEventListener("click", createPairingKey);
       $("auth-logout").addEventListener("click", authLogout);
@@ -6287,7 +6318,7 @@
         renderMessages();
         renderHistoryList(currentHistoryItems);
         renderSchedules(currentSchedules);
-        renderAuthSessions(currentAuthStatus, currentAuthSessions);
+        renderAuthSessions();
         renderLogs();
         updateTerminalUi();
         $("schedule-timezone").textContent =

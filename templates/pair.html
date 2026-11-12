@@ -236,7 +236,7 @@
         This web app requires a paired device. Generate a Pairing Key on the
         server, then enter it here. Each key is single-use.
       </p>
-      <form id="pair-form" autocomplete="off">
+      <form id="pair-form" method="post" autocomplete="off">
         <label>
           <span data-i18n="pair.keyLabel">Pairing Key</span>
           <input
@@ -339,8 +339,24 @@
       const languageSelect = document.getElementById("language-select");
       const themeToggle = document.getElementById("theme-toggle");
 
+      function readPreference(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function writePreference(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (error) {
+          /* preferences are best-effort; pairing still works without storage */
+        }
+      }
+
       function savedLanguage() {
-        const saved = localStorage.getItem(LANGUAGE_KEY);
+        const saved = readPreference(LANGUAGE_KEY);
         return SUPPORTED_LANGUAGES.includes(saved) ? saved : "en";
       }
       let language = savedLanguage();
@@ -403,20 +419,18 @@
         language = SUPPORTED_LANGUAGES.includes(event.target.value)
           ? event.target.value
           : "en";
-        localStorage.setItem(LANGUAGE_KEY, language);
+        writePreference(LANGUAGE_KEY, language);
         applyLanguage();
       });
 
       themeToggle.addEventListener("click", () => {
         const light =
           !document.documentElement.classList.contains("light-theme");
-        localStorage.setItem(THEME_KEY, light ? "light" : "dark");
+        writePreference(THEME_KEY, light ? "light" : "dark");
         applyTheme(light ? "light" : "dark");
       });
 
-      applyTheme(
-        localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark",
-      );
+      applyTheme(readPreference(THEME_KEY) === "light" ? "light" : "dark");
       applyLanguage();
 
       function groupKey(value) {

@@ -27,6 +27,7 @@ from collections import deque
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
 
@@ -87,6 +88,12 @@ AUTH_PAIRING_FAILURES: dict[str, list[float]] = {}
 AUTH_PAIRING_MAX_FAILURES = 8
 AUTH_PAIRING_FAILURE_WINDOW = 300
 AUTH_PUBLIC_PATHS = {"/pair", "/api/auth/pair", "/api/auth/status"}
+AUTH_TRUST_PROXY = os.getenv("AI_WEB_TRUST_PROXY", "").strip().lower() in {"1", "true", "yes", "on"}
+
+if AUTH_TRUST_PROXY:
+    # Honour X-Forwarded-Proto/Host when TLS terminates at a reverse proxy so
+    # request.is_secure (and the Secure session cookie) reflects the client.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 TOOL_INSTRUCTIONS = """
 คุณมีเครื่องมือจำกัดอยู่ในโฟลเดอร์โปรเจกต์เท่านั้น หากต้องอ่านไฟล์หรือดูรายการไฟล์ ให้ร้องขอด้วยรูปแบบนี้เพียงอย่างเดียว:
 <tool_call>{"name":"read_file","arguments":{"path":"app.py"}}</tool_call>
@@ -2280,6 +2287,12 @@ def hash_auth_token(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def no_store(response):
+    """Mark an identity-dependent response so proxies and browsers never cache it."""
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 def auth_now() -> datetime:
     """Return the current local time used for pairing/session timestamps."""
     return datetime.now().astimezone()
@@ -2505,7 +2518,7 @@ def pair_page():
 def auth_status():
     """Report whether this device is paired without exposing any secret."""
     session = current_auth_session() if AUTH_ENABLED else None
-    return jsonify({
+    return no_store(jsonify({
         "enabled": AUTH_ENABLED,
         "authenticated": bool(session) or not AUTH_ENABLED,
         "session": {
@@ -2515,7 +2528,7 @@ def auth_status():
             "last_seen_at": session.get("last_seen_at"),
             "expires_at": session.get("expires_at"),
         } if session else None,
-    })
+    }))
 
 
 @app.post("/api/auth/pair")
@@ -2567,7 +2580,7 @@ def auth_sessions_list():
             "current": item.get("id") == current.get("id"),
         } for item in state["sessions"]]
     items.sort(key=lambda item: str(item.get("last_seen_at") or ""), reverse=True)
-    return jsonify({"items": items, "auth_enabled": AUTH_ENABLED})
+    return no_store(jsonify({"items": items, "auth_enabled": AUTH_ENABLED}))
 
 
 @app.post("/api/auth/pairing-keys")
