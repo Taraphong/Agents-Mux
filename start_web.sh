@@ -99,8 +99,16 @@ warn_if_stale() {
   done
 }
 
+tls_scheme() {
+  if [ -f "$APP_DIR/.env" ] && grep -Eq '^[[:space:]]*AI_WEB_TLS_(CERT|KEY)=[^[:space:]]' "$APP_DIR/.env"; then
+    echo "https"
+  else
+    echo "http"
+  fi
+}
+
 status_line() {
-  echo "✅ Running (PID: $(pid_list)) — http://127.0.0.1:$PORT"
+  echo "✅ Running (PID: $(pid_list)) — $(tls_scheme)://127.0.0.1:$PORT"
 }
 
 start_server() {
