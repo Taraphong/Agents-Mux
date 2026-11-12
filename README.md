@@ -49,6 +49,16 @@ Open `http://127.0.0.1:5000` in a browser.
 - Configure additional options from the **Settings** menu in the web interface.
 - Available reasoning levels: `off`, `low`, `medium`, and `high`.
 
+### Device pairing (web auth)
+
+The web interface requires a paired device. Pairing keys are always generated on the server; the browser never creates one.
+
+- On the server, create a key with `python app.py --pairing-key` (or `./start_web.sh --pair`). The first start with no paired device prints a key automatically.
+- On the client, open `http://<termux-ip>:5000/pair` and enter the key. A valid key issues an `HttpOnly` session cookie, valid for `AI_WEB_SESSION_DAYS` (default 30).
+- Keys are single-use and expire after `AI_WEB_PAIRING_TTL_MINUTES` (default 30). Only SHA-256 hashes of keys and session tokens are stored, in `.app-auth.json`, which is excluded from Git.
+- Review, revoke, or create a key for another device in **Settings → Security and device pairing**. `python app.py --revoke-sessions` revokes every device.
+- `AI_WEB_AUTH=off` disables pairing and is meant only for a fully trusted network. Unpaired pages redirect to `/pair`; `/api/auth/status` stays reachable for health checks.
+
 ### Conversation History
 
 Conversations are stored by date and time in `history/YYYY-MM-DD/HH-MM-SS_<conversation-id>.json`.
