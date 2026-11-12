@@ -6,6 +6,8 @@
 #   startweb --start     Start the server if it is stopped
 #   startweb --restart   Stop and start the server (use after every deploy)
 #   startweb --stop      Stop the server
+#   startweb --pair      Generate a single-use Pairing Key (web auth)
+#   startweb --make-cert [ip]  Create a self-signed HTTPS certificate
 #
 # ติดตั้งเป็นคำสั่งสั้น (ทำครั้งเดียวบน Termux):
 #   ln -sf ~/ai-web/start_web.sh "$PREFIX/bin/startweb"
@@ -97,8 +99,68 @@ warn_if_stale() {
   done
 }
 
+# Read one KEY=value entry from .env the way python-dotenv does for the common
+# cases: the last entry wins, surrounding quotes are removed, and an unquoted
+# value stops at a " #" comment.
+dotenv_value() {
+  local key="$1" line value
+  [ -f "$APP_DIR/.env" ] || return 0
+  line="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=" "$APP_DIR/.env" 2>/dev/null | tail -n 1)"
+  [ -n "$line" ] || return 0
+  value="${line#*=}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  case "$value" in
+    \"*\") value="${value#\"}"; value="${value%%\"*}" ;;
+    \'*\') value="${value#\'}"; value="${value%%\'*}" ;;
+    *) value="${value%%[[:space:]]#*}" ;;
+  esac
+  printf '%s' "${value%"${value##*[![:space:]]}"}"
+}
+
+# Effective value app.py sees: an exported variable wins over .env because
+# python-dotenv does not override the environment. Quotes are not part of the
+# value, so a quoted empty string counts as empty.
+tls_config_value() {
+  local key="$1" value
+  if value="$(printenv "$key")"; then
+    :
+  else
+    value="$(dotenv_value "$key")"
+  fi
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  case "$value" in
+    \"*\") value="${value#\"}"; value="${value%\"}" ;;
+    \'*\') value="${value#\'}"; value="${value%\'}" ;;
+  esac
+  printf '%s' "$value"
+}
+
+# Match tls_configuration() in app.py, including its precedence: certificate
+# files first, then the adhoc certificate, otherwise plain HTTP.
+tls_scheme() {
+  local cert key adhoc
+  cert="$(tls_config_value AI_WEB_TLS_CERT)"
+  key="$(tls_config_value AI_WEB_TLS_KEY)"
+  if [ -n "$cert" ] || [ -n "$key" ]; then
+    # app.py refuses to start when only one of the pair is set.
+    if [ -n "$cert" ] && [ -n "$key" ]; then
+      echo "https"
+    else
+      echo "http"
+    fi
+    return 0
+  fi
+  adhoc="$(tls_config_value AI_WEB_TLS_ADHOC)"
+  case "$(printf '%s' "$adhoc" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) echo "https" ;;
+    *) echo "http" ;;
+  esac
+}
+
 status_line() {
-  echo "✅ Running (PID: $(pid_list)) — http://127.0.0.1:$PORT"
+  echo "✅ Running (PID: $(pid_list)) — $(tls_scheme)://127.0.0.1:$PORT"
 }
 
 start_server() {
@@ -161,6 +223,58 @@ stop_server() {
   echo "✅ Stopped"
 }
 
+make_cert() {
+  local host="${1:-}" dir="$APP_DIR/certs" ip san cn
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "❌ ไม่พบ openssl — ติดตั้งก่อน: pkg install openssl-tool"
+    return 1
+  fi
+  ip="$host"
+  if [ -z "$ip" ]; then
+    ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')"
+  fi
+  if [ -z "$ip" ]; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  if [ -z "$ip" ]; then
+    # Termux/Android: no `ip route` privileges, so read the interface address.
+    ip="$(ifconfig 2>/dev/null | awk '/inet / && $2 !~ /^127\./ {print $2; exit}')"
+  fi
+  if [ -z "$ip" ]; then
+    ip="$(getprop dhcp.wlan0.ipaddress 2>/dev/null)"
+  fi
+  if [ -z "$ip" ]; then
+    echo "❌ หา IP ของเครื่องไม่พบ — ระบุเอง: $(basename "$0") --make-cert 192.168.2.40"
+    return 1
+  fi
+  cn="$ip"
+  san="DNS:localhost,IP:127.0.0.1"
+  [ "$ip" = "127.0.0.1" ] || san="$san,IP:$ip"
+  mkdir -p "$dir" || return 1
+  if ! openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
+    -keyout "$dir/key.pem" -out "$dir/cert.pem" \
+    -subj "/CN=$cn" -addext "subjectAltName=$san" >/dev/null 2>&1; then
+    echo "❌ สร้างใบรับรองไม่สำเร็จ (openssl เวอร์ชันนี้อาจไม่รองรับ -addext)"
+    return 1
+  fi
+  chmod 600 "$dir/key.pem"
+  echo "✅ สร้างใบรับรองแล้ว: $dir/cert.pem และ $dir/key.pem (ใช้ได้กับ $cn)"
+  echo "   เพิ่มใน .env:"
+  echo "   AI_WEB_TLS_CERT=$dir/cert.pem"
+  echo "   AI_WEB_TLS_KEY=$dir/key.pem"
+  echo "   แล้วรัน: $(basename "$0") --restart"
+  echo "   หมายเหตุ: ใบรับรอง self-signed จะทำให้เบราว์เซอร์เตือนความปลอดภัยครั้งแรก"
+}
+
+pair_device() {
+  if [ -z "$PYTHON" ]; then
+    echo "❌ ไม่พบ python3 หรือ .venv/bin/python"
+    return 1
+  fi
+  cd "$APP_DIR" || return 1
+  "$PYTHON" app.py --pairing-key
+}
+
 check_server() {
   if is_running; then
     status_line
@@ -176,7 +290,9 @@ case "${1:-}" in
   --start) start_server ;;
   --restart) stop_server && start_server ;;
   --stop) stop_server ;;
+  --pair) pair_device ;;
+  --make-cert) make_cert "${2:-}" ;;
   *)
-    echo "ใช้: $(basename "$0") --check | --start | --restart | --stop"
+    echo "ใช้: $(basename "$0") --check | --start | --restart | --stop | --pair | --make-cert [ip]"
     ;;
 esac

@@ -3,6 +3,7 @@ import asyncio
 import fcntl
 import getpass
 import hashlib
+import hmac
 import json
 import logging
 import re
@@ -11,20 +12,24 @@ import shlex
 import shutil
 import signal
 import socket
+import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from collections import deque
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.serving import ThreadedWSGIServer, generate_adhoc_ssl_context, load_ssl_context
 
 load_dotenv()
 
@@ -55,11 +60,42 @@ SCHEDULE_RUNNING_LOCK = threading.Lock()
 _SCHEDULER_STARTED = False
 _SCHEDULER_START_LOCK = threading.Lock()
 _SCHEDULER_LOCK_HANDLE: Any = None
-PROTECTED_NAMES = {".env", ".app-settings.json"}
-PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__"}
+PROTECTED_NAMES = {".env", ".app-settings.json", ".app-auth.json"}
+PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__", "certs"}
 TERMINAL_TIMEOUT_SECONDS = 60
 TERMINAL_MAX_OUTPUT_BYTES = 100_000
 TERMINAL_SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
+
+
+def env_int(name: str, default: int, minimum: int) -> int:
+    """Read an integer environment variable, clamping invalid input to safe bounds."""
+    try:
+        value = int(str(os.getenv(name, "")).strip() or default)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, value)
+
+
+# Device pairing: the server generates single-use keys, the client sends a key
+# back and receives an HttpOnly cookie for a long-lived, revocable session.
+AUTH_FILE = Path(os.getenv("AI_WEB_AUTH_FILE", ".app-auth.json"))
+AUTH_ENABLED = os.getenv("AI_WEB_AUTH", "on").strip().lower() not in {"0", "false", "no", "off"}
+AUTH_SESSION_COOKIE = "ai-web-session"
+AUTH_PAIRING_TTL_MINUTES = env_int("AI_WEB_PAIRING_TTL_MINUTES", 30, 1)
+AUTH_SESSION_DAYS = env_int("AI_WEB_SESSION_DAYS", 30, 1)
+AUTH_KEY_LENGTH = 12
+AUTH_KEY_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+AUTH_LOCK = threading.Lock()
+AUTH_PAIRING_FAILURES: dict[str, list[float]] = {}
+AUTH_PAIRING_MAX_FAILURES = 8
+AUTH_PAIRING_FAILURE_WINDOW = 300
+AUTH_PUBLIC_PATHS = {"/pair", "/api/auth/pair", "/api/auth/status"}
+AUTH_TRUST_PROXY = os.getenv("AI_WEB_TRUST_PROXY", "").strip().lower() in {"1", "true", "yes", "on"}
+
+if AUTH_TRUST_PROXY:
+    # Honour X-Forwarded-Proto/Host when TLS terminates at a reverse proxy so
+    # request.is_secure (and the Secure session cookie) reflects the client.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 TOOL_INSTRUCTIONS = """
 คุณมีเครื่องมือจำกัดอยู่ในโฟลเดอร์โปรเจกต์เท่านั้น หากต้องอ่านไฟล์หรือดูรายการไฟล์ ให้ร้องขอด้วยรูปแบบนี้เพียงอย่างเดียว:
 <tool_call>{"name":"read_file","arguments":{"path":"app.py"}}</tool_call>
@@ -1327,18 +1363,18 @@ STATUS_MESSAGES = {
 
 
 def normalize_language(value: Any) -> str:
-    """Normalize a requested UI language to 'th' or 'en'."""
-    return "en" if str(value or "").strip().lower().startswith("en") else "th"
+    """Normalize a requested UI language to 'th' or 'en', defaulting to English."""
+    return "th" if str(value or "").strip().lower().startswith("th") else "en"
 
 
 def status_message(language: str, key: str, **kwargs: Any) -> str:
     """Format a localized readiness message from the shared status table."""
-    messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["th"]
-    template = messages.get(key) or STATUS_MESSAGES["th"].get(key, key)
+    messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["en"]
+    template = messages.get(key) or STATUS_MESSAGES["en"].get(key, key)
     return template.format(**kwargs)
 
 
-def provider_key_check(provider: str, settings: dict[str, Any], language: str = "th") -> dict[str, Any]:
+def provider_key_check(provider: str, settings: dict[str, Any], language: str = "en") -> dict[str, Any]:
     """Check credentials and, for Anthropic, the selected model's real usability."""
     provider = normalize_provider(provider)
     label = PROVIDER_LABELS[provider]
@@ -1406,7 +1442,7 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
     return {**result, "cached": False}
 
 
-def provider_readiness(settings: dict[str, Any], language: str = "th") -> dict[str, Any]:
+def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[str, Any]:
     """Check locally, then remotely, whether the selected provider and model are usable."""
     provider = normalize_provider(settings.get("provider"))
     model = str(settings.get("model") or "").strip()
@@ -2215,6 +2251,380 @@ def schedules_delete(job_id: str):
     return jsonify({"ok": True})
 
 
+def empty_auth_state() -> dict[str, Any]:
+    """Return the empty shape of the pairing/session store."""
+    return {"version": 1, "pairing_keys": [], "sessions": []}
+
+
+def load_auth_state() -> dict[str, Any]:
+    """Load the pairing/session store, tolerating a missing or broken file."""
+    if not AUTH_FILE.exists():
+        return empty_auth_state()
+    try:
+        data = json.loads(AUTH_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return empty_auth_state()
+    state = empty_auth_state()
+    if not isinstance(data, dict):
+        return state
+    for field in ("pairing_keys", "sessions"):
+        raw = data.get(field)
+        if isinstance(raw, list):
+            state[field] = [item for item in raw if isinstance(item, dict)]
+    return state
+
+
+def save_auth_state(state: dict[str, Any]) -> None:
+    """Persist the pairing/session store atomically with owner-only permissions."""
+    AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = AUTH_FILE.with_suffix(".tmp")
+    descriptor = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(state, ensure_ascii=False, indent=2))
+    os.replace(temp_path, AUTH_FILE)
+
+
+def hash_auth_token(value: str) -> str:
+    """Hash a pairing key or session token before it is stored on disk."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def no_store(response):
+    """Mark an identity-dependent response so proxies and browsers never cache it."""
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def auth_now() -> datetime:
+    """Return the current local time used for pairing/session timestamps."""
+    return datetime.now().astimezone()
+
+
+def auth_timestamp(moment: datetime) -> str:
+    """Serialize a timestamp in the same ISO shape used elsewhere in the app."""
+    return moment.isoformat(timespec="seconds")
+
+
+def auth_expired(record: dict[str, Any], now: datetime) -> bool:
+    """Report whether a stored key or session record has passed its expiry."""
+    try:
+        return datetime.fromisoformat(str(record.get("expires_at") or "")) <= now
+    except (TypeError, ValueError):
+        return True
+
+
+def prune_auth_state(state: dict[str, Any], now: datetime) -> None:
+    """Drop expired keys and sessions so the store does not grow forever."""
+    state["pairing_keys"] = [item for item in state["pairing_keys"] if not auth_expired(item, now)]
+    state["sessions"] = [item for item in state["sessions"] if not auth_expired(item, now)]
+
+
+def normalize_pairing_key(raw_key: Any) -> str:
+    """Normalize a client-supplied key by stripping separators and case."""
+    cleaned = re.sub(r"[^0-9A-Za-z]", "", str(raw_key or "")).upper()
+    return cleaned if len(cleaned) == AUTH_KEY_LENGTH else ""
+
+
+def format_pairing_key(key: str) -> str:
+    """Group a pairing key into readable blocks, e.g. ABCD-EFGH-JKLM."""
+    return "-".join(key[index:index + 4] for index in range(0, len(key), 4))
+
+
+def generate_pairing_key(label: str = "") -> dict[str, Any]:
+    """Create a single-use pairing key; only its hash is written to disk."""
+    now = auth_now()
+    with AUTH_LOCK:
+        state = load_auth_state()
+        prune_auth_state(state, now)
+        while True:
+            key = "".join(secrets.choice(AUTH_KEY_ALPHABET) for _ in range(AUTH_KEY_LENGTH))
+            digest = hash_auth_token(key)
+            if not any(hmac.compare_digest(str(item.get("hash") or ""), digest) for item in state["pairing_keys"]):
+                break
+        record = {
+            "id": secrets.token_hex(8),
+            "hash": digest,
+            "label": str(label or "").strip()[:60],
+            "created_at": auth_timestamp(now),
+            "expires_at": auth_timestamp(now + timedelta(minutes=AUTH_PAIRING_TTL_MINUTES)),
+        }
+        state["pairing_keys"].append(record)
+        save_auth_state(state)
+    return {"key": format_pairing_key(key), "id": record["id"], "expires_at": record["expires_at"], "ttl_minutes": AUTH_PAIRING_TTL_MINUTES}
+
+
+def consume_pairing_key(raw_key: Any) -> bool:
+    """Validate and burn one pairing key so it cannot be reused."""
+    key = normalize_pairing_key(raw_key)
+    if not key:
+        return False
+    digest = hash_auth_token(key)
+    now = auth_now()
+    with AUTH_LOCK:
+        state = load_auth_state()
+        prune_auth_state(state, now)
+        matched = False
+        remaining = []
+        for item in state["pairing_keys"]:
+            if not matched and hmac.compare_digest(str(item.get("hash") or ""), digest):
+                matched = True
+                continue
+            remaining.append(item)
+        state["pairing_keys"] = remaining
+        save_auth_state(state)
+    return matched
+
+
+def pairing_attempt_allowed(client_ip: str) -> bool:
+    """Rate-limit pairing attempts per client address."""
+    now = time.time()
+    with AUTH_LOCK:
+        recent = [stamp for stamp in AUTH_PAIRING_FAILURES.get(client_ip, []) if now - stamp < AUTH_PAIRING_FAILURE_WINDOW]
+        AUTH_PAIRING_FAILURES[client_ip] = recent
+        return len(recent) < AUTH_PAIRING_MAX_FAILURES
+
+
+def record_pairing_failure(client_ip: str) -> None:
+    """Remember a failed pairing attempt for rate limiting."""
+    with AUTH_LOCK:
+        AUTH_PAIRING_FAILURES.setdefault(client_ip, []).append(time.time())
+        if len(AUTH_PAIRING_FAILURES) > 500:
+            for stale_ip in [ip for ip, stamps in AUTH_PAIRING_FAILURES.items() if not stamps]:
+                AUTH_PAIRING_FAILURES.pop(stale_ip, None)
+
+
+def create_auth_session(label: str = "", user_agent: str = "", client_ip: str = "") -> str:
+    """Create a paired-device session and return its raw cookie token once."""
+    token = secrets.token_urlsafe(32)
+    now = auth_now()
+    record = {
+        "id": secrets.token_hex(8),
+        "token_hash": hash_auth_token(token),
+        "label": str(label or "").strip()[:60] or "อุปกรณ์ที่เชื่อมต่อ",
+        "user_agent": str(user_agent or "")[:200],
+        "ip": str(client_ip or "")[:80],
+        "created_at": auth_timestamp(now),
+        "last_seen_at": auth_timestamp(now),
+        "expires_at": auth_timestamp(now + timedelta(days=AUTH_SESSION_DAYS)),
+    }
+    with AUTH_LOCK:
+        state = load_auth_state()
+        prune_auth_state(state, now)
+        state["sessions"].append(record)
+        save_auth_state(state)
+    return token
+
+
+def current_auth_session() -> dict[str, Any] | None:
+    """Resolve the request cookie to a live paired-device session."""
+    token = request.cookies.get(AUTH_SESSION_COOKIE, "")
+    if not token:
+        return None
+    digest = hash_auth_token(token)
+    now = auth_now()
+    with AUTH_LOCK:
+        state = load_auth_state()
+        for item in state["sessions"]:
+            if not hmac.compare_digest(str(item.get("token_hash") or ""), digest):
+                continue
+            if auth_expired(item, now):
+                return None
+            try:
+                recently_seen = (now - datetime.fromisoformat(str(item.get("last_seen_at") or ""))).total_seconds() <= 60
+            except (TypeError, ValueError):
+                recently_seen = False
+            if not recently_seen:
+                item["last_seen_at"] = auth_timestamp(now)
+                save_auth_state(state)
+            return dict(item)
+    return None
+
+
+def revoke_auth_session(session_id: str) -> bool:
+    """Revoke one paired device by its session id."""
+    with AUTH_LOCK:
+        state = load_auth_state()
+        remaining = [item for item in state["sessions"] if item.get("id") != session_id]
+        if len(remaining) == len(state["sessions"]):
+            return False
+        state["sessions"] = remaining
+        save_auth_state(state)
+    return True
+
+
+def revoke_all_auth_sessions() -> int:
+    """Revoke every paired device and return how many were removed."""
+    with AUTH_LOCK:
+        state = load_auth_state()
+        count = len(state["sessions"])
+        state["sessions"] = []
+        save_auth_state(state)
+    return count
+
+
+def active_auth_session_count() -> int:
+    """Count sessions that are still valid, pruning expired records."""
+    now = auth_now()
+    with AUTH_LOCK:
+        state = load_auth_state()
+        prune_auth_state(state, now)
+        save_auth_state(state)
+        return len(state["sessions"])
+
+
+def bootstrap_pairing_key() -> dict[str, Any] | None:
+    """Create the first-run key when no device has been paired yet."""
+    if not AUTH_ENABLED or active_auth_session_count():
+        return None
+    return generate_pairing_key("server")
+
+
+def print_pairing_banner(record: dict[str, Any] | None) -> None:
+    """Print a pairing key to the server console, never to the app log file."""
+    if not record:
+        return
+    print(
+        "\n" + "=" * 62 + "\n"
+        f"  Pairing Key: {record['key']}\n"
+        f"  ใช้ได้ถึง {record['expires_at']} และใช้ได้ครั้งเดียว\n"
+        "  ฝั่ง client เปิด /pair แล้วใส่คีย์นี้\n"
+        + "=" * 62 + "\n",
+        flush=True,
+    )
+
+
+@app.before_request
+def require_web_auth():
+    """Gate every page and API behind a paired device unless auth is disabled."""
+    if not AUTH_ENABLED:
+        return None
+    path = request.path or ""
+    if path in AUTH_PUBLIC_PATHS or path.startswith("/static/"):
+        return None
+    if current_auth_session():
+        return None
+    if path.startswith("/api/"):
+        return jsonify({"error": "This device is not paired yet. Enter a Pairing Key.", "auth_required": True}), 401
+    return redirect("/pair", code=302)
+
+
+@app.get("/pair")
+def pair_page():
+    """Render the pairing page where a client submits the server key."""
+    if current_auth_session():
+        return redirect("/")
+    return render_template("pair.html", ttl_minutes=AUTH_PAIRING_TTL_MINUTES, session_days=AUTH_SESSION_DAYS)
+
+
+@app.get("/api/auth/status")
+def auth_status():
+    """Report whether this device is paired without exposing any secret."""
+    session = current_auth_session() if AUTH_ENABLED else None
+    return no_store(jsonify({
+        "enabled": AUTH_ENABLED,
+        "authenticated": bool(session) or not AUTH_ENABLED,
+        "session": {
+            "id": session.get("id"),
+            "label": session.get("label", ""),
+            "created_at": session.get("created_at"),
+            "last_seen_at": session.get("last_seen_at"),
+            "expires_at": session.get("expires_at"),
+        } if session else None,
+    }))
+
+
+@app.post("/api/auth/pair")
+def auth_pair():
+    """Exchange a valid single-use pairing key for a session cookie."""
+    if not AUTH_ENABLED:
+        return jsonify({"ok": True, "redirect": "/"})
+    body = request.get_json(silent=True) or {}
+    client_ip = request.remote_addr or "unknown"
+    if not pairing_attempt_allowed(client_ip):
+        return jsonify({"error": "Too many pairing attempts. Please wait a few minutes and try again."}), 429
+    if not consume_pairing_key(body.get("key")):
+        record_pairing_failure(client_ip)
+        return jsonify({"error": "This Pairing Key is invalid, expired, or already used."}), 401
+    token = create_auth_session(
+        label=str(body.get("label") or ""),
+        user_agent=request.headers.get("User-Agent", ""),
+        client_ip=client_ip,
+    )
+    log_event("auth.paired", "จับคู่อุปกรณ์ใหม่สำเร็จ", ip=client_ip)
+    response = jsonify({"ok": True, "redirect": "/"})
+    response.set_cookie(
+        AUTH_SESSION_COOKIE,
+        token,
+        max_age=AUTH_SESSION_DAYS * 24 * 60 * 60,
+        httponly=True,
+        samesite="Lax",
+        secure=request.is_secure,
+        path="/",
+    )
+    return response
+
+
+@app.get("/api/auth/sessions")
+def auth_sessions_list():
+    """List paired devices so the owner can review and revoke them."""
+    current = current_auth_session() or {}
+    now = auth_now()
+    with AUTH_LOCK:
+        state = load_auth_state()
+        prune_auth_state(state, now)
+        save_auth_state(state)
+        items = [{
+            "id": item.get("id"),
+            "label": item.get("label", ""),
+            "created_at": item.get("created_at"),
+            "last_seen_at": item.get("last_seen_at"),
+            "expires_at": item.get("expires_at"),
+            "current": item.get("id") == current.get("id"),
+        } for item in state["sessions"]]
+    items.sort(key=lambda item: str(item.get("last_seen_at") or ""), reverse=True)
+    return no_store(jsonify({"items": items, "auth_enabled": AUTH_ENABLED}))
+
+
+@app.post("/api/auth/pairing-keys")
+def auth_create_pairing_key():
+    """Generate a fresh pairing key for a new device from an authorized session."""
+    if not AUTH_ENABLED:
+        return jsonify({"error": "Web auth is disabled. Set AI_WEB_AUTH=on to use pairing keys."}), 400
+    body = request.get_json(silent=True) or {}
+    record = generate_pairing_key(str(body.get("label") or ""))
+    log_event("auth.pairing_key", "สร้าง Pairing Key ใหม่")
+    return jsonify({"ok": True, **record}), 201
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    """Revoke this device's session and clear its cookie."""
+    token = request.cookies.get(AUTH_SESSION_COOKIE, "")
+    digest = hash_auth_token(token) if token else ""
+    if digest:
+        with AUTH_LOCK:
+            state = load_auth_state()
+            remaining = [
+                item for item in state["sessions"]
+                if not hmac.compare_digest(str(item.get("token_hash") or ""), digest)
+            ]
+            if len(remaining) != len(state["sessions"]):
+                state["sessions"] = remaining
+                save_auth_state(state)
+    response = jsonify({"ok": True, "redirect": "/pair"})
+    response.delete_cookie(AUTH_SESSION_COOKIE, path="/")
+    return response
+
+
+@app.delete("/api/auth/sessions/<session_id>")
+def auth_revoke_session(session_id: str):
+    """Revoke one paired device by id."""
+    if not revoke_auth_session(session_id):
+        return jsonify({"error": "Device not found"}), 404
+    log_event("auth.revoked", "ยกเลิกอุปกรณ์ที่เชื่อมต่อ", session=session_id)
+    return jsonify({"ok": True})
+
+
 @app.get("/")
 def index():
     """Render the single-page web application."""
@@ -2615,12 +3025,102 @@ def chat():
         return jsonify({"error": redact_secrets(str(exc), api_key=api_key)}), 500
 
 
+def tls_configuration() -> Any:
+    """Return a Werkzeug ssl_context for HTTPS, or None to serve plain HTTP."""
+    cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
+    key = os.getenv("AI_WEB_TLS_KEY", "").strip()
+    if cert or key:
+        if not (cert and key):
+            raise SystemExit("ต้องตั้ง AI_WEB_TLS_CERT และ AI_WEB_TLS_KEY พร้อมกัน")
+        missing = [path for path in (cert, key) if not Path(path).is_file()]
+        if missing:
+            raise SystemExit(f"ไม่พบไฟล์ใบรับรอง/คีย์: {', '.join(missing)}")
+        return (cert, key)
+    if os.getenv("AI_WEB_TLS_ADHOC", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return "adhoc"
+    return None
+
+
+TLS_HANDSHAKE_TIMEOUT_SECONDS = 10
+
+
+def build_tls_context(ssl_context: Any) -> Any:
+    """Turn a tls_configuration() value into a ready ssl.SSLContext."""
+    if isinstance(ssl_context, tuple):
+        return load_ssl_context(*ssl_context)
+    return generate_adhoc_ssl_context()
+
+
+class TLSServer(ThreadedWSGIServer):
+    """Threaded WSGI server that performs the TLS handshake per connection.
+
+    Werkzeug wraps the listening socket itself, so a client that connects and
+    sends no handshake bytes blocks accept() and with it every other client.
+    Accepting the plain socket and handshaking in the request thread keeps the
+    accept loop free and lets a stalled handshake time out.
+    """
+
+    def __init__(self, host: str, port: int, wsgi_app: Any, ssl_context: Any) -> None:
+        super().__init__(host, port, wsgi_app, ssl_context=None)
+        self.tls_context = ssl_context
+        # Werkzeug uses ssl_context to report requests as HTTPS.
+        self.ssl_context = ssl_context
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            request.settimeout(TLS_HANDSHAKE_TIMEOUT_SECONDS)
+            request = self.tls_context.wrap_socket(request, server_side=True)
+            request.settimeout(None)
+        except (ssl.SSLError, OSError) as exc:
+            self.log("info", f"TLS handshake failed for {client_address}: {exc}")
+            try:
+                request.close()
+            except OSError:
+                pass
+            return
+        super().process_request_thread(request, client_address)
+
+
+def auth_cli(argv: list[str]) -> bool:
+    """Handle pairing-key CLI flags without starting the web server."""
+    if "--pairing-key" not in argv and "--revoke-sessions" not in argv:
+        return False
+    if "--revoke-sessions" in argv:
+        print(f"✅ ยกเลิกอุปกรณ์ที่เชื่อมต่อทั้งหมดแล้ว ({revoke_all_auth_sessions()})", flush=True)
+    if "--pairing-key" in argv:
+        if not AUTH_ENABLED:
+            print("Web auth ปิดอยู่ — ตั้ง AI_WEB_AUTH=on เพื่อสร้าง Pairing Key", flush=True)
+            return True
+        label = "cli"
+        if "--label" in argv:
+            index = argv.index("--label")
+            if index + 1 < len(argv):
+                label = argv[index + 1]
+        print_pairing_banner(generate_pairing_key(label))
+    return True
+
+
 if os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower() in {"1", "true", "yes"}:
     start_scheduler()
 
 
 if __name__ == "__main__":
+    if auth_cli(sys.argv[1:]):
+        raise SystemExit(0)
     start_scheduler()
     start_discord_bot()
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
+    print_pairing_banner(bootstrap_pairing_key())
+    port = int(os.getenv("PORT", "5000"))
+    ssl_context = tls_configuration()
+    scheme = "https" if ssl_context else "http"
+    print(f"🔒 เปิดให้บริการที่ {scheme}://<ip>:{port}" if ssl_context else f"🌐 เปิดให้บริการที่ http://<ip>:{port}", flush=True)
+    if ssl_context:
+        print("   คุกกี้ session จะถูกตั้งเป็น Secure เพราะ request.is_secure เป็นจริง", flush=True)
+        # Handshake per connection so a client that never sends TLS data
+        # cannot block the accept loop.
+        server = TLSServer("0.0.0.0", port, app, build_tls_context(ssl_context))
+        server.log_startup()
+        server.serve_forever()
+    else:
+        app.run(host="0.0.0.0", port=port, ssl_context=None, debug=False)
 

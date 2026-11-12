@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pair this device · AI Control Center</title>
+    <script>
+      /* Apply the saved theme before first paint to avoid a flash. */
+      (function () {
+        try {
+          var theme = localStorage.getItem("ai-control-center-theme");
+          if (theme === "light") {
+            document.documentElement.classList.add("light-theme");
+          }
+        } catch (error) {
+          /* ignore unavailable storage */
+        }
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --page-bg: radial-gradient(circle at 20% 0%, #16203a 0%, #0b1020 55%);
+        --panel: #10172a;
+        --panel-border: #24304a;
+        --text: #e5e7eb;
+        --muted: #94a3b8;
+        --input-bg: #0b1020;
+        --input-border: #2b3a5e;
+        --accent: #4f46e5;
+        --accent-text: #ffffff;
+        --error: #f87171;
+        --ok: #34d399;
+        --code-bg: #0b1020;
+        --code-border: #24304a;
+        --shadow: 0 24px 60px rgba(2, 6, 23, 0.55);
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      html.light-theme {
+        color-scheme: light;
+        --page-bg: radial-gradient(circle at 20% 0%, #eef2ff 0%, #f8fafc 55%);
+        --panel: #ffffff;
+        --panel-border: #e2e8f0;
+        --text: #1e293b;
+        --muted: #64748b;
+        --input-bg: #f8fafc;
+        --input-border: #cbd5e1;
+        --error: #dc2626;
+        --ok: #059669;
+        --code-bg: #f1f5f9;
+        --code-border: #e2e8f0;
+        --shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px 16px;
+        background: var(--page-bg);
+        color: var(--text);
+        transition:
+          background 0.2s ease,
+          color 0.2s ease;
+      }
+      .card {
+        width: min(460px, 100%);
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        padding: 22px 24px 26px;
+        box-shadow: var(--shadow);
+      }
+      .topbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 18px;
+      }
+      .brand {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        font-weight: 800;
+      }
+      .brand-mark {
+        background: linear-gradient(135deg, #4f46e5, #06b6d4);
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        color: #ffffff;
+      }
+      .controls {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .icon-button,
+      .controls select {
+        height: 32px;
+        border-radius: 8px;
+        border: 1px solid var(--input-border);
+        background: var(--input-bg);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+      }
+      .icon-button {
+        width: 32px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        font-size: 0.95rem;
+      }
+      .controls select {
+        padding: 0 6px;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin: 0 0 6px;
+      }
+      p {
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.55;
+      }
+      label {
+        display: block;
+        font-size: 0.8rem;
+        color: var(--text);
+        margin-bottom: 14px;
+      }
+      input {
+        display: block;
+        width: 100%;
+        margin-top: 6px;
+        padding: 12px 14px;
+        background: var(--input-bg);
+        color: var(--text);
+        border: 1px solid var(--input-border);
+        border-radius: 10px;
+        font: inherit;
+      }
+      input.key {
+        font-size: 1.15rem;
+        letter-spacing: 0.14em;
+        text-align: center;
+        text-transform: uppercase;
+      }
+      input:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      button[type="submit"] {
+        width: 100%;
+        padding: 12px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--accent);
+        color: var(--accent-text);
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button[type="submit"]:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .error {
+        min-height: 20px;
+        margin: 12px 0 0;
+        color: var(--error);
+        font-size: 0.85rem;
+      }
+      .error.ok {
+        color: var(--ok);
+      }
+      code {
+        background: var(--code-bg);
+        border: 1px solid var(--code-border);
+        border-radius: 6px;
+        padding: 1px 5px;
+        font-size: 0.82rem;
+        color: var(--text);
+      }
+      .foot {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid var(--panel-border);
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark">✦</div>
+          <div>AI Control Center</div>
+        </div>
+        <div class="controls">
+          <select
+            id="language-select"
+            data-i18n-title="control.language"
+            data-i18n-aria-label="control.language"
+            title="Language"
+          >
+            <option value="en">English</option>
+            <option value="th">ไทย</option>
+          </select>
+          <button
+            id="theme-toggle"
+            class="icon-button"
+            type="button"
+            data-i18n-title="control.theme"
+            data-i18n-aria-label="control.theme"
+            title="Toggle theme"
+            aria-label="Toggle theme"
+          >
+            ☼
+          </button>
+        </div>
+      </div>
+      <h1 data-i18n="pair.title">Pair this device</h1>
+      <p data-i18n="pair.intro">
+        This web app requires a paired device. Generate a Pairing Key on the
+        server, then enter it here. Each key is single-use.
+      </p>
+      <form id="pair-form" method="post" autocomplete="off">
+        <label>
+          <span data-i18n="pair.keyLabel">Pairing Key</span>
+          <input
+            id="pairing-key"
+            class="key"
+            name="key"
+            placeholder="XXXX-XXXX-XXXX"
+            inputmode="text"
+            autocapitalize="characters"
+            spellcheck="false"
+            required
+          />
+        </label>
+        <label>
+          <span data-i18n="pair.labelLabel">Device name (optional)</span>
+          <input
+            id="pairing-label"
+            name="label"
+            maxlength="60"
+            data-i18n-placeholder="pair.labelPlaceholder"
+            placeholder="e.g. Phone, Laptop"
+          />
+        </label>
+        <button id="pair-submit" type="submit" data-i18n="pair.submit">
+          Pair device
+        </button>
+        <div class="error" id="pair-error" role="status" aria-live="polite"></div>
+      </form>
+      <div class="foot">
+        <span data-i18n="pair.footCreate"
+          >Create a key on the server that runs the app:</span
+        ><br />
+        <code>python app.py --pairing-key</code> ·
+        <code>./start_web.sh --pair</code><br />
+        <span id="pair-foot-note" data-i18n="pair.footNote"
+          >Once paired, this device stays signed in or until you revoke it in
+          Settings.</span
+        >
+      </div>
+    </main>
+    <script>
+      const CONFIG = {
+        minutes: {{ ttl_minutes }},
+        days: {{ session_days }},
+      };
+      const THEME_KEY = "ai-control-center-theme";
+      const LANGUAGE_KEY = "ai-control-center-language";
+      const SUPPORTED_LANGUAGES = ["th", "en"];
+      const STRINGS = {
+        en: {
+          "meta.title": "Pair this device · AI Control Center",
+          "control.language": "Language",
+          "control.theme": "Toggle theme",
+          "pair.title": "Pair this device",
+          "pair.intro":
+            "This web app requires a paired device. Generate a Pairing Key on the server, then enter it here. Each key is single-use and expires in {minutes} minutes.",
+          "pair.keyLabel": "Pairing Key",
+          "pair.labelLabel": "Device name (optional)",
+          "pair.labelPlaceholder": "e.g. Phone, Laptop",
+          "pair.submit": "Pair device",
+          "pair.footCreate":
+            "Create a key on the server that runs the app:",
+          "pair.footNote":
+            "Once paired, this device stays signed in for {days} days or until you revoke it in Settings.",
+          "pair.success": "Paired. Opening the chat…",
+          "pair.errorInvalid":
+            "This Pairing Key is invalid, expired, or already used.",
+          "pair.errorRateLimited":
+            "Too many pairing attempts. Please wait a few minutes and try again.",
+          "pair.errorGeneric": "Pairing failed. Please try again.",
+        },
+        th: {
+          "meta.title": "จับคู่อุปกรณ์ · AI Control Center",
+          "control.language": "ภาษา",
+          "control.theme": "สลับธีม",
+          "pair.title": "จับคู่อุปกรณ์ (Pairing)",
+          "pair.intro":
+            "เว็บนี้ต้องจับคู่อุปกรณ์ก่อนใช้งาน สร้าง Pairing Key จากฝั่ง server แล้วนำคีย์มาใส่ที่นี่ คีย์แต่ละใบใช้ได้ครั้งเดียวและมีอายุ {minutes} นาที",
+          "pair.keyLabel": "Pairing Key",
+          "pair.labelLabel": "ชื่ออุปกรณ์ (ไม่บังคับ)",
+          "pair.labelPlaceholder": "เช่น มือถือ, โน้ตบุ๊ก",
+          "pair.submit": "จับคู่อุปกรณ์",
+          "pair.footCreate": "สร้างคีย์บนเครื่องที่รัน server:",
+          "pair.footNote":
+            "หลังจับคู่แล้วอุปกรณ์นี้จะเข้าใช้งานได้ {days} วัน หรือจนกว่าจะถูกยกเลิกในหน้า Settings",
+          "pair.success": "จับคู่สำเร็จ กำลังเข้าสู่หน้าแชต...",
+          "pair.errorInvalid":
+            "Pairing Key ไม่ถูกต้อง หมดอายุ หรือถูกใช้ไปแล้ว",
+          "pair.errorRateLimited":
+            "พยายามจับคู่หลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่",
+          "pair.errorGeneric": "จับคู่ไม่สำเร็จ กรุณาลองใหม่",
+        },
+      };
+
+      const form = document.getElementById("pair-form");
+      const keyInput = document.getElementById("pairing-key");
+      const labelInput = document.getElementById("pairing-label");
+      const submit = document.getElementById("pair-submit");
+      const errorBox = document.getElementById("pair-error");
+      const languageSelect = document.getElementById("language-select");
+      const themeToggle = document.getElementById("theme-toggle");
+
+      function readPreference(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function writePreference(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (error) {
+          /* preferences are best-effort; pairing still works without storage */
+        }
+      }
+
+      function savedLanguage() {
+        const saved = readPreference(LANGUAGE_KEY);
+        return SUPPORTED_LANGUAGES.includes(saved) ? saved : "en";
+      }
+      let language = savedLanguage();
+      let errorKey = "";
+
+      function t(key, vars = {}) {
+        const dictionary = STRINGS[language] || STRINGS.en;
+        const template = dictionary[key] ?? STRINGS.en[key] ?? key;
+        return String(template).replace(/\{(\w+)\}/g, (match, name) =>
+          vars[name] === undefined || vars[name] === null
+            ? match
+            : String(vars[name]),
+        );
+      }
+
+      function applyLanguage() {
+        document.documentElement.lang = language;
+        document.title = t("meta.title");
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+          element.textContent = t(element.dataset.i18n);
+        });
+        document
+          .querySelectorAll("[data-i18n-placeholder]")
+          .forEach((element) => {
+            element.setAttribute(
+              "placeholder",
+              t(element.dataset.i18nPlaceholder),
+            );
+          });
+        document.querySelectorAll("[data-i18n-title]").forEach((element) => {
+          element.setAttribute("title", t(element.dataset.i18nTitle));
+        });
+        document
+          .querySelectorAll("[data-i18n-aria-label]")
+          .forEach((element) => {
+            element.setAttribute(
+              "aria-label",
+              t(element.dataset.i18nAriaLabel),
+            );
+          });
+        languageSelect.value = language;
+        document.getElementById("pair-foot-note").textContent = t(
+          "pair.footNote",
+          { days: CONFIG.days },
+        );
+        document.querySelector('[data-i18n="pair.intro"]').textContent = t(
+          "pair.intro",
+          { minutes: CONFIG.minutes },
+        );
+        errorBox.textContent = errorKey ? t(errorKey) : "";
+      }
+
+      function applyTheme(theme) {
+        const light = theme === "light";
+        document.documentElement.classList.toggle("light-theme", light);
+        themeToggle.textContent = light ? "☾" : "☼";
+      }
+
+      languageSelect.addEventListener("change", (event) => {
+        language = SUPPORTED_LANGUAGES.includes(event.target.value)
+          ? event.target.value
+          : "en";
+        writePreference(LANGUAGE_KEY, language);
+        applyLanguage();
+      });
+
+      themeToggle.addEventListener("click", () => {
+        const light =
+          !document.documentElement.classList.contains("light-theme");
+        writePreference(THEME_KEY, light ? "light" : "dark");
+        applyTheme(light ? "light" : "dark");
+      });
+
+      applyTheme(readPreference(THEME_KEY) === "light" ? "light" : "dark");
+      applyLanguage();
+
+      function groupKey(value) {
+        const cleaned = value
+          .toUpperCase()
+          .replace(/[^0-9A-Z]/g, "")
+          .slice(0, 12);
+        return cleaned.replace(/(.{4})(?=.)/g, "$1-");
+      }
+
+      keyInput.addEventListener("input", () => {
+        const caretAtEnd = keyInput.selectionStart === keyInput.value.length;
+        keyInput.value = groupKey(keyInput.value);
+        if (caretAtEnd) {
+          keyInput.setSelectionRange(
+            keyInput.value.length,
+            keyInput.value.length,
+          );
+        }
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        errorKey = "";
+        errorBox.textContent = "";
+        errorBox.classList.remove("ok");
+        submit.disabled = true;
+        try {
+          const response = await fetch("/api/auth/pair", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              key: keyInput.value,
+              label: labelInput.value,
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            errorKey =
+              response.status === 429
+                ? "pair.errorRateLimited"
+                : response.status === 401
+                  ? "pair.errorInvalid"
+                  : "pair.errorGeneric";
+            throw new Error(t(errorKey));
+          }
+          errorBox.textContent = t("pair.success");
+          errorBox.classList.add("ok");
+          window.location.replace(data.redirect || "/");
+        } catch (error) {
+          if (!errorKey) errorKey = "pair.errorGeneric";
+          errorBox.textContent = t(errorKey);
+          submit.disabled = false;
+          keyInput.select();
+        }
+      });
+
+      keyInput.focus();
+    </script>
+  </body>
+</html>
