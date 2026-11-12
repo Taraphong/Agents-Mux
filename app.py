@@ -12,6 +12,7 @@ import shlex
 import shutil
 import signal
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,7 @@ import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.serving import ThreadedWSGIServer, generate_adhoc_ssl_context, load_ssl_context
 
 load_dotenv()
 
@@ -59,7 +61,7 @@ _SCHEDULER_STARTED = False
 _SCHEDULER_START_LOCK = threading.Lock()
 _SCHEDULER_LOCK_HANDLE: Any = None
 PROTECTED_NAMES = {".env", ".app-settings.json", ".app-auth.json"}
-PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__"}
+PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__", "certs"}
 TERMINAL_TIMEOUT_SECONDS = 60
 TERMINAL_MAX_OUTPUT_BYTES = 100_000
 TERMINAL_SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
@@ -3039,6 +3041,46 @@ def tls_configuration() -> Any:
     return None
 
 
+TLS_HANDSHAKE_TIMEOUT_SECONDS = 10
+
+
+def build_tls_context(ssl_context: Any) -> Any:
+    """Turn a tls_configuration() value into a ready ssl.SSLContext."""
+    if isinstance(ssl_context, tuple):
+        return load_ssl_context(*ssl_context)
+    return generate_adhoc_ssl_context()
+
+
+class TLSServer(ThreadedWSGIServer):
+    """Threaded WSGI server that performs the TLS handshake per connection.
+
+    Werkzeug wraps the listening socket itself, so a client that connects and
+    sends no handshake bytes blocks accept() and with it every other client.
+    Accepting the plain socket and handshaking in the request thread keeps the
+    accept loop free and lets a stalled handshake time out.
+    """
+
+    def __init__(self, host: str, port: int, wsgi_app: Any, ssl_context: Any) -> None:
+        super().__init__(host, port, wsgi_app, ssl_context=None)
+        self.tls_context = ssl_context
+        # Werkzeug uses ssl_context to report requests as HTTPS.
+        self.ssl_context = ssl_context
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            request.settimeout(TLS_HANDSHAKE_TIMEOUT_SECONDS)
+            request = self.tls_context.wrap_socket(request, server_side=True)
+            request.settimeout(None)
+        except (ssl.SSLError, OSError) as exc:
+            self.log("info", f"TLS handshake failed for {client_address}: {exc}")
+            try:
+                request.close()
+            except OSError:
+                pass
+            return
+        super().process_request_thread(request, client_address)
+
+
 def auth_cli(argv: list[str]) -> bool:
     """Handle pairing-key CLI flags without starting the web server."""
     if "--pairing-key" not in argv and "--revoke-sessions" not in argv:
@@ -3074,5 +3116,11 @@ if __name__ == "__main__":
     print(f"🔒 เปิดให้บริการที่ {scheme}://<ip>:{port}" if ssl_context else f"🌐 เปิดให้บริการที่ http://<ip>:{port}", flush=True)
     if ssl_context:
         print("   คุกกี้ session จะถูกตั้งเป็น Secure เพราะ request.is_secure เป็นจริง", flush=True)
-    app.run(host="0.0.0.0", port=port, ssl_context=ssl_context, debug=False)
+        # Handshake per connection so a client that never sends TLS data
+        # cannot block the accept loop.
+        server = TLSServer("0.0.0.0", port, app, build_tls_context(ssl_context))
+        server.log_startup()
+        server.serve_forever()
+    else:
+        app.run(host="0.0.0.0", port=port, ssl_context=None, debug=False)
 
