@@ -1354,18 +1354,18 @@ STATUS_MESSAGES = {
 
 
 def normalize_language(value: Any) -> str:
-    """Normalize a requested UI language to 'th' or 'en'."""
-    return "en" if str(value or "").strip().lower().startswith("en") else "th"
+    """Normalize a requested UI language to 'th' or 'en', defaulting to English."""
+    return "th" if str(value or "").strip().lower().startswith("th") else "en"
 
 
 def status_message(language: str, key: str, **kwargs: Any) -> str:
     """Format a localized readiness message from the shared status table."""
-    messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["th"]
-    template = messages.get(key) or STATUS_MESSAGES["th"].get(key, key)
+    messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["en"]
+    template = messages.get(key) or STATUS_MESSAGES["en"].get(key, key)
     return template.format(**kwargs)
 
 
-def provider_key_check(provider: str, settings: dict[str, Any], language: str = "th") -> dict[str, Any]:
+def provider_key_check(provider: str, settings: dict[str, Any], language: str = "en") -> dict[str, Any]:
     """Check credentials and, for Anthropic, the selected model's real usability."""
     provider = normalize_provider(provider)
     label = PROVIDER_LABELS[provider]
@@ -1433,7 +1433,7 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
     return {**result, "cached": False}
 
 
-def provider_readiness(settings: dict[str, Any], language: str = "th") -> dict[str, Any]:
+def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[str, Any]:
     """Check locally, then remotely, whether the selected provider and model are usable."""
     provider = normalize_provider(settings.get("provider"))
     model = str(settings.get("model") or "").strip()
@@ -2489,7 +2489,7 @@ def require_web_auth():
     if current_auth_session():
         return None
     if path.startswith("/api/"):
-        return jsonify({"error": "อุปกรณ์นี้ยังไม่ได้จับคู่ กรุณาใส่ Pairing Key", "auth_required": True}), 401
+        return jsonify({"error": "This device is not paired yet. Enter a Pairing Key.", "auth_required": True}), 401
     return redirect("/pair", code=302)
 
 
@@ -2526,10 +2526,10 @@ def auth_pair():
     body = request.get_json(silent=True) or {}
     client_ip = request.remote_addr or "unknown"
     if not pairing_attempt_allowed(client_ip):
-        return jsonify({"error": "พยายามจับคู่หลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่"}), 429
+        return jsonify({"error": "Too many pairing attempts. Please wait a few minutes and try again."}), 429
     if not consume_pairing_key(body.get("key")):
         record_pairing_failure(client_ip)
-        return jsonify({"error": "Pairing Key ไม่ถูกต้อง หมดอายุ หรือถูกใช้ไปแล้ว"}), 401
+        return jsonify({"error": "This Pairing Key is invalid, expired, or already used."}), 401
     token = create_auth_session(
         label=str(body.get("label") or ""),
         user_agent=request.headers.get("User-Agent", ""),
@@ -2574,7 +2574,7 @@ def auth_sessions_list():
 def auth_create_pairing_key():
     """Generate a fresh pairing key for a new device from an authorized session."""
     if not AUTH_ENABLED:
-        return jsonify({"error": "Web auth ปิดอยู่ ตั้ง AI_WEB_AUTH=on เพื่อใช้งาน"}), 400
+        return jsonify({"error": "Web auth is disabled. Set AI_WEB_AUTH=on to use pairing keys."}), 400
     body = request.get_json(silent=True) or {}
     record = generate_pairing_key(str(body.get("label") or ""))
     log_event("auth.pairing_key", "สร้าง Pairing Key ใหม่")
@@ -2605,7 +2605,7 @@ def auth_logout():
 def auth_revoke_session(session_id: str):
     """Revoke one paired device by id."""
     if not revoke_auth_session(session_id):
-        return jsonify({"error": "ไม่พบอุปกรณ์นี้"}), 404
+        return jsonify({"error": "Device not found"}), 404
     log_event("auth.revoked", "ยกเลิกอุปกรณ์ที่เชื่อมต่อ", session=session_id)
     return jsonify({"ok": True})
 
