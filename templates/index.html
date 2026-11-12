@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="th">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -3614,12 +3614,12 @@
       };
       function getSavedLanguage() {
         const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-        return SUPPORTED_LANGUAGES.includes(saved) ? saved : "th";
+        return SUPPORTED_LANGUAGES.includes(saved) ? saved : "en";
       }
       let currentLanguage = getSavedLanguage();
       function t(key, vars = {}) {
-        const dictionary = I18N[currentLanguage] || I18N.th;
-        const template = dictionary[key] ?? I18N.th[key] ?? key;
+        const dictionary = I18N[currentLanguage] || I18N.en;
+        const template = dictionary[key] ?? I18N.en[key] ?? key;
         return String(template).replace(/\{(\w+)\}/g, (match, name) =>
           vars[name] === undefined || vars[name] === null
             ? match
@@ -6303,7 +6303,7 @@
       function setLanguage(language) {
         currentLanguage = SUPPORTED_LANGUAGES.includes(language)
           ? language
-          : "th";
+          : "en";
         localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage);
         applyTranslations();
         if (connectionState.known) {
