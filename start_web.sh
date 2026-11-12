@@ -7,6 +7,7 @@
 #   startweb --restart   Stop and start the server (use after every deploy)
 #   startweb --stop      Stop the server
 #   startweb --pair      Generate a single-use Pairing Key (web auth)
+#   startweb --make-cert [ip]  Create a self-signed HTTPS certificate
 #
 # ติดตั้งเป็นคำสั่งสั้น (ทำครั้งเดียวบน Termux):
 #   ln -sf ~/ai-web/start_web.sh "$PREFIX/bin/startweb"
@@ -162,6 +163,42 @@ stop_server() {
   echo "✅ Stopped"
 }
 
+make_cert() {
+  local host="${1:-}" dir="$APP_DIR/certs" ip san cn
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "❌ ไม่พบ openssl — ติดตั้งก่อน: pkg install openssl-tool"
+    return 1
+  fi
+  ip="$host"
+  if [ -z "$ip" ]; then
+    ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')"
+  fi
+  if [ -z "$ip" ]; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  if [ -z "$ip" ]; then
+    echo "❌ หา IP ของเครื่องไม่พบ — ระบุเอง: $(basename "$0") --make-cert 192.168.2.40"
+    return 1
+  fi
+  cn="$ip"
+  san="DNS:localhost,IP:127.0.0.1"
+  [ "$ip" = "127.0.0.1" ] || san="$san,IP:$ip"
+  mkdir -p "$dir" || return 1
+  if ! openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
+    -keyout "$dir/key.pem" -out "$dir/cert.pem" \
+    -subj "/CN=$cn" -addext "subjectAltName=$san" >/dev/null 2>&1; then
+    echo "❌ สร้างใบรับรองไม่สำเร็จ (openssl เวอร์ชันนี้อาจไม่รองรับ -addext)"
+    return 1
+  fi
+  chmod 600 "$dir/key.pem"
+  echo "✅ สร้างใบรับรองแล้ว: $dir/cert.pem และ $dir/key.pem (ใช้ได้กับ $cn)"
+  echo "   เพิ่มใน .env:"
+  echo "   AI_WEB_TLS_CERT=$dir/cert.pem"
+  echo "   AI_WEB_TLS_KEY=$dir/key.pem"
+  echo "   แล้วรัน: $(basename "$0") --restart"
+  echo "   หมายเหตุ: ใบรับรอง self-signed จะทำให้เบราว์เซอร์เตือนความปลอดภัยครั้งแรก"
+}
+
 pair_device() {
   if [ -z "$PYTHON" ]; then
     echo "❌ ไม่พบ python3 หรือ .venv/bin/python"
@@ -187,7 +224,8 @@ case "${1:-}" in
   --restart) stop_server && start_server ;;
   --stop) stop_server ;;
   --pair) pair_device ;;
+  --make-cert) make_cert "${2:-}" ;;
   *)
-    echo "ใช้: $(basename "$0") --check | --start | --restart | --stop | --pair"
+    echo "ใช้: $(basename "$0") --check | --start | --restart | --stop | --pair | --make-cert [ip]"
     ;;
 esac

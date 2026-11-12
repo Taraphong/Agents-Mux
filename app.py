@@ -3023,6 +3023,22 @@ def chat():
         return jsonify({"error": redact_secrets(str(exc), api_key=api_key)}), 500
 
 
+def tls_configuration() -> Any:
+    """Return a Werkzeug ssl_context for HTTPS, or None to serve plain HTTP."""
+    cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
+    key = os.getenv("AI_WEB_TLS_KEY", "").strip()
+    if cert or key:
+        if not (cert and key):
+            raise SystemExit("ต้องตั้ง AI_WEB_TLS_CERT และ AI_WEB_TLS_KEY พร้อมกัน")
+        missing = [path for path in (cert, key) if not Path(path).is_file()]
+        if missing:
+            raise SystemExit(f"ไม่พบไฟล์ใบรับรอง/คีย์: {', '.join(missing)}")
+        return (cert, key)
+    if os.getenv("AI_WEB_TLS_ADHOC", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return "adhoc"
+    return None
+
+
 def auth_cli(argv: list[str]) -> bool:
     """Handle pairing-key CLI flags without starting the web server."""
     if "--pairing-key" not in argv and "--revoke-sessions" not in argv:
@@ -3052,5 +3068,11 @@ if __name__ == "__main__":
     start_scheduler()
     start_discord_bot()
     print_pairing_banner(bootstrap_pairing_key())
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
+    port = int(os.getenv("PORT", "5000"))
+    ssl_context = tls_configuration()
+    scheme = "https" if ssl_context else "http"
+    print(f"🔒 เปิดให้บริการที่ {scheme}://<ip>:{port}" if ssl_context else f"🌐 เปิดให้บริการที่ http://<ip>:{port}", flush=True)
+    if ssl_context:
+        print("   คุกกี้ session จะถูกตั้งเป็น Secure เพราะ request.is_secure เป็นจริง", flush=True)
+    app.run(host="0.0.0.0", port=port, ssl_context=ssl_context, debug=False)
 
