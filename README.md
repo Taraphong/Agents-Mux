@@ -60,6 +60,16 @@ The web interface requires a paired device. Pairing keys are always generated on
 - `AI_WEB_AUTH=off` disables pairing and is meant only for a fully trusted network. Unpaired pages redirect to `/pair`; `/api/auth/status` stays reachable for health checks.
 - When TLS terminates at a reverse proxy, set `AI_WEB_TRUST_PROXY=1` so `X-Forwarded-Proto` is trusted and the session cookie is marked `Secure`. Leave it unset for plain local HTTP.
 
+### HTTPS
+
+The app can terminate HTTPS itself; no extra Python packages are needed when you supply certificate files.
+
+- Create a self-signed certificate for the server's LAN IP: `./start_web.sh --make-cert 192.168.2.40` (requires `openssl`; in Termux install it with `pkg install openssl-tool`). It writes `certs/cert.pem` and `certs/key.pem`, which are excluded from Git.
+- Set `AI_WEB_TLS_CERT` and `AI_WEB_TLS_KEY` in `.env`, then run `./start_web.sh --restart` and open `https://<termux-ip>:5000`. Session cookies become `Secure` automatically because the request is HTTPS.
+- A self-signed certificate makes the browser warn on first visit. To avoid the warning, use a certificate from a trusted CA, or install your local CA certificate on each device.
+- Behind a TLS-terminating reverse proxy (Caddy, nginx, `tailscale serve`) leave `AI_WEB_TLS_*` empty and set `AI_WEB_TRUST_PROXY=1`; the proxy must overwrite `X-Forwarded-Proto` on every request.
+- `AI_WEB_TLS_ADHOC=1` generates a throwaway certificate at startup and needs the `cryptography` package (`pkg install python-cryptography` in Termux, or `pip install cryptography`).
+
 ### Conversation History
 
 Conversations are stored by date and time in `history/YYYY-MM-DD/HH-MM-SS_<conversation-id>.json`.

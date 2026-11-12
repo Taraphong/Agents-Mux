@@ -58,6 +58,16 @@ python app.py
 - `AI_WEB_AUTH=off` ปิดระบบจับคู่ ใช้เฉพาะในเครือข่ายที่เชื่อถือได้ทั้งหมด หน้าเว็บที่ยังไม่จับคู่จะถูกพาไปที่ `/pair` ส่วน `/api/auth/status` ยังเข้าถึงได้เพื่อใช้ตรวจสถานะ
 - เมื่อมี reverse proxy ที่ terminate TLS ให้ตั้ง `AI_WEB_TRUST_PROXY=1` เพื่อให้เชื่อถือ `X-Forwarded-Proto` และคุกกี้ session ถูกตั้งเป็น `Secure` (ถ้าใช้ HTTP ในเครื่องให้เว้นว่างไว้)
 
+### HTTPS
+
+แอปเปิด HTTPS ได้เองโดยไม่ต้องติดตั้งแพ็กเกจ Python เพิ่ม เมื่อมีไฟล์ใบรับรองอยู่แล้ว
+
+- สร้างใบรับรอง self-signed สำหรับ IP ใน LAN ของเครื่อง server: `./start_web.sh --make-cert 192.168.2.40` (ต้องมี `openssl` — บน Termux ติดตั้งด้วย `pkg install openssl-tool`) ไฟล์จะถูกสร้างที่ `certs/cert.pem` และ `certs/key.pem` ซึ่งไม่ถูก commit
+- ตั้ง `AI_WEB_TLS_CERT` และ `AI_WEB_TLS_KEY` ใน `.env` แล้วรัน `./start_web.sh --restart` เปิด `https://<termux-ip>:5000` คุกกี้ session จะถูกตั้งเป็น `Secure` อัตโนมัติ
+- ใบรับรอง self-signed จะทำให้เบราว์เซอร์เตือนครั้งแรก ถ้าไม่ต้องการคำเตือนให้ใช้ใบรับรองจาก CA ที่เชื่อถือได้ หรือติดตั้ง CA ของคุณลงในอุปกรณ์แต่ละเครื่อง
+- ถ้าใช้ reverse proxy ที่ terminate TLS (Caddy, nginx, `tailscale serve`) ให้เว้น `AI_WEB_TLS_*` ว่างและตั้ง `AI_WEB_TRUST_PROXY=1` โดย proxy ต้องเขียนทับ `X-Forwarded-Proto` ทุก request
+- `AI_WEB_TLS_ADHOC=1` สร้างใบรับรองชั่วคราวตอนสตาร์ต ต้องมีแพ็กเกจ `cryptography` (`pkg install python-cryptography` บน Termux หรือ `pip install cryptography`)
+
 ### ประวัติการสนทนา
 
 บันทึกแยกตามวัน/เวลาใน `history/YYYY-MM-DD/HH-MM-SS_<conversation-id>.json`
