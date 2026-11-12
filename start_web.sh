@@ -177,6 +177,13 @@ make_cert() {
     ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   fi
   if [ -z "$ip" ]; then
+    # Termux/Android: no `ip route` privileges, so read the interface address.
+    ip="$(ifconfig 2>/dev/null | awk '/inet / && $2 !~ /^127\./ {print $2; exit}')"
+  fi
+  if [ -z "$ip" ]; then
+    ip="$(getprop dhcp.wlan0.ipaddress 2>/dev/null)"
+  fi
+  if [ -z "$ip" ]; then
     echo "❌ หา IP ของเครื่องไม่พบ — ระบุเอง: $(basename "$0") --make-cert 192.168.2.40"
     return 1
   fi
