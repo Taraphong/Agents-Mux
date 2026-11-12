@@ -58,6 +58,7 @@ The web interface requires a paired device. Pairing keys are always generated on
 - Keys are single-use and expire after `AI_WEB_PAIRING_TTL_MINUTES` (default 30). Only SHA-256 hashes of keys and session tokens are stored, in `.app-auth.json`, which is excluded from Git.
 - Review, revoke, or create a key for another device in **Settings → Security and device pairing**. `python app.py --revoke-sessions` revokes every device.
 - `AI_WEB_AUTH=off` disables pairing and is meant only for a fully trusted network. Unpaired pages redirect to `/pair`; `/api/auth/status` stays reachable for health checks.
+- When TLS terminates at a reverse proxy, set `AI_WEB_TRUST_PROXY=1` so `X-Forwarded-Proto` is trusted and the session cookie is marked `Secure`. Leave it unset for plain local HTTP.
 
 ### Conversation History
 
@@ -93,7 +94,7 @@ A skill used through a slash command applies only to that request and does not c
 
 The **Terminal** page runs shell commands directly on the server as the user running the app, starting in the project folder and supporting `cd` within the project. Commands time out after 60 seconds, output is capped at 100 KB, credential-like environment variables are removed, and known API keys/tokens are redacted from the output. The page can be disabled in **Settings**.
 
-> ⚠️ This app has no login. Anyone who can open the web interface can use the terminal. Only expose it on a trusted network.
+> ⚠️ The Terminal runs with the privileges of the user running the app. With web auth enabled, only paired devices can open it; with `AI_WEB_AUTH=off` anyone who can reach the page can use the terminal, so only expose it on a trusted network.
 
 ### Discord bot
 
