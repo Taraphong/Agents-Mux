@@ -6,6 +6,7 @@
 #   startweb --start     Start the server if it is stopped
 #   startweb --restart   Stop and start the server (use after every deploy)
 #   startweb --stop      Stop the server
+#   startweb --pair      Generate a single-use Pairing Key (web auth)
 #
 # ติดตั้งเป็นคำสั่งสั้น (ทำครั้งเดียวบน Termux):
 #   ln -sf ~/ai-web/start_web.sh "$PREFIX/bin/startweb"
@@ -161,6 +162,15 @@ stop_server() {
   echo "✅ Stopped"
 }
 
+pair_device() {
+  if [ -z "$PYTHON" ]; then
+    echo "❌ ไม่พบ python3 หรือ .venv/bin/python"
+    return 1
+  fi
+  cd "$APP_DIR" || return 1
+  "$PYTHON" app.py --pairing-key
+}
+
 check_server() {
   if is_running; then
     status_line
@@ -176,7 +186,8 @@ case "${1:-}" in
   --start) start_server ;;
   --restart) stop_server && start_server ;;
   --stop) stop_server ;;
+  --pair) pair_device ;;
   *)
-    echo "ใช้: $(basename "$0") --check | --start | --restart | --stop"
+    echo "ใช้: $(basename "$0") --check | --start | --restart | --stop | --pair"
     ;;
 esac

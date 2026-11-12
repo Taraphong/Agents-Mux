@@ -2151,6 +2151,65 @@
         background: #f8fafc;
         color: #1e293b;
       }
+      .auth-key-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0;
+      }
+      .auth-key-output {
+        background: #0b1020;
+        border: 1px solid #2b3a5e;
+        border-radius: 10px;
+        padding: 12px 14px;
+        display: grid;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .auth-key-output code {
+        font-size: 1.1rem;
+        letter-spacing: 0.12em;
+        color: #7dd3fc;
+        word-break: break-all;
+      }
+      .auth-subtitle {
+        font-size: 0.92rem;
+        margin: 14px 0 6px;
+        color: #cbd5e1;
+      }
+      .auth-session-row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-top: 1px solid #24304a;
+      }
+      .auth-session-info {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+      }
+      .auth-session-info small {
+        color: #94a3b8;
+      }
+      .auth-session-row button {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+      }
+      body.light-theme .auth-key-output {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+      }
+      body.light-theme .auth-key-output code {
+        color: #0369a1;
+      }
+      body.light-theme .auth-subtitle {
+        color: #334155;
+      }
+      body.light-theme .auth-session-row {
+        border-color: #e2e8f0;
+      }
     </style>
   </head>
   <body>
@@ -2491,6 +2550,42 @@
                   >แสดงแท็บ Terminal ในแถบด้านข้าง</span
                 ></label
               >
+            </div>
+            <div class="card">
+              <h2 data-i18n="auth.title">ความปลอดภัยและการจับคู่อุปกรณ์</h2>
+              <p class="hint" data-i18n="auth.hint">
+                เว็บนี้ต้องจับคู่อุปกรณ์ก่อนใช้งาน สร้าง Pairing Key จากฝั่ง
+                server แล้วนำคีย์ไปใส่ที่หน้า /pair ของ client
+                คีย์ใช้ได้ครั้งเดียวและมีอายุจำกัด
+              </p>
+              <div class="auth-key-row">
+                <button
+                  id="auth-generate-key"
+                  type="button"
+                  data-i18n="auth.generate"
+                >
+                  สร้าง Pairing Key
+                </button>
+                <button
+                  id="auth-logout"
+                  type="button"
+                  class="danger"
+                  data-i18n="auth.logout"
+                >
+                  ออกจากระบบอุปกรณ์นี้
+                </button>
+              </div>
+              <div id="auth-key-output" class="auth-key-output" hidden>
+                <span data-i18n="auth.keyGenerated"
+                  >Pairing Key ใหม่ (ใช้ได้ครั้งเดียว)</span
+                >
+                <code id="auth-key-value"></code>
+                <small id="auth-key-expiry" class="hint"></small>
+              </div>
+              <h3 class="auth-subtitle" data-i18n="auth.devices">
+                อุปกรณ์ที่เชื่อมต่อ
+              </h3>
+              <div id="auth-sessions"></div>
             </div>
             <div class="card">
               <h2 data-i18n="settings.assistantTitle">พฤติกรรมของผู้ช่วย</h2>
@@ -2996,6 +3091,27 @@
           "settings.terminalHint":
             "เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง (เริ่มต้นในโฟลเดอร์โปรเจกต์)",
           "settings.terminalEnable": "แสดงแท็บ Terminal ในแถบด้านข้าง",
+          "auth.title": "ความปลอดภัยและการจับคู่อุปกรณ์",
+          "auth.hint":
+            "เว็บนี้ต้องจับคู่อุปกรณ์ก่อนใช้งาน สร้าง Pairing Key จากฝั่ง server แล้วนำคีย์ไปใส่ที่หน้า /pair ของ client คีย์ใช้ได้ครั้งเดียวและมีอายุจำกัด",
+          "auth.generate": "สร้าง Pairing Key",
+          "auth.keyCreated": "สร้าง Pairing Key แล้ว — นำไปใส่ที่อุปกรณ์อื่นได้ทันที",
+          "auth.keyFailed": "สร้าง Pairing Key ไม่สำเร็จ",
+          "auth.keyGenerated": "Pairing Key ใหม่ (ใช้ได้ครั้งเดียว)",
+          "auth.keyExpiry": "ใช้ได้ถึง {time} (ราว {minutes} นาที)",
+          "auth.devices": "อุปกรณ์ที่เชื่อมต่อ",
+          "auth.deviceFallback": "อุปกรณ์ไม่ทราบชื่อ",
+          "auth.lastSeen": "ใช้งานล่าสุด {time}",
+          "auth.unknownTime": "ไม่ทราบเวลา",
+          "auth.thisDevice": "อุปกรณ์นี้",
+          "auth.logout": "ออกจากระบบอุปกรณ์นี้",
+          "auth.revoke": "ยกเลิกการเชื่อมต่อ",
+          "auth.revoked": "ยกเลิกอุปกรณ์แล้ว",
+          "auth.revokeFailed": "ยกเลิกอุปกรณ์ไม่สำเร็จ",
+          "auth.empty": "ยังไม่มีอุปกรณ์ที่เชื่อมต่อ",
+          "auth.disabled":
+            "Web auth ปิดอยู่ (AI_WEB_AUTH=off) — ไม่ต้องจับคู่อุปกรณ์",
+          "auth.offline": "โหลดสถานะอุปกรณ์ไม่สำเร็จ",
           "settings.save": "บันทึกการตั้งค่า",
           "settings.test": "ทดสอบการเชื่อมต่อ",
           "settings.reset": "รีเซ็ต",
@@ -3309,6 +3425,27 @@
           "settings.terminalHint":
             "Show or hide the Terminal tab in the sidebar. It starts in the project folder.",
           "settings.terminalEnable": "Show the Terminal tab in the sidebar",
+          "auth.title": "Security and device pairing",
+          "auth.hint":
+            "This web app requires a paired device. Generate a Pairing Key on the server and enter it on the client's /pair page. Each key is single-use and expires.",
+          "auth.generate": "Generate Pairing Key",
+          "auth.keyCreated": "Pairing Key created — enter it on the other device now",
+          "auth.keyFailed": "Could not create a Pairing Key",
+          "auth.keyGenerated": "New Pairing Key (single use)",
+          "auth.keyExpiry": "Valid until {time} (about {minutes} minutes)",
+          "auth.devices": "Connected devices",
+          "auth.deviceFallback": "Unnamed device",
+          "auth.lastSeen": "Last seen {time}",
+          "auth.unknownTime": "unknown time",
+          "auth.thisDevice": "This device",
+          "auth.logout": "Sign out this device",
+          "auth.revoke": "Revoke",
+          "auth.revoked": "Device revoked",
+          "auth.revokeFailed": "Could not revoke the device",
+          "auth.empty": "No paired devices yet",
+          "auth.disabled":
+            "Web auth is off (AI_WEB_AUTH=off) — no pairing required",
+          "auth.offline": "Could not load device status",
           "settings.save": "Save settings",
           "settings.test": "Test connection",
           "settings.reset": "Reset",
@@ -4218,7 +4355,10 @@
             .forEach((v) => v.classList.remove("active"));
           $(`${button.dataset.view}-view`).classList.add("active");
           updatePageTitle();
-          if (button.dataset.view === "settings") loadSettings();
+          if (button.dataset.view === "settings") {
+            loadSettings();
+            loadAuthSessions();
+          }
           if (button.dataset.view === "terminal") openTerminalView();
           if (button.dataset.view === "schedule") loadSchedules();
           if (button.dataset.view === "logs") loadLogs();
@@ -5505,6 +5645,125 @@
           );
         }
       }
+      let currentAuthStatus = { enabled: true, authenticated: true };
+      let currentAuthSessions = [];
+      function formatAuthTime(value) {
+        if (!value) return t("auth.unknownTime");
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime())
+          ? t("auth.unknownTime")
+          : parsed.toLocaleString();
+      }
+      function renderAuthSessions(status = {}, items = []) {
+        currentAuthStatus = status || {};
+        currentAuthSessions = Array.isArray(items) ? items : [];
+        const container = $("auth-sessions");
+        container.innerHTML = "";
+        if (status && status.enabled === false) {
+          $("auth-generate-key").disabled = true;
+          const note = document.createElement("p");
+          note.className = "hint";
+          note.textContent = t("auth.disabled");
+          container.appendChild(note);
+          return;
+        }
+        $("auth-generate-key").disabled = false;
+        if (!currentAuthSessions.length) {
+          const empty = document.createElement("p");
+          empty.className = "hint";
+          empty.textContent = t("auth.empty");
+          container.appendChild(empty);
+          return;
+        }
+        currentAuthSessions.forEach((item) => {
+          const row = document.createElement("div");
+          row.className = "auth-session-row";
+          const info = document.createElement("div");
+          info.className = "auth-session-info";
+          const label = document.createElement("strong");
+          label.textContent = item.label || t("auth.deviceFallback");
+          const meta = document.createElement("small");
+          const prefix = item.current ? `${t("auth.thisDevice")} · ` : "";
+          meta.textContent = `${prefix}${t("auth.lastSeen", {
+            time: formatAuthTime(item.last_seen_at),
+          })}`;
+          info.append(label, meta);
+          const action = document.createElement("button");
+          action.type = "button";
+          action.className = item.current ? "danger" : "secondary";
+          action.textContent = item.current
+            ? t("auth.logout")
+            : t("auth.revoke");
+          action.addEventListener("click", () =>
+            item.current ? authLogout() : revokeAuthSession(item.id),
+          );
+          row.append(info, action);
+          container.appendChild(row);
+        });
+      }
+      async function loadAuthSessions() {
+        try {
+          const [statusResponse, sessionsResponse] = await Promise.all([
+            fetch("/api/auth/status"),
+            fetch("/api/auth/sessions"),
+          ]);
+          if (!sessionsResponse.ok) throw new Error(t("auth.offline"));
+          const status = await statusResponse.json();
+          const data = await sessionsResponse.json();
+          renderAuthSessions(status, data.items || []);
+        } catch (error) {
+          renderAuthSessions({ enabled: true }, []);
+        }
+      }
+      async function createPairingKey() {
+        $("auth-generate-key").disabled = true;
+        try {
+          const response = await fetch("/api/auth/pairing-keys", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || t("auth.keyFailed"));
+          $("auth-key-output").hidden = false;
+          $("auth-key-value").textContent = data.key;
+          $("auth-key-expiry").textContent = t("auth.keyExpiry", {
+            time: formatAuthTime(data.expires_at),
+            minutes: data.ttl_minutes ?? "",
+          });
+          showNotice(t("auth.keyCreated"));
+        } catch (error) {
+          showNotice(error.message || t("auth.keyFailed"), true);
+        } finally {
+          $("auth-generate-key").disabled = false;
+        }
+      }
+      async function revokeAuthSession(sessionId) {
+        try {
+          const response = await fetch(
+            `/api/auth/sessions/${encodeURIComponent(sessionId)}`,
+            { method: "DELETE" },
+          );
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || t("auth.revokeFailed"));
+          }
+          showNotice(t("auth.revoked"));
+          await loadAuthSessions();
+        } catch (error) {
+          showNotice(error.message || t("auth.revokeFailed"), true);
+        }
+      }
+      async function authLogout() {
+        try {
+          await fetch("/api/auth/logout", { method: "POST" });
+        } catch (error) {
+          /* still navigate so the pairing page can be offered again */
+        }
+        window.location.href = "/pair";
+      }
+      $("auth-generate-key").addEventListener("click", createPairingKey);
+      $("auth-logout").addEventListener("click", authLogout);
       function updateApiKeyHint(provider) {
         const label =
           { openai: "OpenAI", gemini: "Gemini", anthropic: "Anthropic" }[
@@ -6028,6 +6287,7 @@
         renderMessages();
         renderHistoryList(currentHistoryItems);
         renderSchedules(currentSchedules);
+        renderAuthSessions(currentAuthStatus, currentAuthSessions);
         renderLogs();
         updateTerminalUi();
         $("schedule-timezone").textContent =
@@ -6061,6 +6321,7 @@
       loadChatMeta();
       loadHistoryList();
       loadSchedules();
+      loadAuthSessions();
       refreshTerminalAvailability();
     </script>
   </body>
