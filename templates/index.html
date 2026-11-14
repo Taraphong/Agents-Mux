@@ -2380,9 +2380,6 @@
         background: rgba(148, 163, 184, 0.12);
         color: var(--text, #f8fafc);
       }
-      .chat-tools select.composer-select:focus {
-        outline: 0;
-      }
       #chat-command-mode {
         max-width: 96px;
       }
@@ -6753,9 +6750,8 @@
               t(element.dataset.i18nAriaLabel),
             );
           });
-        $("language-select").value = currentLanguage;
-        $("language-select").title = t("language.title");
-        $("language-select").setAttribute("aria-label", t("language.title"));
+        $("language-display").textContent =
+          currentLanguage === "th" ? "TH" : "EN";
       }
       function applyTranslations() {
         applyStaticTranslations();
@@ -6807,14 +6803,8 @@
           });
         }
       }
-      $("language-select").addEventListener("change", (event) => {
-        setLanguage(event.target.value);
-      });
       $("language-toggle").addEventListener("click", () => {
-        const current = $("language-display").textContent;
-        const next = current === "TH" ? "EN" : "TH";
-        $("language-display").textContent = next;
-        setLanguage(next === "TH" ? "th" : "en");
+        setLanguage(currentLanguage === "th" ? "en" : "th");
       });
       applyTranslations();
       loadChatMeta();
