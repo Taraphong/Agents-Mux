@@ -2809,11 +2809,8 @@ def history_save():
     return jsonify(save_history(body))
 
 
-@app.get("/api/models")
-def models_get():
-    """Return provider models, falling back to a static list on failure."""
-    settings = load_settings()
-    provider = normalize_provider(request.args.get("provider", settings.get("provider", "openai")))
+def models_response(provider: str, settings: dict[str, Any]):
+    """Build the model list response shared by the GET and POST model endpoints."""
     try:
         models = list_models(provider, settings)
         return jsonify({"provider": provider, "models": models, "source": "api"})
@@ -2821,6 +2818,33 @@ def models_get():
         api_key = get_api_key(provider, settings)
         fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
         return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": redact_secrets(str(exc), api_key=api_key)}), 502
+
+
+@app.get("/api/models")
+def models_get():
+    """Return provider models, falling back to a static list on failure."""
+    settings = load_settings()
+    provider = normalize_provider(request.args.get("provider", settings.get("provider", "openai")))
+    return models_response(provider, settings)
+
+
+@app.post("/api/models")
+def models_post():
+    """Return provider models for a key submitted before it is saved."""
+    settings = load_settings()
+    body = request.get_json(silent=True) or {}
+    provider = normalize_provider(body.get("provider") or settings.get("provider", "openai"))
+    base_url = body.get("base_url")
+    # An explicit empty string means "use the provider default"; only an
+    # omitted base_url leaves the configured value untouched.
+    if isinstance(base_url, str):
+        settings["base_url"] = base_url.strip()
+    submitted_key = body.get("api_key")
+    if isinstance(submitted_key, str) and submitted_key.strip() and submitted_key != "••••••••":
+        keys = stored_api_keys(settings)
+        keys[provider] = submitted_key.strip()
+        settings["api_keys"] = keys
+    return models_response(provider, settings)
 
 
 @app.put("/api/settings")

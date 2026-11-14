@@ -535,6 +535,21 @@
         margin: 0 0 5px;
         font-size: 1rem;
       }
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 5px;
+      }
+      .card-head h2 {
+        margin: 0;
+      }
+      .card-head button {
+        margin: 0;
+        white-space: nowrap;
+      }
       .hint {
         color: #94a3b8;
         font-size: 0.86rem;
@@ -2429,7 +2444,17 @@
           </section>
           <section id="settings-view" class="view">
             <div class="card">
-              <h2 data-i18n="settings.providerTitle">ผู้ให้บริการและโมเดล</h2>
+              <div class="card-head">
+                <h2 data-i18n="settings.providerTitle">ผู้ให้บริการและโมเดล</h2>
+                <button
+                  class="secondary"
+                  id="test"
+                  type="button"
+                  data-i18n="settings.test"
+                >
+                  ทดสอบการเชื่อมต่อ
+                </button>
+              </div>
               <p class="hint" data-i18n="settings.providerHint">
                 เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ
                 OpenAI-compatible API
@@ -2673,13 +2698,6 @@
               <div class="actions">
                 <button id="save" data-i18n="settings.save">
                   บันทึกการตั้งค่า</button
-                ><button
-                  class="secondary"
-                  id="test"
-                  type="button"
-                  data-i18n="settings.test"
-                >
-                  ทดสอบการเชื่อมต่อ</button
                 ><button
                   class="danger"
                   id="reset"
@@ -5419,17 +5437,32 @@
           $("model_custom").style.display = choices.length ? "none" : "block";
         }
       }
+      let modelsRequestGeneration = 0;
       async function fetchModels(
         provider,
         selected = "",
         fallbackSelected = "",
+        apiKey = "",
       ) {
+        const generation = ++modelsRequestGeneration;
         $("model_status").textContent = t("model.fetching");
         try {
-          const r = await fetch(
-            `/api/models?provider=${encodeURIComponent(provider)}`,
-          );
+          const r = apiKey
+            ? await fetch("/api/models", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  provider,
+                  api_key: apiKey,
+                  base_url: $("base_url").value.trim(),
+                }),
+              })
+            : await fetch(
+                `/api/models?provider=${encodeURIComponent(provider)}`,
+              );
           const data = await r.json();
+          // A newer request (for example another key edit) owns the UI now.
+          if (generation !== modelsRequestGeneration) return;
           if (!r.ok) {
             if (Array.isArray(data.models) && data.models.length) {
               updateModelOptions(provider, selected, data.models);
@@ -5445,6 +5478,7 @@
           updateFallbackModelOptions(data.models, fallbackSelected);
           setModelStatus("model.fetched", { count: data.models.length });
         } catch (e) {
+          if (generation !== modelsRequestGeneration) return;
           updateModelOptions(provider, selected);
           updateChatModelOptions(
             MODEL_OPTIONS[provider]?.models || [],
@@ -5506,6 +5540,20 @@
         $("api_key").value = "";
         updateApiKeyHint(provider);
         fetchModels(provider);
+      });
+      let apiKeyFetchTimer = null;
+      $("api_key").addEventListener("input", () => {
+        // Any edit (including clearing the key) makes in-flight and debounced
+        // responses stale, even before a new request is started.
+        modelsRequestGeneration += 1;
+        clearTimeout(apiKeyFetchTimer);
+        const key = $("api_key").value.trim();
+        if (key.length < 8) return;
+        // Fetch with the key that was just typed, before it is saved, so the
+        // model selector fills in as soon as the user finishes entering it.
+        apiKeyFetchTimer = setTimeout(() => {
+          fetchModels($("provider").value, currentModel(), "", key);
+        }, 700);
       });
       $("fallback_provider_select").addEventListener("change", (event) => {
         fetchFallbackModels(event.target.value, "");
@@ -5884,8 +5932,8 @@
       }
       $("temperature").addEventListener("input", updateRanges);
       $("top_p").addEventListener("input", updateRanges);
-      $("save").addEventListener("click", async () => {
-        const body = {
+      function collectSettingsBody() {
+        return {
           agent_name: $("agent_name").value,
           agent_role: $("agent_role").value,
           response_language: $("response_language").value,
@@ -5912,6 +5960,9 @@
           discord_prefix: $("discord_prefix").value,
           terminal_enabled: $("terminal_enabled").checked,
         };
+      }
+      $("save").addEventListener("click", async () => {
+        const body = collectSettingsBody();
         const apiKey = body.api_key.trim();
         if (apiKey && apiKey !== "••••••••") {
           $("save").disabled = true;
@@ -6006,7 +6057,13 @@
       $("test").addEventListener("click", async () => {
         $("test").disabled = true;
         $("test").textContent = t("notice.testing");
-        const r = await fetch("/api/settings/test", { method: "POST" });
+        // Send the form values so an API key that is typed but not saved yet
+        // can still be tested.
+        const r = await fetch("/api/settings/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectSettingsBody()),
+        });
         const data = await r.json();
         showNotice(
           data.ok
