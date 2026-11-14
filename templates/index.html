@@ -5423,12 +5423,23 @@
         provider,
         selected = "",
         fallbackSelected = "",
+        apiKey = "",
       ) {
         $("model_status").textContent = t("model.fetching");
         try {
-          const r = await fetch(
-            `/api/models?provider=${encodeURIComponent(provider)}`,
-          );
+          const r = apiKey
+            ? await fetch("/api/models", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  provider,
+                  api_key: apiKey,
+                  base_url: $("base_url").value.trim(),
+                }),
+              })
+            : await fetch(
+                `/api/models?provider=${encodeURIComponent(provider)}`,
+              );
           const data = await r.json();
           if (!r.ok) {
             if (Array.isArray(data.models) && data.models.length) {
@@ -5506,6 +5517,17 @@
         $("api_key").value = "";
         updateApiKeyHint(provider);
         fetchModels(provider);
+      });
+      let apiKeyFetchTimer = null;
+      $("api_key").addEventListener("input", () => {
+        clearTimeout(apiKeyFetchTimer);
+        const key = $("api_key").value.trim();
+        if (key.length < 8) return;
+        // Fetch with the key that was just typed, before it is saved, so the
+        // model selector fills in as soon as the user finishes entering it.
+        apiKeyFetchTimer = setTimeout(() => {
+          fetchModels($("provider").value, currentModel(), "", key);
+        }, 700);
       });
       $("fallback_provider_select").addEventListener("change", (event) => {
         fetchFallbackModels(event.target.value, "");
