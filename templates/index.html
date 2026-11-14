@@ -264,6 +264,10 @@
         gap: 6px;
         margin-bottom: 10px;
       }
+      .logs-filter button {
+        padding: 6px 10px;
+        border-radius: 8px;
+      }
       .logs-filter button.active {
         background: #4f46e5;
         color: #fff;
@@ -643,6 +647,10 @@
         display: grid;
         gap: 10px;
       }
+      .schedule-form button {
+        width: fit-content;
+        padding: 8px 14px;
+      }
       .schedule-list {
         display: grid;
         gap: 8px;
@@ -959,10 +967,7 @@
         .brand {
           padding: 5px 10px 20px;
         }
-        nav {
-          display: flex;
-          gap: 5px;
-        }
+
         nav button {
           flex: 1 1 0;
           min-width: 0;
@@ -2272,6 +2277,330 @@
       body.light-theme .auth-session-row {
         border-color: #e2e8f0;
       }
+
+      /* Chat composer: grouped tool row (attach + skills / model + effort) */
+      form.chat-form {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px 14px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        background: rgba(15, 23, 42, 0.92);
+        box-shadow: 0 12px 32px rgba(2, 6, 23, 0.35);
+        transition:
+          border-color 0.18s ease,
+          box-shadow 0.18s ease,
+          background 0.18s ease;
+      }
+      .chat-form:focus-within {
+        border-color: rgba(129, 140, 248, 0.55);
+      }
+      .chat-form textarea {
+        width: 100%;
+        min-height: 66px;
+        max-height: 200px;
+        padding: 6px 2px 4px;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--text, #f8fafc);
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
+      .chat-form textarea::placeholder {
+        color: #7d8aa1;
+      }
+      .chat-tools {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 6px 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line-soft, rgba(255, 255, 255, 0.07));
+      }
+      .chat-tools-left,
+      .chat-tools-right {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .chat-tools-right {
+        margin-left: auto;
+        gap: 8px;
+        flex: 0 1 auto;
+      }
+      .attach-button {
+        display: grid;
+        place-items: center;
+        flex: 0 0 32px;
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+        color: #cbd5e1;
+        font-size: 1.2rem;
+        font-weight: 500;
+        line-height: 1;
+        cursor: pointer;
+        user-select: none;
+      }
+      .attach-button:hover {
+        background: rgba(129, 140, 248, 0.2);
+        color: #fff;
+      }
+      .attachment-chip,
+      .skill-chip {
+        max-width: 130px;
+        padding: 4px 9px;
+        border-radius: 999px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.72rem;
+        line-height: 1.2;
+      }
+      .attachment-chip {
+        background: rgba(56, 189, 248, 0.14);
+        color: #7dd3fc;
+      }
+      .chat-tools select.composer-select {
+        width: auto;
+        height: 32px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted, #94a3b8);
+        font-size: 0.78rem;
+        text-overflow: ellipsis;
+      }
+      .chat-tools select.composer-select:hover {
+        background: rgba(148, 163, 184, 0.12);
+        color: var(--text, #f8fafc);
+      }
+      .chat-tools select.composer-select:focus {
+        outline: 0;
+      }
+      #chat-command-mode {
+        max-width: 96px;
+      }
+      .composer-pill {
+        align-items: center;
+        min-width: 0;
+        max-width: 100%;
+        height: 34px;
+        padding: 0 4px;
+      }
+      .composer-pill select {
+        height: 30px;
+        padding: 0 4px;
+        border: 0;
+        background: transparent;
+        font-size: 0.78rem;
+      }
+      .composer-pill select.composer-select {
+        padding: 0 2px;
+      }
+      .chat-tools #chat-model-select {
+        width: auto;
+        min-width: 0;
+        max-width: 200px;
+        flex: 1 1 auto;
+        color: #cbd5e1;
+        overflow: hidden;
+      }
+      .chat-tools #chat-thinking-level {
+        width: 84px;
+        min-width: 84px;
+        max-width: 84px;
+        flex: 0 0 auto;
+        color: var(--muted, #94a3b8);
+        overflow: hidden;
+      }
+      .composer-divider {
+        flex: 0 0 1px;
+        width: 1px;
+        height: 16px;
+        background: var(--line-soft, rgba(255, 255, 255, 0.1));
+      }
+      .chat-form .send-round {
+        flex: 0 0 36px;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: var(--indigo, #818cf8);
+        color: #101426;
+        font-size: 1.05rem;
+        font-weight: 800;
+        box-shadow: 0 4px 14px rgba(129, 140, 248, 0.3);
+      }
+      .chat-form .send-round:hover:not(:disabled) {
+        background: #a5b4fc;
+        box-shadow: 0 4px 16px rgba(129, 140, 248, 0.4);
+        transform: none;
+      }
+      body.light-theme .chat-form {
+        background: #f4f6fb;
+        border-color: #d6dfec;
+        box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+      }
+      body.light-theme .chat-form:focus-within {
+        background: #fff;
+        border-color: #a5b4fc;
+        box-shadow:
+          0 0 0 3px rgba(99, 102, 241, 0.12),
+          0 2px 12px rgba(15, 23, 42, 0.06);
+      }
+      body.light-theme .chat-form textarea {
+        color: #172033;
+      }
+      body.light-theme .chat-form textarea::placeholder {
+        color: #8492a8;
+      }
+      body.light-theme .attach-button {
+        background: #e7ecf5;
+        color: #51617a;
+      }
+      body.light-theme .attach-button:hover {
+        background: #dfe6f2;
+        color: #172033;
+      }
+      body.light-theme .attachment-chip {
+        background: #e2f3fd;
+        color: #0c6a95;
+      }
+      body.light-theme .composer-pill {
+        border-color: #d6dfec;
+        background: #fff;
+      }
+      body.light-theme .composer-pill select,
+      body.light-theme .chat-tools select.composer-select {
+        border: 0;
+        background: transparent;
+        color: #51617a;
+      }
+      body.light-theme .chat-tools #chat-model-select {
+        color: #26344d;
+      }
+      body.light-theme .composer-divider {
+        background: #d6dfec;
+      }
+      @media (max-width: 720px) {
+        .chat-form {
+          padding: 10px 12px 9px;
+          border-radius: 14px;
+        }
+        .chat-form textarea {
+          min-height: 46px;
+          font-size: 0.9rem;
+        }
+        .chat-tools-left {
+          flex: 1 1 auto;
+          overflow: hidden;
+        }
+        .attachment-chip,
+        .skill-chip {
+          max-width: 80px;
+          flex: 0 0 auto;
+        }
+        .chat-tools #chat-model-select {
+          max-width: 110px;
+          flex: 1 1 auto;
+        }
+        .chat-tools #chat-thinking-level {
+          width: 64px;
+          min-width: 64px;
+          max-width: 64px;
+          flex: 0 0 auto;
+        }
+        .chat-tools #chat-command-mode {
+          max-width: 72px;
+          flex: 0 0 auto;
+        }
+      }
+      @media (max-width: 560px) {
+        .chat-tools {
+          flex-wrap: nowrap;
+          flex-direction: row;
+          align-items: center;
+          gap: 4px;
+        }
+        .chat-tools-left,
+        .chat-tools-right {
+          flex: 0 0 auto;
+          width: auto;
+          align-items: center;
+        }
+        .chat-tools-left {
+          margin-left: 0;
+          margin-right: 8px;
+        }
+        .chat-tools-right {
+          margin-left: 0;
+          justify-content: flex-start;
+        }
+        .attach-button {
+          flex: 0 0 auto;
+          width: 32px;
+          height: 32px;
+        }
+        .composer-pill {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 4px;
+          margin: 0 4px 0 0;
+        }
+        .composer-pill select.composer-select {
+          height: 28px;
+          padding: 0 4px;
+          font-size: 0.7rem;
+        }
+        .composer-pill .composer-divider {
+          width: 1px;
+          height: 12px;
+          background: var(--line-soft, rgba(255, 255, 255, 0.2));
+        }
+        #chat-model-select {
+          flex: 1 1 auto;
+          min-width: 80px;
+          max-width: 140px;
+          height: 28px;
+          padding: 0 6px;
+          font-size: 0.7rem;
+        }
+        #chat-thinking-level {
+          flex: 0 0 auto;
+          width: 60px;
+          height: 28px;
+          padding: 0 4px;
+          font-size: 0.7rem;
+        }
+        #chat-command-mode {
+          flex: 0 0 auto;
+          width: 72px;
+          height: 28px;
+          padding: 0 4px;
+          font-size: 0.7rem;
+        }
+        .attach-button,
+        .skill-chip,
+        .attachment-chip {
+          flex: 0 0 auto;
+          width: 28px;
+          height: 28px;
+          font-size: 0.85rem;
+        }
+        .skill-chip {
+          margin: 0 2px 0 0 !important;
+        }
+      }
+      @media (max-width: 420px) {
+        #chat-command-mode {
+          max-width: 88px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -2420,7 +2749,7 @@
                       for="file-input"
                       title="แนบไฟล์"
                       data-i18n-title="chat.attach"
-                      >📎</label
+                      ><span aria-hidden="true">+</span></label
                     >
                     <input
                       id="file-input"
@@ -2428,6 +2757,22 @@
                       hidden
                       accept=".txt,.md,.csv,.json,.py,.js,.ts,.tsx,.jsx,.html,.css,.xml,.yaml,.yml,.sql,.sh,.log"
                     />
+                    <select
+                      id="chat-command-mode"
+                      class="composer-select"
+                      title="โหมดการรันคำสั่ง"
+                      data-i18n-title="chat.commandModeTitle"
+                    >
+                      <option value="ask" data-i18n="chat.commandAsk">
+                        ถามก่อน
+                      </option>
+                      <option value="auto" data-i18n="chat.commandAuto">
+                        อัตโนมัติ
+                      </option>
+                      <option value="fast" data-i18n="chat.commandFast">
+                        Fast+
+                      </option>
+                    </select>
                     <span
                       id="attachment-chip"
                       class="attachment-chip"
@@ -2440,51 +2785,50 @@
                       data-i18n-title="slash.clearSkill"
                       hidden
                     ></span>
-                    <select
-                      id="chat-thinking-level"
-                      title="ระดับการคิด"
-                      data-i18n-title="chat.thinkingTitle"
-                    >
-                      <option value="off" data-i18n="chat.thinkingOff">
-                        คิด: ปิด
-                      </option>
-                      <option value="low" data-i18n="chat.thinkingLow">
-                        คิด: ต่ำ
-                      </option>
-                      <option value="medium" data-i18n="chat.thinkingMedium">
-                        คิด: กลาง
-                      </option>
-                      <option value="high" data-i18n="chat.thinkingHigh">
-                        คิด: สูง
-                    </option></select
-                    ><select
-                      id="chat-command-mode"
-                      title="โหมดการรันคำสั่ง"
-                      data-i18n-title="chat.commandModeTitle"
-                    >
-                      <option value="ask" data-i18n="chat.commandAsk">คำสั่ง: ถามก่อน</option>
-                      <option value="auto" data-i18n="chat.commandAuto">คำสั่ง: อนุมัติอัตโนมัติ</option>
-                      <option value="fast" data-i18n="chat.commandFast">คำสั่ง: Fast+</option>
-                    </select
-                    ><select
-                      id="chat-model-select"
-                      title="เลือกโมเดล"
-                      data-i18n-title="chat.modelTitle"
-                    >
-                      <option value="" data-i18n="chat.modelLoading">
-                        กำลังโหลดโมเดล...
-                      </option>
-                    </select>
                   </div>
-                  <button
-                    class="send-round"
-                    id="send"
-                    type="submit"
-                    title="ส่ง"
-                    data-i18n-title="chat.send"
-                  >
-                    ↑
-                  </button>
+                  <div class="chat-tools-right">
+                    <span class="composer-pill">
+                      <select
+                        id="chat-model-select"
+                        class="composer-select"
+                        title="เลือกโมเดล"
+                        data-i18n-title="chat.modelTitle"
+                      >
+                        <option value="" data-i18n="chat.modelLoading">
+                          กำลังโหลดโมเดล...
+                        </option>
+                      </select>
+                      <span class="composer-divider" aria-hidden="true"></span>
+                      <select
+                        id="chat-thinking-level"
+                        class="composer-select"
+                        title="ระดับการคิด"
+                        data-i18n-title="chat.thinkingTitle"
+                      >
+                        <option value="off" data-i18n="chat.thinkingOff">
+                          ปิด
+                        </option>
+                        <option value="low" data-i18n="chat.thinkingLow">
+                          ต่ำ
+                        </option>
+                        <option value="medium" data-i18n="chat.thinkingMedium">
+                          กลาง
+                        </option>
+                        <option value="high" data-i18n="chat.thinkingHigh">
+                          สูง
+                        </option>
+                      </select>
+                    </span>
+                    <button
+                      class="send-round"
+                      id="send"
+                      type="submit"
+                      title="ส่ง"
+                      data-i18n-title="chat.send"
+                    >
+                      ↑
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
@@ -3034,14 +3378,14 @@
           "chat.placeholder": "ส่งข้อความถึง AI...",
           "chat.attach": "แนบไฟล์",
           "chat.thinkingTitle": "ระดับการคิด",
-          "chat.thinkingOff": "คิด: ปิด",
-          "chat.thinkingLow": "คิด: ต่ำ",
-          "chat.thinkingMedium": "คิด: กลาง",
-          "chat.thinkingHigh": "คิด: สูง",
+          "chat.thinkingOff": "ปิด",
+          "chat.thinkingLow": "ต่ำ",
+          "chat.thinkingMedium": "กลาง",
+          "chat.thinkingHigh": "สูง",
           "chat.commandModeTitle": "โหมดการรันคำสั่ง",
-          "chat.commandAsk": "คำสั่ง: ถามก่อน",
-          "chat.commandAuto": "คำสั่ง: อนุมัติอัตโนมัติ",
-          "chat.commandFast": "คำสั่ง: Fast+",
+          "chat.commandAsk": "ถามก่อน",
+          "chat.commandAuto": "อัตโนมัติ",
+          "chat.commandFast": "Fast+",
           "chat.modelTitle": "เลือกโมเดล",
           "chat.modelLoading": "กำลังโหลดโมเดล...",
           "chat.send": "ส่ง",
@@ -3369,14 +3713,14 @@
           "chat.placeholder": "Message the AI...",
           "chat.attach": "Attach file",
           "chat.thinkingTitle": "Thinking level",
-          "chat.thinkingOff": "Thinking: Off",
-          "chat.thinkingLow": "Thinking: Low",
-          "chat.thinkingMedium": "Thinking: Medium",
-          "chat.thinkingHigh": "Thinking: High",
+          "chat.thinkingOff": "Off",
+          "chat.thinkingLow": "Low",
+          "chat.thinkingMedium": "Medium",
+          "chat.thinkingHigh": "High",
           "chat.commandModeTitle": "Command execution mode",
-          "chat.commandAsk": "Commands: Ask first",
-          "chat.commandAuto": "Commands: Auto approved",
-          "chat.commandFast": "Commands: Fast+",
+          "chat.commandAsk": "Ask first",
+          "chat.commandAuto": "Auto",
+          "chat.commandFast": "Fast+",
           "chat.modelTitle": "Choose model",
           "chat.modelLoading": "Loading models...",
           "chat.send": "Send",
@@ -5614,6 +5958,9 @@
         currentChatSelected = event.target.value;
         $("header-model-name").textContent =
           event.target.value || t("model.none");
+        event.target.title = event.target.value
+          ? `${t("chat.modelTitle")}: ${event.target.value}`
+          : t("chat.modelTitle");
       });
       $("schedule-model").addEventListener("change", (event) => {
         currentScheduleSelected = event.target.value;
