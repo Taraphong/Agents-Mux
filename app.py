@@ -13,6 +13,7 @@ import shutil
 import signal
 import socket
 import ssl
+import struct
 import subprocess
 import sys
 import tempfile
@@ -29,7 +30,12 @@ import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
-from werkzeug.serving import ThreadedWSGIServer, generate_adhoc_ssl_context, load_ssl_context
+from werkzeug.serving import (
+    ThreadedWSGIServer,
+    WSGIRequestHandler,
+    generate_adhoc_ssl_context,
+    load_ssl_context,
+)
 
 load_dotenv()
 
@@ -3043,6 +3049,31 @@ def tls_configuration() -> Any:
 
 TLS_HANDSHAKE_TIMEOUT_SECONDS = 10
 
+# Seconds close() may spend delivering a response that is still queued.
+RESPONSE_LINGER_SECONDS = 5
+
+
+class DrainingRequestHandler(WSGIRequestHandler):
+    """Deliver the whole response before the connection is closed.
+
+    Werkzeug always answers with ``Connection: close`` and then closes the
+    socket. On Termux, closing a socket that still holds a large body that has
+    not been acknowledged yet aborts delivery, so the browser waits forever on
+    a half-loaded page (the chat page is ~248 KB). SO_LINGER makes close()
+    block until the peer has the bytes, or the linger timeout expires.
+    """
+
+    def setup(self) -> None:
+        super().setup()
+        try:
+            self.connection.setsockopt(
+                socket.SOL_SOCKET,
+                socket.SO_LINGER,
+                struct.pack("ii", 1, RESPONSE_LINGER_SECONDS),
+            )
+        except OSError:
+            pass
+
 
 def build_tls_context(ssl_context: Any) -> Any:
     """Turn a tls_configuration() value into a ready ssl.SSLContext."""
@@ -3061,7 +3092,9 @@ class TLSServer(ThreadedWSGIServer):
     """
 
     def __init__(self, host: str, port: int, wsgi_app: Any, ssl_context: Any) -> None:
-        super().__init__(host, port, wsgi_app, ssl_context=None)
+        super().__init__(
+            host, port, wsgi_app, handler=DrainingRequestHandler, ssl_context=None
+        )
         self.tls_context = ssl_context
         # Werkzeug uses ssl_context to report requests as HTTPS.
         self.ssl_context = ssl_context
@@ -3122,5 +3155,9 @@ if __name__ == "__main__":
         server.log_startup()
         server.serve_forever()
     else:
-        app.run(host="0.0.0.0", port=port, ssl_context=None, debug=False)
+        server = ThreadedWSGIServer(
+            "0.0.0.0", port, app, handler=DrainingRequestHandler
+        )
+        server.log_startup()
+        server.serve_forever()
 
