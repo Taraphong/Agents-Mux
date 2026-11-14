@@ -5543,6 +5543,9 @@
       });
       let apiKeyFetchTimer = null;
       $("api_key").addEventListener("input", () => {
+        // Any edit (including clearing the key) makes in-flight and debounced
+        // responses stale, even before a new request is started.
+        modelsRequestGeneration += 1;
         clearTimeout(apiKeyFetchTimer);
         const key = $("api_key").value.trim();
         if (key.length < 8) return;
