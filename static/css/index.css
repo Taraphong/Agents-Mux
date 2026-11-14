@@ -1398,35 +1398,6 @@ button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.05);
   box-shadow: none;
 }
-.language-select {
-  width: auto;
-  padding: 2px 4px;
-  border: 1px solid var(--line-soft);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--muted);
-  color-scheme: dark;
-  font: inherit;
-  font-size: 0.68rem;
-  cursor: pointer;
-  min-width: 60px;
-}
-.language-select option {
-  background: #0d1421;
-  color: var(--text);
-}
-.language-select:hover,
-.language-select:focus {
-  color: var(--text);
-  background: var(--indigo, #818cf8);
-}
-body.light-theme .language-select {
-  color-scheme: light;
-}
-body.light-theme .language-select option {
-  background: #ffffff;
-  color: #172033;
-}
 .language-display {
   font-size: 0.6rem;
   padding: 0 2px;

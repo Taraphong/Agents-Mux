@@ -1,5 +1,10 @@
 const $ = (id) => document.getElementById(id);
 const LANGUAGE_STORAGE_KEY = "ai-control-center-language";
+// Provider whose default base URL may still be replaced when the user switches.
+let activeProvider = "openai";
+// A custom OpenAI-compatible endpoint is remembered per provider so switching
+// away and back does not silently discard it.
+const customBaseUrls = {};
 const SUPPORTED_LANGUAGES = ["th", "en"];
 const I18N = {
   th: {
@@ -14,7 +19,9 @@ const I18N = {
     "sidebar.history": "ประวัติการพูดคุย",
     "history.renameTitle": "เปลี่ยนชื่อประวัติ",
     "history.renamePlaceholder": "ชื่อประวัติใหม่",
-    "common.cancel": "ยกเลิก",
+              "common.cancel": "ยกเลิก",
+          "common.confirm": "ยืนยัน",
+          "common.confirmTitle": "ยืนยันการทำรายการ",
     "common.save": "บันทึก",
     "common.delete": "ลบ",
     "header.openMenu": "เปิดเมนู",
@@ -349,6 +356,8 @@ const I18N = {
     "history.renameTitle": "Rename conversation",
     "history.renamePlaceholder": "New conversation name",
     "common.cancel": "Cancel",
+    "common.confirm": "Confirm",
+    "common.confirmTitle": "Confirm action",
     "common.save": "Save",
     "common.delete": "Delete",
     "header.openMenu": "Open menu",
@@ -1504,7 +1513,14 @@ $("save-logs").addEventListener("click", async () => {
   }
 });
 $("delete-logs").addEventListener("click", async () => {
-  if (!window.confirm(t("logs.deleteConfirm"))) return;
+  if (
+    !(await confirmDialog({
+      title: t("common.confirmTitle"),
+      text: t("logs.deleteConfirm"),
+      confirmLabel: t("common.confirm"),
+    }))
+  )
+    return;
   const button = $("delete-logs");
   button.disabled = true;
   try {
@@ -2442,8 +2458,8 @@ const MODEL_OPTIONS = {
 };
 const PROVIDER_BASE_URLS = {
   openai: "https://api.openai.com/v1",
-  gemini: "https://generativelanguage.googleapis.com",
-  anthropic: "https://api.anthropic.com",
+  gemini: "https://generativelanguage.googleapis.com/v1beta",
+  anthropic: "https://api.anthropic.com/v1",
   hf: "https://router.huggingface.co/v1",
   or: "https://openrouter.ai/api/v1",
   groq: "https://api.groq.com/openai/v1",
@@ -2571,10 +2587,67 @@ function currentModel() {
     ? $("model_custom").value.trim()
     : $("model_select").value;
 }
+function confirmDialog({ title, text, confirmLabel }) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop open";
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    const body = document.createElement("p");
+    body.textContent = text;
+    const actions = document.createElement("div");
+    actions.className = "modal-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "modal-cancel";
+    cancel.textContent = t("common.cancel");
+    const accept = document.createElement("button");
+    accept.type = "button";
+    accept.className = "modal-danger";
+    accept.textContent = confirmLabel;
+    actions.append(cancel, accept);
+    modal.append(heading, body, actions);
+    backdrop.append(modal);
+    const close = (result) => {
+      document.removeEventListener("keydown", onKey);
+      backdrop.remove();
+      resolve(result);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") close(false);
+    };
+    cancel.addEventListener("click", () => close(false));
+    accept.addEventListener("click", () => close(true));
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) close(false);
+    });
+    document.addEventListener("keydown", onKey);
+    document.body.append(backdrop);
+    accept.focus();
+  });
+}
+
 $("provider").addEventListener("change", () => {
   const provider = $("provider").value;
+  const previousDefault = (PROVIDER_BASE_URLS[activeProvider] ?? "").replace(
+    /\/+$/,
+    "",
+  );
+  const currentBase = $("base_url").value.trim().replace(/\/+$/, "");
+  if (currentBase && currentBase !== previousDefault) {
+    customBaseUrls[activeProvider] = currentBase;
+  } else {
+    delete customBaseUrls[activeProvider];
+  }
   $("base_url").value =
-    PROVIDER_BASE_URLS[provider] ?? PROVIDER_BASE_URLS.openai;
+    customBaseUrls[provider] ??
+    PROVIDER_BASE_URLS[provider] ??
+    PROVIDER_BASE_URLS.openai;
+  activeProvider = provider;
   $("api_key").value = "";
   updateApiKeyHint(provider);
   fetchModels(provider);
@@ -2926,6 +2999,11 @@ async function loadSettings() {
     s.base_url ||
     PROVIDER_BASE_URLS[s.provider ?? "openai"] ||
     PROVIDER_BASE_URLS.openai;
+  activeProvider = $("provider").value;
+  const loadedBase = $("base_url").value.trim().replace(/\/+$/, "");
+  if (loadedBase && loadedBase !== (PROVIDER_BASE_URLS[activeProvider] ?? "")) {
+    customBaseUrls[activeProvider] = loadedBase;
+  }
   $("system_prompt").value = s.system_prompt ?? "";
   $("memory_review").value = s.memory_review ?? "";
   const skillsSelect = $("skills");
@@ -3088,7 +3166,15 @@ $("update-skill").addEventListener("click", async () => {
 });
 $("delete-skill").addEventListener("click", async () => {
   const name = $("skills").value;
-  if (!name || !window.confirm(t("settings.deleteSkillConfirm"))) return;
+  if (!name) return;
+  if (
+    !(await confirmDialog({
+      title: t("common.confirmTitle"),
+      text: t("settings.deleteSkillConfirm"),
+      confirmLabel: t("common.confirm"),
+    }))
+  )
+    return;
   const response = await fetch(`/api/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
   if (response.ok) {
     await loadSettings();
@@ -3338,7 +3424,14 @@ window.addEventListener("online", () => {
   if (pendingHistoryAppends.size) flushPendingAppends();
 });
 $("reset").addEventListener("click", async () => {
-  if (!confirm(t("notice.resetConfirm"))) return;
+  if (
+    !(await confirmDialog({
+      title: t("common.confirmTitle"),
+      text: t("notice.resetConfirm"),
+      confirmLabel: t("common.confirm"),
+    }))
+  )
+    return;
   await fetch("/api/settings/reset", { method: "POST" });
   await loadSettings();
   showNotice(t("notice.resetDone"));

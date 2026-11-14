@@ -24,6 +24,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from collections import deque
 
 import requests
@@ -39,8 +40,22 @@ from werkzeug.serving import (
 
 load_dotenv()
 
+
+def env_int(name: str, default: int, minimum: int) -> int:
+    """Read an integer environment variable, clamping invalid input to safe bounds."""
+    try:
+        value = int(str(os.getenv(name, "")).strip() or default)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, value)
+
+
 app = Flask(__name__)
-APP_LOGS: list[dict[str, Any]] = []
+# The in-memory log is a rolling window: a server that runs for weeks on Termux
+# must not keep every event in RAM, so only the newest entries are retained.
+APP_LOGS: deque[dict[str, Any]] = deque(maxlen=env_int("AI_WEB_LOG_MAX_ENTRIES", 1000, 50))
+# Reject oversized bodies before they reach the JSON parser or the history writer.
+app.config["MAX_CONTENT_LENGTH"] = env_int("AI_WEB_MAX_CONTENT_BYTES", 8 * 1024 * 1024, 64 * 1024)
 APP_LOG_LOCK = threading.Lock()
 LOGGER = logging.getLogger("ai-web")
 LOG_FILE = Path(os.getenv("AI_WEB_LOG_FILE", "logs/app-log.jsonl"))
@@ -73,15 +88,6 @@ TERMINAL_MAX_OUTPUT_BYTES = 100_000
 TERMINAL_SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
 
 
-def env_int(name: str, default: int, minimum: int) -> int:
-    """Read an integer environment variable, clamping invalid input to safe bounds."""
-    try:
-        value = int(str(os.getenv(name, "")).strip() or default)
-    except (TypeError, ValueError):
-        value = default
-    return max(minimum, value)
-
-
 # Device pairing: the server generates single-use keys, the client sends a key
 # back and receives an HttpOnly cookie for a long-lived, revocable session.
 AUTH_FILE = Path(os.getenv("AI_WEB_AUTH_FILE", ".app-auth.json"))
@@ -96,6 +102,7 @@ AUTH_PAIRING_FAILURES: dict[str, list[float]] = {}
 AUTH_PAIRING_MAX_FAILURES = 8
 AUTH_PAIRING_FAILURE_WINDOW = 300
 AUTH_PUBLIC_PATHS = {"/pair", "/api/auth/pair", "/api/auth/status"}
+MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 AUTH_TRUST_PROXY = os.getenv("AI_WEB_TRUST_PROXY", "").strip().lower() in {"1", "true", "yes", "on"}
 
 if AUTH_TRUST_PROXY:
@@ -113,6 +120,7 @@ TOOL_INSTRUCTIONS = """
 """.strip()
 
 TOOL_ALIASES = {"execute_command": "run_command"}
+TOOL_CALL_BLOCK_PATTERN = re.compile(r"<tool_call>.*?</tool_call>", re.DOTALL)
 
 
 def load_persisted_logs() -> None:
@@ -316,8 +324,15 @@ def load_settings() -> dict[str, Any]:
 
 
 def save_settings(settings: dict[str, Any]) -> None:
-    """Write the current settings to disk as formatted JSON."""
-    SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Write the current settings atomically so readers never see a partial file."""
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = SETTINGS_FILE.with_name(f".{SETTINGS_FILE.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp_path.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temp_path, SETTINGS_FILE)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink(missing_ok=True)
 
 
 def load_schedules() -> list[dict[str, Any]]:
@@ -336,26 +351,37 @@ def save_schedules(jobs: list[dict[str, Any]]) -> None:
     SCHEDULE_FILE.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def cron_values(field: str, minimum: int, maximum: int) -> set[int]:
-    """Expand one cron field into the concrete values it matches."""
+def cron_values(field: str, minimum: int, maximum: int, alias_max: int | None = None) -> set[int]:
+    """Expand one cron field into concrete values, rejecting malformed input."""
+    upper = alias_max if alias_max is not None else maximum
     values: set[int] = set()
-    for part in field.split(","):
-        if part == "*":
-            values.update(range(minimum, maximum + 1))
-        elif part.startswith("*/"):
-            step = int(part[2:])
-            if step < 1:
-                raise ValueError("cron step ต้องมากกว่า 0")
-            values.update(range(minimum, maximum + 1, step))
-        elif "-" in part:
-            start, end = (int(value) for value in part.split("-", 1))
+    for part in str(field).split(","):
+        match = re.fullmatch(r"(\*|\d+(?:-\d+)?)(?:/(\d+))?", part.strip())
+        if not match:
+            raise ValueError(f"รูปแบบ cron ไม่ถูกต้อง: {part}")
+        base, step_text = match.group(1), match.group(2)
+        step = int(step_text) if step_text else 1
+        if step < 1:
+            raise ValueError("ค่า step ของ cron ต้องมากกว่า 0")
+        if base == "*":
+            start, end = minimum, upper
+        elif "-" in base:
+            start_text, end_text = base.split("-", 1)
+            start, end = int(start_text), int(end_text)
             if start > end:
-                raise ValueError("ช่วง cron ไม่ถูกต้อง")
-            values.update(range(start, end + 1))
+                raise ValueError("ช่วงค่า cron ไม่ถูกต้อง (ค่าแรกต้องไม่มากกว่าค่าสุดท้าย)")
         else:
-            values.add(int(part))
-    if not values or min(values) < minimum or max(values) > maximum:
-        raise ValueError("ค่า cron อยู่นอกช่วงที่อนุญาต")
+            start = end = int(base)
+        if start < minimum or end > upper:
+            raise ValueError(f"ค่า cron ต้องอยู่ระหว่าง {minimum} ถึง {upper}")
+        values.update(range(start, end + 1, step))
+    if not values:
+        raise ValueError("ค่า cron ว่างเปล่า")
+    if alias_max is not None:
+        # Cron accepts both 0 and 7 for Sunday.
+        values = {minimum if value == alias_max else value for value in values}
+    if min(values) < minimum or max(values) > maximum:
+        raise ValueError(f"ค่า cron ต้องอยู่ระหว่าง {minimum} ถึง {maximum}")
     return values
 
 
@@ -366,8 +392,10 @@ def validate_cron(expression: str) -> str:
     fields = expression.split()
     if len(fields) != 5:
         raise ValueError("cron ต้องมี 5 ช่อง เช่น */5 * * * * หรือ 0 9 * * 1-5")
-    for field, minimum, maximum in zip(fields, (0, 0, 1, 1, 0), (59, 23, 31, 12, 6)):
-        cron_values(field, minimum, maximum)
+    for field, minimum, maximum, alias_max in zip(
+        fields, (0, 0, 1, 1, 0), (59, 23, 31, 12, 6), (None, None, None, None, 7)
+    ):
+        cron_values(field, minimum, maximum, alias_max)
     return expression
 
 
@@ -381,7 +409,7 @@ def cron_matches(expression: str, now: datetime) -> bool:
     if now.month not in cron_values(month, 1, 12):
         return False
     dom_matches = now.day in cron_values(day_of_month, 1, 31)
-    dow_matches = ((now.weekday() + 1) % 7) in cron_values(day_of_week, 0, 6)
+    dow_matches = ((now.weekday() + 1) % 7) in cron_values(day_of_week, 0, 6, 7)
     # Standard cron ORs day-of-month and day-of-week when both are restricted.
     if day_of_month.strip() == "*" or day_of_week.strip() == "*":
         return dom_matches and dow_matches
@@ -595,6 +623,11 @@ def parse_command(command: str) -> list[str]:
                     raise ValueError(f"ไม่อนุญาต git option {token}")
             else:
                 ensure_safe_command_token(token)
+        # .git/config and .gitattributes can point at external programs or
+        # textconv filters; neither may run while inspecting the repository.
+        argv = ["git", "-c", "diff.external=", "--no-pager", *rest]
+        if rest[0] in {"diff", "log"}:
+            argv.extend(["--no-ext-diff", "--no-textconv"])
     elif binary in {"python", "python3"}:
         if rest != ["-m", "py_compile", "app.py"]:
             raise ValueError("อนุญาตเฉพาะการตรวจ syntax ของ app.py")
@@ -820,11 +853,41 @@ def terminal_secret_values() -> list[str]:
     return sorted(values, key=len, reverse=True)
 
 
+PEM_BLOCK_PATTERN = re.compile(
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+    re.DOTALL,
+)
+
+
 def redact_terminal_output(text: str, secrets_found: list[str]) -> str:
-    """Replace every known secret in terminal output with a placeholder."""
+    """Replace known secrets and any private key block in terminal output."""
     for secret in secrets_found:
         text = text.replace(secret, "••••••••")
-    return text
+    return PEM_BLOCK_PATTERN.sub("•••••••• (ซ่อน private key)", text)
+
+
+def ensure_terminal_paths_allowed(command: str) -> None:
+    """Reject terminal commands whose arguments point at protected project paths.
+
+    The web terminal runs through a real shell, so this is a token-level guard:
+    it catches the ordinary ways to read a protected file, while a command that
+    assembles a path at runtime can still slip past it. Output is additionally
+    scrubbed of API keys and PEM private keys before it leaves the server.
+    """
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+    for token in tokens:
+        candidate = token.replace("\\", "/").strip()
+        for prefix in (">>", ">", "<", "2>", "1>"):
+            if candidate.startswith(prefix):
+                candidate = candidate[len(prefix):]
+        if not candidate or candidate.startswith("-"):
+            continue
+        parts = [part for part in candidate.split("/") if part not in {"", "."}]
+        if any(part in PROTECTED_PARTS or part in PROTECTED_NAMES for part in parts):
+            raise PermissionError("Terminal ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
 
 
 SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
@@ -867,6 +930,8 @@ def resolve_terminal_cwd(raw_path: Any) -> Path:
         candidate = (PROJECT_ROOT / value).resolve()
     if candidate != PROJECT_ROOT and PROJECT_ROOT not in candidate.parents:
         raise ValueError("Terminal ถูกจำกัดให้ทำงานภายในโฟลเดอร์โปรเจกต์")
+    if any(part in PROTECTED_PARTS for part in candidate.relative_to(PROJECT_ROOT).parts):
+        raise PermissionError("Terminal ถูกจำกัดไม่ให้เข้าโฟลเดอร์ที่มีข้อมูลลับ")
     if not candidate.exists():
         raise FileNotFoundError(f"ไม่พบโฟลเดอร์: {raw_path}")
     if not candidate.is_dir():
@@ -934,6 +999,7 @@ def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
         raise ValueError("กรุณาพิมพ์คำสั่ง")
     if len(stripped) > 4000:
         raise ValueError("คำสั่งยาวเกินไป (สูงสุด 4000 ตัวอักษร)")
+    ensure_terminal_paths_allowed(stripped)
 
     changed_directory = False
     cd_match = re.fullmatch(r"cd(?:\s+(.*))?", stripped)
@@ -1217,11 +1283,18 @@ def load_history_record(conversation_id: str) -> dict[str, Any]:
     path = find_history_file(conversation_id)
     if path is None or not path.exists():
         return {}
+    return read_history_file(path) or {}
+
+
+def read_history_file(path: Path) -> dict[str, Any] | None:
+    """Read one history file, or None when it is unreadable or malformed."""
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return record if isinstance(record, dict) else {}
+    except (OSError, json.JSONDecodeError) as exc:
+        # Only the file name is logged: conversation content must stay private.
+        LOGGER.warning("อ่านไฟล์ประวัติไม่สำเร็จ (%s): %s", path.name, exc)
+        return None
+    return record if isinstance(record, dict) else None
 
 
 def find_schedule_conversation_id(job_id: str) -> str:
@@ -1306,6 +1379,14 @@ def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
     if not key:
         key = str(os.getenv(PROVIDER_ENV_KEYS.get(provider, "OPENAI_API_KEY"), "")).strip()
     return key
+
+
+def safe_stored_api_key(provider: str, settings: dict[str, Any] | None) -> str:
+    """Read an API key defensively so a settings failure cannot mask the real error."""
+    try:
+        return get_api_key(provider, settings or {})
+    except (OSError, TypeError, ValueError, KeyError):
+        return ""
 
 
 def key_is_configured(provider: str, settings: dict[str, Any] | None = None) -> bool:
@@ -1716,18 +1797,26 @@ def start_discord_bot() -> None:
                 await message.reply(f"พิมพ์ข้อความหลัง {prefix} หรือ mention bot เพื่อเริ่มคุยได้เลยครับ")
                 return
 
-            answer = await ask_agent(str(message.channel.id), content, getattr(message.channel, "name", "Discord"))
+            answer = await ask_agent(
+                str(message.channel.id),
+                content,
+                getattr(message.channel, "name", "Discord"),
+                allow_schedule_tools=member_is_admin(message.author),
+            )
             for chunk in split_discord_message(answer):
                 await message.reply(chunk, mention_author=False)
 
     client = AIClient(intents=intents)
     command_tree = discord.app_commands.CommandTree(client)
 
-    def is_server_admin(interaction: Any) -> bool:
-        """Return whether the interaction author has server administrator rights."""
-        member = getattr(interaction, "user", None)
+    def member_is_admin(member: Any) -> bool:
+        """Return whether a guild member has server administrator rights."""
         permissions = getattr(member, "guild_permissions", None)
         return bool(getattr(permissions, "administrator", False))
+
+    def is_server_admin(interaction: Any) -> bool:
+        """Return whether the interaction author has server administrator rights."""
+        return member_is_admin(getattr(interaction, "user", None))
 
     async def require_server_admin(interaction: Any) -> bool:
         """Reject an interaction unless the author is a server administrator."""
@@ -1743,8 +1832,17 @@ def start_discord_bot() -> None:
         probe_settings["model"] = model
         return await asyncio.to_thread(provider_readiness, probe_settings, "th")
 
-    async def ask_agent(context_key: str, content: str, channel_title: str = "Discord") -> str:
-        """Run one agent turn while keeping a short per-channel conversation."""
+    async def ask_agent(
+        context_key: str,
+        content: str,
+        channel_title: str = "Discord",
+        allow_schedule_tools: bool = False,
+    ) -> str:
+        """Run one agent turn while keeping a short per-channel conversation.
+
+        Schedule tools change what the server runs on a timer, so they are only
+        auto-approved for a member who can already administer the server.
+        """
         with DISCORD_CONTEXT_LOCK:
             context = DISCORD_CONTEXTS.setdefault(context_key, deque(maxlen=12))
             context.append({"role": "user", "content": content, "message_id": str(uuid.uuid4())})
@@ -1797,6 +1895,15 @@ def start_discord_bot() -> None:
                     break
                 if tool_request["name"] not in {"create_schedule", "update_schedule"}:
                     break
+                if not allow_schedule_tools:
+                    log_event(
+                        "discord.schedule_denied",
+                        "ปฏิเสธการสร้างงานตามเวลาจากผู้ใช้ที่ไม่มีสิทธิ์ผู้ดูแล",
+                        channel=context_key,
+                    )
+                    stripped = TOOL_CALL_BLOCK_PATTERN.sub("", answer).strip()
+                    answer = stripped or "การสร้างหรือแก้ไขงานตามเวลาใช้ได้เฉพาะผู้ดูแล server เท่านั้นครับ"
+                    break
                 result = await asyncio.to_thread(
                     run_local_tool,
                     tool_request["name"],
@@ -1833,7 +1940,12 @@ def start_discord_bot() -> None:
     async def ai_command(interaction: Any, prompt: str) -> None:
         """Handle the /ai slash command."""
         await interaction.response.defer()
-        answer = await ask_agent(str(interaction.channel_id), prompt, getattr(interaction.channel, "name", "Discord"))
+        answer = await ask_agent(
+            str(interaction.channel_id),
+            prompt,
+            getattr(interaction.channel, "name", "Discord"),
+            allow_schedule_tools=is_server_admin(interaction),
+        )
         for chunk in split_discord_message(answer):
             await interaction.followup.send(chunk)
 
@@ -2500,6 +2612,28 @@ def print_pairing_banner(record: dict[str, Any] | None) -> None:
 
 
 @app.before_request
+def reject_cross_site_mutation():
+    """Refuse state-changing requests that a browser sent from another site."""
+    if request.method not in MUTATING_METHODS:
+        return None
+    origin = request.headers.get("Origin", "").strip()
+    if not origin:
+        # Non-browser clients (curl, scripts) do not send Origin.
+        return None
+    parsed = urlsplit(origin)
+    if parsed.scheme in {"http", "https"} and parsed.netloc.lower() == request.host.lower():
+        return None
+    log_event("security.cross_origin", "ปฏิเสธคำขอที่มาจากเว็บอื่น", path=request.path, method=request.method)
+    return jsonify({"error": "คำขอจากเว็บอื่นถูกปฏิเสธ"}), 403
+
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    """Answer an oversized upload with JSON instead of Werkzeug's HTML page."""
+    return jsonify({"error": "ข้อมูลที่ส่งมีขนาดใหญ่เกินกว่าที่อนุญาต"}), 413
+
+
+@app.before_request
 def require_web_auth():
     """Gate every page and API behind a paired device unless auth is disabled."""
     if not AUTH_ENABLED:
@@ -2743,7 +2877,10 @@ def history_get(conversation_id: str):
     path = find_history_file(conversation_id)
     if not path or not path.exists():
         return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
-    return jsonify(json.loads(path.read_text(encoding="utf-8")))
+    record = read_history_file(path)
+    if record is None:
+        return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+    return jsonify(record)
 
 
 @app.patch("/api/history/<conversation_id>")
@@ -2753,7 +2890,9 @@ def history_update(conversation_id: str):
         path = find_history_file(conversation_id)
         if not path or not path.exists():
             return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
-        record = json.loads(path.read_text(encoding="utf-8"))
+        record = read_history_file(path)
+        if record is None:
+            return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
         body = request.get_json(silent=True) or {}
         if record.get("locked") and "title" in body:
             return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนเปลี่ยนชื่อ"}), 423
@@ -2776,7 +2915,9 @@ def history_delete(conversation_id: str):
         path = find_history_file(conversation_id)
         if not path or not path.exists():
             return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
-        record = json.loads(path.read_text(encoding="utf-8"))
+        record = read_history_file(path)
+        if record is None:
+            return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
         if record.get("locked"):
             return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนลบ"}), 423
         path.unlink()
@@ -2947,6 +3088,9 @@ def chat():
         return jsonify({"error": "กรุณาส่งข้อความ"}), 400
 
     provider = "openai"
+    # Bound before the try block: the error handlers below must never raise a
+    # NameError that hides the real cause.
+    settings: dict[str, Any] = {}
     try:
         log_event("chat.start", "เริ่มประมวลผลข้อความ", message_count=len(messages))
         settings = load_settings()
@@ -3043,14 +3187,14 @@ def chat():
         return jsonify({"answer": answer, "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
         log_event("provider.error", "ผู้ให้บริการตอบกลับด้วย HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
-        api_key = get_api_key(provider, settings)
+        api_key = safe_stored_api_key(provider, settings)
         if exc.response is not None and exc.response.status_code in {429, 503}:
             provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "ผู้ให้บริการ")
             return jsonify({"error": f"{provider_label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น"}), 503
         detail = redact_secrets(exc.response.text if exc.response is not None else str(exc), api_key=api_key)[:500]
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
-        api_key = get_api_key(provider, settings)
+        api_key = safe_stored_api_key(provider, settings)
         log_event("chat.error", "ประมวลผลข้อความไม่สำเร็จ", error=str(exc))
         return jsonify({"error": redact_secrets(str(exc), api_key=api_key)}), 500
 
