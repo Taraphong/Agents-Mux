@@ -2677,9 +2677,6 @@
             ☰
           </button>
           <h1 id="page-title" data-i18n="chat.title">แชตกับ AI</h1>
-          <span class="status" data-i18n="status.checking"
-            >● กำลังตรวจสอบการเชื่อมต่อ</span
-          >
           <div
             class="header-tools"
             aria-label="เครื่องมือแชต"
@@ -3372,7 +3369,6 @@
           "header.toolsAria": "เครื่องมือแชต",
           "header.themeTitle": "สลับธีม",
           "language.title": "ภาษา",
-          "status.checking": "● กำลังตรวจสอบการเชื่อมต่อ",
           "status.checkingModel": "กำลังตรวจสอบ...",
           "chat.title": "แชตกับ AI",
           "chat.placeholder": "ส่งข้อความถึง AI...",
@@ -3707,7 +3703,6 @@
           "header.toolsAria": "Chat tools",
           "header.themeTitle": "Toggle theme",
           "language.title": "Language",
-          "status.checking": "● Checking connection",
           "status.checkingModel": "Checking...",
           "chat.title": "Chat with AI",
           "chat.placeholder": "Message the AI...",
@@ -6008,13 +6003,15 @@
         const label = $("header-model-name");
         const modelName = connectionState.model || t("model.none");
         label.textContent = modelName;
-        status.textContent = connectionState.connected
-          ? t("status.ready")
-          : t("status.notReady");
-        status.classList.toggle("offline", !connectionState.connected);
-        status.title = connectionState.connected
-          ? t("status.connectedTitle", { model: modelName })
-          : connectionState.reason || t("status.notConnectedReason");
+        if (status) {
+          status.textContent = connectionState.connected
+            ? t("status.ready")
+            : t("status.notReady");
+          status.classList.toggle("offline", !connectionState.connected);
+          status.title = connectionState.connected
+            ? t("status.connectedTitle", { model: modelName })
+            : connectionState.reason || t("status.notConnectedReason");
+        }
         $("input").disabled = false;
         $("input").placeholder = connectionState.connected
           ? t("chat.placeholder")
