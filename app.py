@@ -2835,7 +2835,9 @@ def models_post():
     body = request.get_json(silent=True) or {}
     provider = normalize_provider(body.get("provider") or settings.get("provider", "openai"))
     base_url = body.get("base_url")
-    if isinstance(base_url, str) and base_url.strip():
+    # An explicit empty string means "use the provider default"; only an
+    # omitted base_url leaves the configured value untouched.
+    if isinstance(base_url, str):
         settings["base_url"] = base_url.strip()
     submitted_key = body.get("api_key")
     if isinstance(submitted_key, str) and submitted_key.strip() and submitted_key != "••••••••":

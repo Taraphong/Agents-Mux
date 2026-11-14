@@ -5437,12 +5437,14 @@
           $("model_custom").style.display = choices.length ? "none" : "block";
         }
       }
+      let modelsRequestGeneration = 0;
       async function fetchModels(
         provider,
         selected = "",
         fallbackSelected = "",
         apiKey = "",
       ) {
+        const generation = ++modelsRequestGeneration;
         $("model_status").textContent = t("model.fetching");
         try {
           const r = apiKey
@@ -5459,6 +5461,8 @@
                 `/api/models?provider=${encodeURIComponent(provider)}`,
               );
           const data = await r.json();
+          // A newer request (for example another key edit) owns the UI now.
+          if (generation !== modelsRequestGeneration) return;
           if (!r.ok) {
             if (Array.isArray(data.models) && data.models.length) {
               updateModelOptions(provider, selected, data.models);
@@ -5474,6 +5478,7 @@
           updateFallbackModelOptions(data.models, fallbackSelected);
           setModelStatus("model.fetched", { count: data.models.length });
         } catch (e) {
+          if (generation !== modelsRequestGeneration) return;
           updateModelOptions(provider, selected);
           updateChatModelOptions(
             MODEL_OPTIONS[provider]?.models || [],
