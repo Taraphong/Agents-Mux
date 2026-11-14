@@ -535,6 +535,21 @@
         margin: 0 0 5px;
         font-size: 1rem;
       }
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 5px;
+      }
+      .card-head h2 {
+        margin: 0;
+      }
+      .card-head button {
+        margin: 0;
+        white-space: nowrap;
+      }
       .hint {
         color: #94a3b8;
         font-size: 0.86rem;
@@ -2429,7 +2444,17 @@
           </section>
           <section id="settings-view" class="view">
             <div class="card">
-              <h2 data-i18n="settings.providerTitle">ผู้ให้บริการและโมเดล</h2>
+              <div class="card-head">
+                <h2 data-i18n="settings.providerTitle">ผู้ให้บริการและโมเดล</h2>
+                <button
+                  class="secondary"
+                  id="test"
+                  type="button"
+                  data-i18n="settings.test"
+                >
+                  ทดสอบการเชื่อมต่อ
+                </button>
+              </div>
               <p class="hint" data-i18n="settings.providerHint">
                 เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ
                 OpenAI-compatible API
@@ -2673,13 +2698,6 @@
               <div class="actions">
                 <button id="save" data-i18n="settings.save">
                   บันทึกการตั้งค่า</button
-                ><button
-                  class="secondary"
-                  id="test"
-                  type="button"
-                  data-i18n="settings.test"
-                >
-                  ทดสอบการเชื่อมต่อ</button
                 ><button
                   class="danger"
                   id="reset"
