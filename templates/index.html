@@ -5906,8 +5906,8 @@
       }
       $("temperature").addEventListener("input", updateRanges);
       $("top_p").addEventListener("input", updateRanges);
-      $("save").addEventListener("click", async () => {
-        const body = {
+      function collectSettingsBody() {
+        return {
           agent_name: $("agent_name").value,
           agent_role: $("agent_role").value,
           response_language: $("response_language").value,
@@ -5934,6 +5934,9 @@
           discord_prefix: $("discord_prefix").value,
           terminal_enabled: $("terminal_enabled").checked,
         };
+      }
+      $("save").addEventListener("click", async () => {
+        const body = collectSettingsBody();
         const apiKey = body.api_key.trim();
         if (apiKey && apiKey !== "••••••••") {
           $("save").disabled = true;
@@ -6028,7 +6031,13 @@
       $("test").addEventListener("click", async () => {
         $("test").disabled = true;
         $("test").textContent = t("notice.testing");
-        const r = await fetch("/api/settings/test", { method: "POST" });
+        // Send the form values so an API key that is typed but not saved yet
+        // can still be tested.
+        const r = await fetch("/api/settings/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectSettingsBody()),
+        });
         const data = await r.json();
         showNotice(
           data.ok
