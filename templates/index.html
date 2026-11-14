@@ -971,24 +971,62 @@
           font-size: 0.82rem;
           overflow-wrap: anywhere;
         }
+        #logs-view {
+          height: auto;
+          overflow: visible;
+        }
         .logs-toolbar {
-          align-items: flex-start;
+          align-items: stretch;
           flex-direction: column;
+          gap: 12px;
+        }
+        .logs-toolbar .hint {
+          margin-bottom: 0;
         }
         .logs-actions {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 6px;
           width: 100%;
         }
         .logs-actions button {
-          flex: 1;
+          width: 100%;
+          min-width: 0;
+          min-height: 38px;
+          padding: 8px 4px;
+          font-size: 0.76rem;
+          line-height: 1.2;
+          white-space: nowrap;
+        }
+        .logs-filter {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 6px;
+          margin-bottom: 12px;
+        }
+        .logs-filter button {
+          min-height: 38px;
+          padding: 8px 6px;
+          font-size: 0.8rem;
         }
         .logs-list {
-          padding: 10px 8px;
-          max-height: 62vh;
+          padding: 12px 10px;
+          max-height: none;
+          border-radius: 6px;
         }
         .log-row {
-          grid-template-columns: 24px minmax(0, 1fr);
-          gap: 6px;
-          font-size: 0.76rem;
+          grid-template-columns: 28px minmax(0, 1fr);
+          gap: 4px 8px;
+          padding: 7px 0;
+          font-size: 0.78rem;
+          line-height: 1.5;
+          overflow-wrap: anywhere;
+        }
+        .log-row + .log-row {
+          border-top: 1px solid rgba(148, 163, 184, 0.12);
+        }
+        body.light-theme .log-row + .log-row {
+          border-top-color: rgba(51, 65, 85, 0.14);
         }
         .log-command,
         .log-message,
@@ -997,7 +1035,16 @@
         }
         .log-time {
           display: block;
+          margin-top: 1px;
           font-size: 0.68rem;
+        }
+        .log-details {
+          margin-top: 2px;
+          padding-left: 8px;
+          border-left: 2px solid rgba(148, 163, 184, 0.25);
+        }
+        body.light-theme .log-details {
+          border-left-color: rgba(51, 65, 85, 0.25);
         }
         .mobile-menu-toggle {
           display: grid;
