@@ -1386,11 +1386,6 @@
         font-size: 0.9rem;
         font-weight: 400;
       }
-      .header-divider {
-        width: 1px;
-        height: 18px;
-        background: var(--line-soft);
-      }
       .header-icon {
         padding: 3px 6px;
         background: transparent;
@@ -1911,7 +1906,6 @@
         .header-model {
           display: none;
         }
-        .header-divider,
         .header-icon:not(.theme-toggle) {
           display: none;
         }
@@ -2470,10 +2464,6 @@
         background: #e2f3fd;
         color: #0c6a95;
       }
-      body.light-theme .composer-pill {
-        border-color: #d6dfec;
-        background: #fff;
-      }
       body.light-theme .composer-pill select,
       body.light-theme .chat-tools select.composer-select {
         border: 0;
@@ -2686,9 +2676,8 @@
               ><i></i
               ><span id="header-model-name" data-i18n="status.checkingModel"
                 >กำลังตรวจสอบ...</span
-              ><b>⌁</b></span
+              ></span
             >
-            <span class="header-divider"></span>
             <select
               id="language-select"
               class="language-select"
