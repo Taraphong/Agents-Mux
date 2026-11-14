@@ -1407,15 +1407,16 @@
       }
       .language-select {
         width: auto;
-        padding: 3px 6px;
+        padding: 2px 4px;
         border: 1px solid var(--line-soft);
-        border-radius: 6px;
+        border-radius: 4px;
         background: transparent;
         color: var(--muted);
         color-scheme: dark;
         font: inherit;
-        font-size: 0.74rem;
+        font-size: 0.68rem;
         cursor: pointer;
+        min-width: 60px;
       }
       .language-select option {
         background: #0d1421;
@@ -1424,6 +1425,7 @@
       .language-select:hover,
       .language-select:focus {
         color: var(--text);
+        background: var(--indigo, #818cf8);
       }
       body.light-theme .language-select {
         color-scheme: light;
@@ -1431,6 +1433,11 @@
       body.light-theme .language-select option {
         background: #ffffff;
         color: #172033;
+      }
+      .language-display {
+        font-size: 0.6rem;
+        padding: 0 2px;
+        vertical-align: middle;
       }
       body.light-theme {
         color-scheme: light;
@@ -2679,15 +2686,26 @@
                 >กำลังตรวจสอบ...</span
               ></span
             >
-            <select
-              id="language-select"
-              class="language-select"
-              title="ภาษา"
+            <button
+              type="button"
+              id="language-toggle"
+              class="header-icon theme-toggle"
+              title="สลับภาษา"
+              aria-label="สลับภาษา"
               data-i18n-title="language.title"
+              data-i18n-aria-label="language.title"
             >
-              <option value="th">ไทย</option>
-              <option value="en">English</option>
-            </select>
+              <span id="language-display" class="language-display">TH</span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                style="display: none"
+              >
+                <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+              </svg>
+            </button>
             <button
               type="button"
               class="header-icon theme-toggle"
@@ -6791,6 +6809,12 @@
       }
       $("language-select").addEventListener("change", (event) => {
         setLanguage(event.target.value);
+      });
+      $("language-toggle").addEventListener("click", () => {
+        const current = $("language-display").textContent;
+        const next = current === "TH" ? "EN" : "TH";
+        $("language-display").textContent = next;
+        setLanguage(next === "TH" ? "th" : "en");
       });
       applyTranslations();
       loadChatMeta();
