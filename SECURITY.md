@@ -2,7 +2,7 @@
 
 AI Web on Termux is a **single-owner, self-hosted** application. It is designed to run on a machine you control, on a network you trust, and it assumes the person operating the server is the person who should have access to it. It is not a multi-tenant service and it has not been audited for exposure to the public internet.
 
-ภาษาไทย: **[SECURITY.th.md](SECURITY.th.md)**
+Thai: **[SECURITY.th.md](SECURITY.th.md)**
 
 ## Supported versions
 

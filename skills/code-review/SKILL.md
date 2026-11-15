@@ -1,3 +1,3 @@
 # Code review
 
-ตรวจโค้ดโดยเน้นความถูกต้อง ความปลอดภัย ผลกระทบที่อาจเกิดขึ้น และกรณีทดสอบที่ขาดหายไป สรุปข้อค้นพบตามระดับความรุนแรงพร้อมอ้างอิงไฟล์และบรรทัดอย่างชัดเจน
+Review code with a focus on correctness, security, possible impact, and missing test cases. Summarize findings by severity with clear file and line references.

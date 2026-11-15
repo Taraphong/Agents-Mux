@@ -1,3 +1,3 @@
 # Termux deployment
 
-เมื่อต้องเผยแพร่การเปลี่ยนแปลงไปยัง Termux ให้ตรวจสอบสถานะ Git, ข้ามไฟล์ลับและ virtual environment, ซิงก์เฉพาะโปรเจกต์, รีสตาร์ตเซิร์ฟเวอร์ และตรวจ HTTP response ก่อนรายงานผล
+When deploying changes to Termux, check Git status, skip secret files and the virtual environment, sync only the project, restart the server, and verify the HTTP response before reporting the result.

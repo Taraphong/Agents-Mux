@@ -2,7 +2,7 @@
 
 Self-hosted AI chat running on Termux and accessible through a browser on the same network. Supports OpenAI, Gemini, and Anthropic.
 
-ภาษาไทย: **[README.th.md](README.th.md)**
+Thai: **[README.th.md](README.th.md)**
 
 Security policy: **[SECURITY.md](SECURITY.md)**
 

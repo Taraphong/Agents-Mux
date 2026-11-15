@@ -1,22 +1,21 @@
-# คู่มือติดตั้ง AI Web สำหรับผู้ใช้ทั่วไป
+# AI Web Installation Guide
 
-คู่มือนี้สำหรับผู้ที่ต้องการนำโปรเจกต์ไปรันเองบนเครื่องของตน (Termux บน Android, Linux หรือ macOS)
-ทุกคำสั่งคัดลอกไปวางใน terminal ได้ทันที
+This guide is for anyone who wants to run the project on their own machine (Termux on Android, Linux, or macOS). Every command can be copied straight into a terminal.
 
-> ระบบนี้ไม่มีหน้า login — ใช้เฉพาะในเครือข่ายที่เชื่อถือได้ และไม่ควรเปิดสู่อินเทอร์เน็ตโดยตรง
-
----
-
-## สิ่งที่ต้องมี
-
-- Python **3.10 ขึ้นไป** (Termux ติดตั้งผ่าน `pkg install python`)
-- `git` (หรือดาวน์โหลดโปรเจกต์เป็น ZIP)
-- API key อย่างน้อยหนึ่งรายการ: OpenAI / OpenRouter / Groq / Gemini / Anthropic / Hugging Face
-- รองรับเฉพาะ Termux, Linux และ macOS (โค้ดใช้ `fcntl` จึงยังไม่รองรับ Windows)
+> The web interface requires a paired device (Pairing Key). Use it only on a trusted network and do not expose it directly to the internet.
 
 ---
 
-## ทางลัด: ติดตั้งด้วยสคริปต์
+## Requirements
+
+- Python **3.10 or newer** (on Termux install it with `pkg install python`)
+- `git` (or download the project as a ZIP)
+- At least one API key: OpenAI / OpenRouter / Groq / Gemini / Anthropic / Hugging Face
+- Only Termux, Linux, and macOS are supported (the code uses `fcntl`, so Windows is not supported yet)
+
+---
+
+## Quick start: install with the script
 
 ```bash
 git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
@@ -24,22 +23,22 @@ cd ~/ai-web
 bash install.sh
 ```
 
-สคริปต์ `install.sh` จะทำให้ทั้งหมดนี้:
+The `install.sh` script does all of this:
 
-1. ตรวจสอบว่า Python อยู่ในเวอร์ชันที่รองรับ
-2. สร้าง virtual environment ที่ `.venv`
-3. ติดตั้ง dependencies จาก `requirements.txt`
-4. สร้าง `.env` จาก `.env.example` (ไม่เขียนทับไฟล์เดิม)
-5. สร้างโฟลเดอร์ `logs/` และ `history/`
-6. บน Termux จะติดตั้งคำสั่งสั้น `startweb` ให้อัตโนมัติ
+1. Checks that Python is a supported version.
+2. Creates a virtual environment in `.venv`.
+3. Installs dependencies from `requirements.txt`.
+4. Creates `.env` from `.env.example` (it never overwrites an existing file).
+5. Creates the `logs/` and `history/` directories.
+6. On Termux it also installs the short `startweb` command.
 
-หลังติดตั้งเสร็จ ให้ใส่ API key ใน `.env` แล้วเริ่มเซิร์ฟเวอร์ได้เลย (ดูหัวข้อถัดไป)
+After installation, put your API key in `.env` and start the server (see the next section).
 
-> หาก repository เป็นแบบส่วนตัว ให้ใช้ SSH (`git clone git@github.com:Taraphong/Agents-mux.git`) หรือดาวน์โหลด ZIP แล้วแตกไฟล์ จากนั้นรัน `bash install.sh` ในโฟลเดอร์นั้น
+> If the repository is private, clone it over SSH (`git clone git@github.com:Taraphong/Agents-mux.git`) or download the ZIP and extract it, then run `bash install.sh` inside that folder.
 
 ---
 
-## ติดตั้งบน Termux (Android)
+## Install on Termux (Android)
 
 ```bash
 pkg update && pkg upgrade -y
@@ -49,44 +48,42 @@ cd ~/ai-web
 bash install.sh
 ```
 
-ตั้งค่า API key:
+Set the API key:
 
 ```bash
 nano .env
 ```
 
-แก้บรรทัดของผู้ให้บริการที่ต้องการ เช่น
+Edit the line for the provider you want, for example:
 
 ```dotenv
 AI_PROVIDER=openai
 OPENAI_API_KEY=sk-xxxxxxxx
 ```
 
-บันทึกด้วย `Ctrl+O` → `Enter` → `Ctrl+X`
+Save with `Ctrl+O` → `Enter` → `Ctrl+X`.
 
-เริ่มเซิร์ฟเวอร์:
+Start the server:
 
 ```bash
-./start_web.sh --start      # หรือ startweb --start
+./start_web.sh --start      # or startweb --start
 ```
 
-เปิดเบราว์เซอร์ที่ `http://127.0.0.1:5000`
-และเปิดจากมือถือ/คอมเครื่องอื่นในวง Wi-Fi เดียวกันที่ `http://<IP-ของเครื่อง Termux>:5000`
+Open `http://127.0.0.1:5000` in a browser, or open `http://<Termux-device-IP>:5000` from a phone or computer on the same Wi-Fi network.
 
-หา IP ของเครื่อง:
+Find the device IP:
 
 ```bash
 ifconfig 2>/dev/null | grep -A1 wlan0
-# หรือ
+# or
 ip -4 addr show
 ```
 
-> แนะนำให้รัน `termux-wake-lock` ไว้ เพื่อไม่ให้ Android พักการทำงานของเซิร์ฟเวอร์
-> และถ้าใช้ Android 12+ ควรปิดการจำกัดแบตเตอรี่ให้ Termux
+> Run `termux-wake-lock` to stop Android from suspending the server, and on Android 12+ disable battery restrictions for Termux.
 
 ---
 
-## ติดตั้งบน Linux
+## Install on Linux
 
 Debian / Ubuntu:
 
@@ -107,7 +104,7 @@ cd ~/ai-web
 bash install.sh
 ```
 
-จากนั้นแก้ `.env`, เริ่มเซิร์ฟเวอร์ และเปิด `http://127.0.0.1:5000` เหมือนขั้นตอนบน Termux
+Then edit `.env`, start the server, and open `http://127.0.0.1:5000` as in the Termux steps.
 
 ---
 
@@ -115,27 +112,25 @@ bash install.sh
 
 <!-- coderabbit-ai-generated-section:v1:db2c7623a534bf3be76397b2dbe85d910b20128e1cd5b711eb1d2618b9be800c -->
 
-## ติดตั้งบน macOS
+## Install on macOS
 
-หากยังไม่มี Command Line Tools ให้รัน:
+If you do not have the Command Line Tools yet, run:
 
 ```bash
 xcode-select --install
 ```
 
-ทำตามหน้าต่างติดตั้ง Command Line Tools และรอจนติดตั้งเสร็จก่อนรัน `git clone`
+Follow the Command Line Tools installer and wait for it to finish before running `git clone`.
 
-ติดตั้ง Python **3.10 ขึ้นไป** ด้วยตัวติดตั้ง macOS จาก [python.org](https://www.python.org/downloads/macos/)
-แล้วเปิด terminal ใหม่ (ดู [คู่มือ Python บน macOS](https://docs.python.org/3/using/mac.html))
-ตรวจสอบว่า `python3` ใน PATH เป็นเวอร์ชันที่รองรับก่อนรัน `install.sh`:
+Install Python **3.10 or newer** with the macOS installer from [python.org](https://www.python.org/downloads/macos/), then open a new terminal (see the [Python on macOS guide](https://docs.python.org/3/using/mac.html)). Check that `python3` on your `PATH` is a supported version before running `install.sh`:
 
 ```bash
 command -v python3
 python3 --version
-python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else "ต้องใช้ Python 3.10 ขึ้นไป")'
+python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else "Python 3.10 or newer is required")'
 ```
 
-หากไม่พบ `python3` หรือเวอร์ชันต่ำกว่า 3.10 ให้ปรับ PATH ให้เลือก Python ที่เพิ่งติดตั้ง แล้วตรวจสอบอีกครั้งจนผ่าน จากนั้นจึงรัน:
+If `python3` is missing or older than 3.10, adjust `PATH` to select the Python you just installed and check again until it passes, then run:
 
 ```bash
 git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
@@ -147,63 +142,59 @@ bash install.sh
 
 ---
 
-## ตั้งค่า `.env`
+## Configure `.env`
 
-ค่าที่ควรรู้:
+The values worth knowing:
 
-| ตัวแปร | ความหมาย |
+| Variable | Meaning |
 | --- | --- |
-| `AI_PROVIDER` | ผู้ให้บริการหลัก: `openai`, `gemini`, `anthropic`, `hf`, `or`, `groq` |
-| `OPENAI_API_KEY` | API key ของ OpenAI หรือ API ที่เข้ากันได้ |
-| `GEMINI_API_KEY` | API key ของ Google Gemini |
-| `ANTHROPIC_API_KEY` | API key ของ Anthropic (Claude) |
-| `OPENROUTER_API_KEY` | API key ของ OpenRouter |
-| `GROQ_API_KEY` | API key ของ Groq |
-| `HF_API_KEY` | API key ของ Hugging Face |
-| `AI_BASE_URL` | ใช้เมื่อต้องชี้ไปยัง Base URL เฉพาะ (เว้นว่างได้) |
-| `AI_WEB_ENABLE_SCHEDULER` | ตั้ง `1` เมื่อรันผ่าน WSGI เพื่อเปิด scheduler |
+| `AI_PROVIDER` | Primary provider: `openai`, `gemini`, `anthropic`, `hf`, `or`, `groq` |
+| `OPENAI_API_KEY` | API key for OpenAI or a compatible API |
+| `GEMINI_API_KEY` | API key for Google Gemini |
+| `ANTHROPIC_API_KEY` | API key for Anthropic (Claude) |
+| `OPENROUTER_API_KEY` | API key for OpenRouter |
+| `GROQ_API_KEY` | API key for Groq |
+| `HF_API_KEY` | API key for Hugging Face |
+| `AI_BASE_URL` | Use this to point at a custom Base URL (may be left empty) |
+| `AI_WEB_ENABLE_SCHEDULER` | Set to `1` when running under WSGI to enable the scheduler |
 
-### ใช้ Anthropic (Claude)
+### Using Anthropic (Claude)
 
-Anthropic ต้องตั้งค่าสองอย่างให้ตรงกัน คือ API key และโมเดล:
+Anthropic needs two settings to match: the API key and the model.
 
 ```dotenv
 AI_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
 ```
 
-จากนั้นเปิดหน้า **Settings** ในเว็บ เลือกผู้ให้บริการ **Anthropic** และเลือกโมเดล Claude จากรายการ
-(รายการโมเดลจะถูกดึงจาก API เมื่อมี key แล้ว)
+Then open **Settings** in the web interface, select the **Anthropic** provider, and pick a Claude model from the list (the model list is fetched from the API once a key is present).
 
-> ค่าเริ่มต้นของ `model` ในแอปมาจาก `OPENAI_MODEL` ซึ่งเป็นโมเดลของ OpenAI
-> ถ้าไม่เลือกโมเดล Claude ใน Settings การเรียก API จะล้มเหลว
+> The app's default `model` comes from `OPENAI_MODEL`, which is an OpenAI model. If you do not select a Claude model in Settings, API calls will fail.
 
-### ลำดับความสำคัญ: `.env` กับ Settings
+### Precedence: `.env` versus Settings
 
-- `.env` ถูกอ่านตอนเริ่มโปรเซส และใช้เป็น **ค่าเริ่มต้น** เท่านั้น
-- ทุกครั้งที่กดบันทึกในหน้า **Settings** ค่าจะถูกเขียนลง `.app-settings.json`
-- เมื่อมี `.app-settings.json` แล้ว ค่าที่บันทึกไว้จะ **ทับค่าใน `.env`** รวมถึง provider, model และ API key
-- ถ้าแก้ `.env` แล้วไม่เห็นผล ให้แก้ค่าเดิมในหน้า Settings แทน หรือหยุดเซิร์ฟเวอร์ แก้/ลบ `.app-settings.json` แล้วเริ่มใหม่
-- API key ที่บันทึกผ่าน Settings จะถูกใช้ก่อน key ใน `.env` เสมอ
+- `.env` is read when the process starts and is used only as the **default**.
+- Every time you save in **Settings**, the values are written to `.app-settings.json`.
+- Once `.app-settings.json` exists, the saved values **override `.env`**, including provider, model, and API key.
+- If editing `.env` has no effect, change the value in Settings instead, or stop the server, edit/delete `.app-settings.json`, and start it again.
+- An API key saved through Settings is always used before a key in `.env`.
 
-ค่าอื่น ๆ (system prompt, temperature, model, Discord bot ฯลฯ) ตั้งได้จากหน้า **Settings** ในเว็บ
-และจะถูกเก็บไว้ใน `.app-settings.json` บนเครื่องผู้ใช้เท่านั้น
+Other values (system prompt, temperature, model, Discord bot, etc.) are configured in **Settings** in the web interface and are stored only in `.app-settings.json` on your machine.
 
-> `.env`, `.app-settings.json`, `history/` และ `.venv/` ไม่ถูก commit เข้า Git
-> อย่าส่งไฟล์เหล่านี้ให้ผู้อื่น เพราะมี API key และประวัติสนทนาอยู่
+> `.env`, `.app-settings.json`, `history/`, and `.venv/` are not committed to Git. Do not send these files to anyone, because they contain API keys and conversation history.
 
 ---
 
-## เริ่ม / หยุด / ตรวจสอบเซิร์ฟเวอร์
+## Start / stop / check the server
 
 ```bash
-./start_web.sh --start     # เริ่ม (ถ้ายังไม่ทำงาน)
-./start_web.sh --check     # ดูสถานะ
-./start_web.sh --restart   # หยุดแล้วเริ่มใหม่ (ใช้หลังอัปเดตโค้ด)
-./start_web.sh --stop      # หยุด
+./start_web.sh --start     # start (if not already running)
+./start_web.sh --check     # show status
+./start_web.sh --restart   # stop and start again (use after updating code)
+./start_web.sh --stop      # stop
 ```
 
-บน Termux หลังรัน `install.sh` สามารถใช้คำสั่งสั้นได้:
+On Termux, after running `install.sh`, you can use the short command:
 
 ```bash
 startweb --start
@@ -212,9 +203,9 @@ startweb --check
 startweb --stop
 ```
 
-log ของเซิร์ฟเวอร์อยู่ที่ `logs/ai-web.log` ในโฟลเดอร์โปรเจกต์ (โฟลเดอร์ `logs/` ไม่ถูก commit)
+Server logs are in `logs/ai-web.log` inside the project folder (the `logs/` folder is not committed).
 
-หรือจะรันแบบเห็น log สด ๆ ใน terminal (ปิด terminal แล้วเซิร์ฟเวอร์จะหยุด):
+Alternatively, run it with live logs in the terminal (the server stops when you close the terminal):
 
 ```bash
 source .venv/bin/activate
@@ -223,68 +214,67 @@ python app.py
 
 ---
 
-## เปิดใช้งานจากเครื่องอื่นในเครือข่าย
+## Access from another device on the network
 
-เซิร์ฟเวอร์ฟังที่ `0.0.0.0` พอร์ต `5000` อยู่แล้ว
+The server already listens on `0.0.0.0` port `5000`.
 
-1. หา IP ของเครื่องที่รันเซิร์ฟเวอร์ (เช่น `192.168.1.50`)
-2. เปิดเบราว์เซอร์จากเครื่องอื่นใน Wi-Fi เดียวกัน: `http://192.168.1.50:5000`
-3. ถ้าเปิดไม่ได้ ให้ตรวจสอบว่าไฟร์วอลล์ของเครื่องนั้นเปิดพอร์ต 5000
+1. Find the IP of the machine running the server (for example `192.168.1.50`).
+2. Open a browser on another device on the same Wi-Fi network: `http://192.168.1.50:5000`.
+3. If it does not load, check that the machine's firewall allows port 5000.
 
-เปลี่ยนพอร์ตได้ด้วย:
+Change the port with:
 
 ```bash
 PORT=8080 ./start_web.sh --restart
 ```
 
-ต้องใช้ `--restart` (หรือ `--stop` แล้วค่อย `--start`) เพราะ `--start` จะไม่ทำอะไรถ้าเซิร์ฟเวอร์ทำงานอยู่แล้ว
-และพอร์ตใหม่จะมีผลหลังกระบวนการเดิมถูกหยุดและเริ่มใหม่เท่านั้น
+You must use `--restart` (or `--stop` and then `--start`) because `--start` does nothing when the server is already running, and a new port takes effect only after the old process has stopped and a new one has started.
 
 ---
 
-## อัปเดตโปรเจกต์
+## Update the project
 
 ```bash
 cd ~/ai-web
 git pull
-bash install.sh            # ติดตั้ง dependencies ใหม่ถ้ามีการเปลี่ยนแปลง
+bash install.sh            # reinstall dependencies if they changed
 ./start_web.sh --restart
 ```
 
-ข้อมูลเดิม (`.env`, `.app-settings.json`, `history/`) จะไม่ถูกเขียนทับ
+Existing data (`.env`, `.app-settings.json`, `history/`) is never overwritten.
 
 ---
 
-## แก้ปัญหาที่พบบ่อย
+## Common problems
 
 **`command not found: python3`**
-ติดตั้ง Python ก่อน: `pkg install python` (Termux) หรือ `sudo apt install python3 python3-venv` (Debian/Ubuntu)
+Install Python first: `pkg install python` (Termux) or `sudo apt install python3 python3-venv` (Debian/Ubuntu).
 
-**`ensurepip is not available` / สร้าง `.venv` ไม่สำเร็จ**
-Debian/Ubuntu: `sudo apt install python3-venv` แล้วรัน `bash install.sh` ใหม่
+**`ensurepip is not available` / creating `.venv` fails**
+Debian/Ubuntu: run `sudo apt install python3-venv` and then run `bash install.sh` again.
 
-**ติดตั้ง dependencies ไม่สำเร็จ**
-ตรวจสอบอินเทอร์เน็ต แล้วลองใหม่ หรืออัปเกรด pip ก่อน:
+**Installing dependencies fails**
+Check your internet connection and try again, or upgrade pip first:
 `./.venv/bin/python -m pip install --upgrade pip`
 
-**เปิดเว็บจากเครื่องอื่นไม่ได้**
-ตรวจว่าใช้ IP ในวงเดียวกัน, เซิร์ฟเวอร์ทำงานอยู่ (`./start_web.sh --check`) และไฟร์วอลล์เปิดพอร์ต 5000
+**Cannot open the site from another device**
+Check that you are using an IP on the same network, that the server is running (`./start_web.sh --check`), and that the firewall allows port 5000.
 
-**แก้โค้ด/อัปเดตแล้วหน้าเว็บไม่เปลี่ยน**
-Flask รันแบบ `debug=False` ต้องรีสตาร์ต: `./start_web.sh --restart`
+**The page does not change after editing code or updating**
+Flask runs with `debug=False`, so restart it: `./start_web.sh --restart`
 
-**API ตอบ error 401 / 403**
-API key ใน `.env` ไม่ถูกต้องหรือหมดอายุ หรือยังไม่ได้เลือก `AI_PROVIDER` ให้ตรงกับ key ที่มี
+**The API returns 401 / 403**
+The API key in `.env` is invalid or expired, or `AI_PROVIDER` is not set to match the key you have.
 
 ---
 
-## ถอนการติดตั้ง
+## Uninstall
 
 ```bash
 ./start_web.sh --stop
 cd ~
-rm -rf ~/ai-web          # ลบทั้งโปรเจกต์ รวมประวัติและ API key
-rm -f "$PREFIX/bin/startweb"   # เฉพาะ Termux: ลบคำสั่งสั้น
+rm -rf ~/ai-web          # removes the whole project, including history and API keys
+rm -f "$PREFIX/bin/startweb"   # Termux only: remove the short command
 ```
 
-> `rm -rf` จะลบ `.env` และ `history/` ไปด้วย หากต้องการเก็บประวัติให้สำรองโฟลเดอร์ `history/` ก่อน
+> `rm -rf` also deletes `.env` and `history/`. If you want to keep your conversations, back up the `history/` folder first.
