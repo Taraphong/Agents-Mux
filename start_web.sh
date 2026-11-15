@@ -179,8 +179,28 @@ status_line() {
   echo "✅ Running (PID: $(pid_list)) — $(tls_scheme)://127.0.0.1:$PORT"
 }
 
+# A live PID is not proof that the server works: app.py can die during import
+# (a missing dependency in .venv, for example) and still look alive for a few
+# hundred milliseconds. Ask the port instead, so --start cannot report a
+# healthy server that died on startup.
+server_answers() {
+  local scheme="${1:-$(tls_scheme)}"
+  if command -v curl >/dev/null 2>&1; then
+    curl -sk -o /dev/null --max-time 2 "$scheme://127.0.0.1:$PORT/" 2>/dev/null
+    return $?
+  fi
+  # Minimal Termux installs may not have curl; bash can still open the port.
+  (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null
+}
+
+# True when something already listens on the port. app.py would then die on
+# the bind, and the other program's answer could make a health check pass.
+port_is_busy() {
+  (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null
+}
+
 start_server() {
-  local i
+  local i misses=0 serving=0 scheme log_offset=0
   if is_running; then
     status_line
     warn_if_stale
@@ -194,25 +214,61 @@ start_server() {
     echo "❌ python3 or .venv/bin/python not found"
     return 1
   fi
+  if port_is_busy; then
+    echo "❌ Port $PORT is already in use by another program — stop it or run with PORT=<free port>"
+    return 1
+  fi
   cd "$APP_DIR" || return 1
   mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+  # Only the output of this attempt is useful when it fails; older tracebacks
+  # in the log would hide the real cause.
+  if [ -f "$LOG_FILE" ]; then
+    log_offset="$(wc -c <"$LOG_FILE" 2>/dev/null | tr -d ' ')"
+    case "$log_offset" in ''|*[!0-9]*) log_offset=0 ;; esac
+  fi
   if command -v setsid >/dev/null 2>&1; then
     setsid nohup "$PYTHON" app.py >>"$LOG_FILE" 2>&1 </dev/null &
   else
     nohup "$PYTHON" app.py >>"$LOG_FILE" 2>&1 </dev/null &
     disown 2>/dev/null || true
   fi
-  for i in $(seq 1 20); do
+  scheme="$(tls_scheme)"
+  # Wait for an answer, not just for a PID. 10 s is enough for Flask to import
+  # on a phone; a process that exits twice in a row is a startup failure.
+  for i in $(seq 1 40); do
     sleep 0.25
-    is_running && break
+    if ! is_running; then
+      misses=$((misses + 1))
+      [ "$misses" -ge 2 ] && break
+      continue
+    fi
+    misses=0
+    if server_answers "$scheme"; then
+      serving=1
+      break
+    fi
   done
-  if is_running; then
-    status_line
-    echo "   log: $LOG_FILE"
-    return 0
+  # Another process can hold the port while app.py dies on the bind, so a
+  # single successful probe is not enough: confirm the process survives a
+  # short settle window before reporting it as running.
+  if [ "$serving" -eq 1 ]; then
+    sleep 0.5
+    if is_running; then
+      status_line
+      echo "   log: $LOG_FILE"
+      return 0
+    fi
   fi
-  echo "❌ Failed to start — see log: $LOG_FILE"
-  tail -n 20 "$LOG_FILE" 2>/dev/null
+  if is_running; then
+    echo "❌ Not answering on $scheme://127.0.0.1:$PORT after 10s — see log: $LOG_FILE"
+  else
+    echo "❌ Failed to start (the process exited) — see log: $LOG_FILE"
+  fi
+  if [ "$log_offset" -gt 0 ]; then
+    tail -c +$((log_offset + 1)) "$LOG_FILE" 2>/dev/null | tail -n 20
+  else
+    tail -n 20 "$LOG_FILE" 2>/dev/null
+  fi
   return 1
 }
 
@@ -295,6 +351,10 @@ pair_device() {
 check_server() {
   if is_running; then
     status_line
+    if ! server_answers; then
+      echo "⚠️  The process is alive but nothing answers on port $PORT — see log: $LOG_FILE"
+      return 1
+    fi
     warn_if_stale
   else
     echo "❌ Stopped"
