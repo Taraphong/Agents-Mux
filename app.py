@@ -333,7 +333,10 @@ def save_settings(settings: dict[str, Any]) -> None:
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     temp_path = SETTINGS_FILE.with_name(f".{SETTINGS_FILE.name}.{uuid.uuid4().hex}.tmp")
     try:
-        temp_path.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = json.dumps(settings, ensure_ascii=False, indent=2).encode("utf-8")
+        descriptor = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
         os.replace(temp_path, SETTINGS_FILE)
     finally:
         if temp_path.exists():
