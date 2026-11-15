@@ -212,7 +212,7 @@ startweb --check
 startweb --stop
 ```
 
-log ของเซิร์ฟเวอร์อยู่ที่ `debug-ai-web.log` ในโฟลเดอร์โปรเจกต์
+log ของเซิร์ฟเวอร์อยู่ที่ `logs/ai-web.log` ในโฟลเดอร์โปรเจกต์ (โฟลเดอร์ `logs/` ไม่ถูก commit)
 
 หรือจะรันแบบเห็น log สด ๆ ใน terminal (ปิด terminal แล้วเซิร์ฟเวอร์จะหยุด):
 

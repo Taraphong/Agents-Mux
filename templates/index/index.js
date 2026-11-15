@@ -3362,9 +3362,12 @@ async function deleteHistory(id) {
     invalidateChatSession();
     conversationId = null;
     conversationCreatedAt = null;
+    conversationGeneration = null;
     persistedMessageCount = 0;
     messages.splice(0, messages.length);
     emptyConversationMode = "deleted";
+    // The deleted conversation must not keep naming the page header.
+    setConversationTitle(null);
     renderMessages();
   }
   await loadHistoryList();

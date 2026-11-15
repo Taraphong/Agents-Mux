@@ -379,7 +379,13 @@ def cron_values(field: str, minimum: int, maximum: int, alias_max: int | None = 
             if start > end:
                 raise ValueError("ช่วงค่า cron ไม่ถูกต้อง (ค่าแรกต้องไม่มากกว่าค่าสุดท้าย)")
         else:
-            start = end = int(base)
+            start = int(base)
+            # "N/step" (e.g. 0/5) starts at N and repeats every step, while a
+            # bare "N" is a single value. Treating both as N silently turned
+            # "0/5" into "minute 0 only".
+            end = upper if step_text else start
+        if start > end:
+            raise ValueError("ช่วงค่า cron ไม่ถูกต้อง (ค่าแรกต้องไม่มากกว่าค่าสุดท้าย)")
         if start < minimum or end > upper:
             raise ValueError(f"ค่า cron ต้องอยู่ระหว่าง {minimum} ถึง {upper}")
         values.update(range(start, end + 1, step))
@@ -1156,6 +1162,10 @@ class HistoryConflict(Exception):
     """Raised when an append targets a conversation record that was replaced."""
 
 
+class HistoryLocked(Exception):
+    """Raised when a write tries to replace a locked conversation record."""
+
+
 @contextmanager
 def history_mutation_lock():
     """Serialize history mutations in this process and across processes.
@@ -1216,9 +1226,13 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
     existing_record = {}
     if existing and existing.exists():
         try:
-            existing_record = json.loads(existing.read_text(encoding="utf-8"))
+            parsed = json.loads(existing.read_text(encoding="utf-8"))
+            existing_record = parsed if isinstance(parsed, dict) else {}
         except (OSError, json.JSONDecodeError):
             existing_record = {}
+    if existing_record.get("locked"):
+        # The lock must protect the stored messages too, not only rename/delete.
+        raise HistoryLocked("ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนบันทึกทับ")
     messages = list(payload.get("messages") or [])
     existing_messages = existing_record.get("messages") if isinstance(existing_record.get("messages"), list) else []
     base_count = payload.get("base_message_count")
@@ -1245,7 +1259,11 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
                 messages.append(message)
                 if message_id:
                     known_ids.add(message_id)
-    created_at = payload.get("created_at") or now.isoformat(timespec="seconds")
+    created_at = (
+        payload.get("created_at")
+        or existing_record.get("created_at")
+        or now.isoformat(timespec="seconds")
+    )
     # New records (no existing file) get a generation; legacy records keep theirs.
     if not existing_record:
         record_generation = str(uuid.uuid4())
@@ -1255,7 +1273,14 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
         record_generation = existing_record.get("generation")
     path = existing or HISTORY_ROOT / now.strftime("%Y-%m-%d") / f"{now.strftime('%H-%M-%S')}_{conversation_id}.json"
     raw_title = payload.get("title")
-    title = raw_title.strip()[:100] if isinstance(raw_title, str) and raw_title.strip() else "บทสนทนาใหม่"
+    existing_title = (
+        existing_record.get("title") if isinstance(existing_record.get("title"), str) else ""
+    )
+    title = (
+        raw_title.strip()[:100]
+        if isinstance(raw_title, str) and raw_title.strip()
+        else existing_title.strip()[:100] or "บทสนทนาใหม่"
+    )
     record = {
         "id": conversation_id,
         "title": title,
@@ -1400,14 +1425,14 @@ def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key จึงดึงรายการโมเดลไม่ได้")
     if provider == "gemini":
-        response = requests.get("https://generativelanguage.googleapis.com/v1beta/models", params={"key": key}, timeout=30)
+        response = requests.get(f"{get_base_url('gemini', settings)}/models", params={"key": key}, timeout=30)
         response.raise_for_status()
         models = response.json().get("models", [])
         return [{"id": item["name"].removeprefix("models/"), "name": item.get("displayName", item["name"])} for item in models if "generateContent" in item.get("supportedGenerationMethods", [])]
     if provider == "anthropic":
         try:
             response = requests.get(
-                "https://api.anthropic.com/v1/models",
+                f"{get_base_url('anthropic', settings)}/models",
                 headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
                 timeout=30,
             )
@@ -1536,13 +1561,13 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
     try:
         if provider == "gemini":
             response = requests.get(
-                "https://generativelanguage.googleapis.com/v1beta/models",
+                f"{base_url}/models",
                 params={"key": key},
                 timeout=20,
             )
         elif provider == "anthropic":
             response = requests.get(
-                "https://api.anthropic.com/v1/models",
+                f"{base_url}/models",
                 headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
                 timeout=20,
             )
@@ -1558,7 +1583,7 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
             result = {"ready": False, "reason": status_message(language, "endpoint_missing", label=label), "status": 404}
         elif response.ok and provider == "anthropic":
             probe = requests.post(
-                "https://api.anthropic.com/v1/messages",
+                f"{base_url}/messages",
                 headers={
                     "x-api-key": key,
                     "anthropic-version": "2023-06-01",
@@ -1717,7 +1742,7 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
             generation_config["thinkingConfig"] = {"thinkingBudget": {"low": 1024, "medium": 4096, "high": 8192}[thinking_level]}
         else:
             generation_config["thinkingConfig"] = {"thinkingLevel": thinking_level}
-    request_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    request_url = f"{get_base_url('gemini', settings)}/models/{model}:generateContent"
     request_payload = {"contents": contents, "generationConfig": generation_config}
     system_instruction = next((message["content"] for message in messages if message["role"] == "system"), "")
     if system_instruction:
@@ -1747,7 +1772,7 @@ def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> 
         raise RuntimeError("ยังไม่ได้ตั้งค่า Anthropic API key")
     system = next((m["content"] for m in messages if m["role"] == "system"), "")
     response = requests.post(
-        "https://api.anthropic.com/v1/messages",
+        f"{get_base_url('anthropic', settings)}/messages",
         headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
         json={
             "model": settings["model"],
@@ -2936,9 +2961,12 @@ def history_list():
         for path in HISTORY_ROOT.rglob("*.json"):
             try:
                 record = json.loads(path.read_text(encoding="utf-8"))
-                records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked", "pinned")})
-            except (OSError, json.JSONDecodeError):
+            except (OSError, json.JSONDecodeError, UnicodeError):
                 continue
+            if not isinstance(record, dict):
+                # A stray list/scalar JSON file must not break the whole list.
+                continue
+            records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked", "pinned")})
     records.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
     return jsonify({"items": records})
 
@@ -3019,7 +3047,10 @@ def history_save():
     body = request.get_json(silent=True) or {}
     if not isinstance(body.get("messages"), list):
         return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
-    return jsonify(save_history(body))
+    try:
+        return jsonify(save_history(body))
+    except HistoryLocked as exc:
+        return jsonify({"error": str(exc)}), 423
 
 
 def models_response(provider: str, settings: dict[str, Any]):
@@ -3065,11 +3096,16 @@ def settings_put():
     """Persist editable settings, including the configured fallback provider."""
     body = request.get_json(silent=True) or {}
     current = load_settings()
+    previous_provider = normalize_provider(current.get("provider"))
     allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
     current["provider"] = normalize_provider(current.get("provider"))
+    if current["provider"] != previous_provider and "base_url" not in body:
+        # A base URL belongs to one provider. Dropping it on a provider switch
+        # stops hf/or/groq requests from being sent to the previous endpoint.
+        current["base_url"] = ""
     current["agent_name"] = str(current.get("agent_name") or "Mux").strip()[:80]
     current["agent_role"] = str(current.get("agent_role") or "ผู้ช่วย AI อเนกประสงค์").strip()[:500]
     language = str(current.get("response_language") or "auto").strip().lower()
@@ -3085,7 +3121,13 @@ def settings_put():
     current["discord_enabled"] = bool(current.get("discord_enabled"))
     current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
     current["terminal_enabled"] = bool(current.get("terminal_enabled", True))
-    current["skills"] = [str(name) for name in current.get("skills", []) if str(name) in {item["name"] for item in list_skills()}]
+    raw_skills = current.get("skills")
+    available_skill_names = {item["name"] for item in list_skills()}
+    current["skills"] = [
+        str(name)
+        for name in (raw_skills if isinstance(raw_skills, list) else [])
+        if str(name) in available_skill_names
+    ]
     discord_token = body.get("discord_token")
     if isinstance(discord_token, str) and discord_token.strip() and discord_token != "••••••••":
         current["discord_token"] = discord_token.strip()
@@ -3131,9 +3173,19 @@ def settings_test():
         if exc.response is not None:
             try:
                 payload = exc.response.json()
-                detail = str((payload.get("error") or {}).get("message") or payload.get("message") or "")[:300]
             except ValueError:
-                detail = exc.response.text[:300]
+                payload = None
+            if isinstance(payload, dict):
+                error = payload.get("error")
+                if isinstance(error, dict):
+                    detail = str(error.get("message") or "")
+                elif isinstance(error, str):
+                    detail = error
+                else:
+                    detail = str(payload.get("message") or "")
+            else:
+                detail = exc.response.text
+            detail = detail[:300]
         api_key = get_api_key(provider, settings)
         message = redact_secrets(detail or str(exc), api_key=api_key)
         return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: {message}"}), 502
