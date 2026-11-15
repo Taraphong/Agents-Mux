@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# ติดตั้ง AI Web แบบอัตโนมัติ (Termux / Linux / macOS)
+# Install AI Web automatically (Termux / Linux / macOS)
 #
-# ใช้งาน:
+# Usage:
 #   bash install.sh
 #
-# สคริปต์จะสร้าง .venv ติดตั้ง dependencies สร้าง .env จาก .env.example
-# และเตรียมโฟลเดอร์ที่จำเป็น โดยไม่เขียนทับ .env หรือการตั้งค่าเดิม
+# The script creates .venv, installs dependencies, creates .env from .env.example,
+# and prepares the required folders without overwriting .env or existing settings.
 
 set -eu
 
@@ -26,7 +26,7 @@ case "${1:-}" in
     ;;
 esac
 
-# ---------- 1. ตรวจสอบ Python / .venv ที่มีอยู่ ----------
+# ---------- 1. Check Python / the existing .venv ----------
 VENV_PY="$APP_DIR/.venv/bin/python"
 
 venv_ok() {
@@ -36,8 +36,8 @@ venv_ok() {
 
 PYTHON_BIN=""
 if [ -z "${PYTHON:-}" ] && venv_ok; then
-  # ติดตั้งซ้ำบนเครื่องที่เคยติดตั้งแล้ว: ไม่ต้องมี Python ใน PATH ก็ใช้ .venv เดิมได้
-  info "พบ .venv เดิม ใช้ต่อ ($("$VENV_PY" --version 2>&1))"
+  # Reinstalling on a prepared machine: the existing .venv works without Python on PATH.
+  info "Found an existing .venv, reusing it ($("$VENV_PY" --version 2>&1))"
 else
   PYTHON_BIN="${PYTHON:-}"
   PYTHON_TOO_OLD=""
@@ -54,68 +54,68 @@ else
 
   if [ -z "$PYTHON_BIN" ]; then
     if [ -x "$VENV_PY" ]; then
-      die "พบ .venv เดิมแต่ใช้งานไม่ได้และไม่พบ Python ใน PATH — ตรวจสอบ .venv หรือติดตั้ง Python ใหม่"
+      die "An existing .venv is unusable and no Python was found on PATH — check .venv or install Python again"
     fi
     if [ -n "$PYTHON_TOO_OLD" ]; then
-      die "พบ $PYTHON_TOO_OLD แต่ต้องใช้ Python 3.10 ขึ้นไป (พบ $("$PYTHON_TOO_OLD" --version 2>&1)) — ติดตั้ง Python ใหม่หรือกำหนด PYTHON=/path/to/python3"
+      die "Found $PYTHON_TOO_OLD but Python 3.10 or newer is required (found $("$PYTHON_TOO_OLD" --version 2>&1)) — install a newer Python or set PYTHON=/path/to/python3"
     fi
-    die "ไม่พบ Python — ติดตั้งก่อน: pkg install python (Termux) หรือ sudo apt install python3 python3-venv"
+    die "Python not found — install it first: pkg install python (Termux) or sudo apt install python3 python3-venv"
   fi
 
   if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
-    die "ต้องใช้ Python 3.10 ขึ้นไป (พบ $("$PYTHON_BIN" --version 2>&1))"
+    die "Python 3.10 or newer is required (found $("$PYTHON_BIN" --version 2>&1))"
   fi
-  info "ใช้ $("$PYTHON_BIN" --version 2>&1) ที่ $(command -v "$PYTHON_BIN")"
+  info "Using $("$PYTHON_BIN" --version 2>&1) at $(command -v "$PYTHON_BIN")"
 fi
 
-# ---------- 2. สร้าง virtual environment ----------
+# ---------- 2. Create the virtual environment ----------
 if [ -n "$PYTHON_BIN" ]; then
   if [ -x "$VENV_PY" ]; then
-    info "ปรับ .venv ให้ใช้ $("$PYTHON_BIN" --version 2>&1)"
-    "$PYTHON_BIN" -m venv .venv || die "ปรับ .venv ไม่สำเร็จ — บน Debian/Ubuntu ให้ติดตั้ง python3-venv"
+    info "Updating .venv to use $("$PYTHON_BIN" --version 2>&1)"
+    "$PYTHON_BIN" -m venv .venv || die "Failed to update .venv — on Debian/Ubuntu install python3-venv"
   else
-    info "สร้าง .venv"
-    "$PYTHON_BIN" -m venv .venv || die "สร้าง .venv ไม่สำเร็จ — บน Debian/Ubuntu ให้ติดตั้ง python3-venv"
+    info "Creating .venv"
+    "$PYTHON_BIN" -m venv .venv || die "Failed to create .venv — on Debian/Ubuntu install python3-venv"
   fi
 fi
 
-[ -x "$VENV_PY" ] || die "ไม่พบ $VENV_PY"
+[ -x "$VENV_PY" ] || die "Not found: $VENV_PY"
 
-# ---------- 3. ติดตั้ง dependencies ----------
-info "อัปเดต pip"
+# ---------- 3. Install dependencies ----------
+info "Updating pip"
 "$VENV_PY" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
 
-info "ติดตั้ง dependencies จาก requirements.txt (อาจใช้เวลาสักครู่)"
-"$VENV_PY" -m pip install --quiet -r requirements.txt || die "ติดตั้ง dependencies ไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่"
+info "Installing dependencies from requirements.txt (this may take a while)"
+"$VENV_PY" -m pip install --quiet -r requirements.txt || die "Failed to install dependencies — check your internet connection and try again"
 
-# ---------- 4. ไฟล์ตั้งค่าและโฟลเดอร์ ----------
+# ---------- 4. Configuration file and folders ----------
 if [ ! -f .env ]; then
   (umask 077; cp .env.example .env; chmod 600 .env)
-  info "สร้าง .env จาก .env.example"
+  info "Created .env from .env.example"
 else
-  info "พบ .env เดิม ไม่เขียนทับ"
+  info "Found an existing .env, not overwriting it"
 fi
 
 mkdir -p logs history
 
 chmod +x start_web.sh 2>/dev/null || true
 
-# ---------- 5. คำสั่ง startweb (Termux) ----------
+# ---------- 5. startweb command (Termux) ----------
 LINKED=""
 if [ -n "${PREFIX:-}" ] && [ -d "$PREFIX/bin" ] && [ -d /data/data/com.termux ]; then
   ln -sf "$APP_DIR/start_web.sh" "$PREFIX/bin/startweb" && LINKED="$PREFIX/bin/startweb"
 fi
 
-# ---------- 6. สรุป ----------
-ok "ติดตั้งเสร็จสิ้น"
+# ---------- 6. Summary ----------
+ok "Installation complete"
 printf '\n'
-printf 'ขั้นตอนถัดไป:\n'
-printf '  1) ใส่ API key ของผู้ให้บริการใน %s\n' "$APP_DIR/.env"
-printf '  2) เริ่มเซิร์ฟเวอร์:  ./start_web.sh --start\n'
+printf 'Next steps:\n'
+printf '  1) Add the provider API key to %s\n' "$APP_DIR/.env"
+printf '  2) Start the server:  ./start_web.sh --start\n'
 if [ -n "$LINKED" ]; then
-  printf '     หรือใช้คำสั่งสั้น:  startweb --start  (ติดตั้งไว้ที่ %s)\n' "$LINKED"
+  printf '     or use the short command:  startweb --start  (installed at %s)\n' "$LINKED"
 fi
-printf '  3) เปิดเว็บที่ http://127.0.0.1:5000\n'
-printf '     เครื่องอื่นในวงเดียวกันใช้ http://<IP-ของเครื่องนี้>:5000\n'
+printf '  3) Open the web app at http://127.0.0.1:5000\n'
+printf '     Other devices on the same network use http://<IP-of-this-machine>:5000\n'
 printf '\n'
-printf 'หมายเหตุ: ระบบใช้ Pairing Key แทนหน้า login — เปิด /pair แล้วใส่คีย์จาก ./start_web.sh --pair\n'
+printf 'Note: the system uses a Pairing Key instead of a login page — open /pair and enter the key from ./start_web.sh --pair\n'

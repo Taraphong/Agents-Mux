@@ -9,7 +9,7 @@
 #   startweb --pair      Generate a single-use Pairing Key (web auth)
 #   startweb --make-cert [ip]  Create a self-signed HTTPS certificate
 #
-# ติดตั้งเป็นคำสั่งสั้น (ทำครั้งเดียวบน Termux):
+# Install as a short command (one-time on Termux):
 #   ln -sf ~/ai-web/start_web.sh "$PREFIX/bin/startweb"
 
 set -u
@@ -109,7 +109,7 @@ warn_if_stale() {
     epoch="$(process_start_epoch "$pid")" || continue
     [ -n "$epoch" ] || continue
     if [ "$epoch" -lt "$latest" ]; then
-      echo "⚠️  โค้ดใหม่กว่ารอบที่ process เริ่มทำงาน — รัน --restart เพื่อให้ feature ใหม่ขึ้น"
+      echo "⚠️  Code is newer than the running process — run --restart to load new features"
       return 0
     fi
   done
@@ -187,11 +187,11 @@ start_server() {
     return 0
   fi
   if [ ! -f "$APP_FILE" ]; then
-    echo "❌ ไม่พบไฟล์ $APP_FILE"
+    echo "❌ App file not found: $APP_FILE"
     return 1
   fi
   if [ -z "$PYTHON" ]; then
-    echo "❌ ไม่พบ python3 หรือ .venv/bin/python"
+    echo "❌ python3 or .venv/bin/python not found"
     return 1
   fi
   cd "$APP_DIR" || return 1
@@ -211,7 +211,7 @@ start_server() {
     echo "   log: $LOG_FILE"
     return 0
   fi
-  echo "❌ เริ่มไม่สำเร็จ — ดู log: $LOG_FILE"
+  echo "❌ Failed to start — see log: $LOG_FILE"
   tail -n 20 "$LOG_FILE" 2>/dev/null
   return 1
 }
@@ -234,7 +234,7 @@ stop_server() {
     sleep 0.5
   fi
   if is_running; then
-    echo "❌ หยุดไม่สำเร็จ (PID: $(pid_list))"
+    echo "❌ Failed to stop (PID: $(pid_list))"
     return 1
   fi
   echo "✅ Stopped"
@@ -243,7 +243,7 @@ stop_server() {
 make_cert() {
   local host="${1:-}" dir="$APP_DIR/certs" ip san cn
   if ! command -v openssl >/dev/null 2>&1; then
-    echo "❌ ไม่พบ openssl — ติดตั้งก่อน: pkg install openssl-tool"
+    echo "❌ openssl not found — install it first: pkg install openssl-tool"
     return 1
   fi
   ip="$host"
@@ -261,7 +261,7 @@ make_cert() {
     ip="$(getprop dhcp.wlan0.ipaddress 2>/dev/null)"
   fi
   if [ -z "$ip" ]; then
-    echo "❌ หา IP ของเครื่องไม่พบ — ระบุเอง: $(basename "$0") --make-cert 192.168.2.40"
+    echo "❌ Could not detect the machine IP — specify it: $(basename "$0") --make-cert 192.168.2.40"
     return 1
   fi
   cn="$ip"
@@ -271,21 +271,21 @@ make_cert() {
   if ! openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
     -keyout "$dir/key.pem" -out "$dir/cert.pem" \
     -subj "/CN=$cn" -addext "subjectAltName=$san" >/dev/null 2>&1; then
-    echo "❌ สร้างใบรับรองไม่สำเร็จ (openssl เวอร์ชันนี้อาจไม่รองรับ -addext)"
+    echo "❌ Failed to create the certificate (this openssl version may not support -addext)"
     return 1
   fi
   chmod 600 "$dir/key.pem"
-  echo "✅ สร้างใบรับรองแล้ว: $dir/cert.pem และ $dir/key.pem (ใช้ได้กับ $cn)"
-  echo "   เพิ่มใน .env:"
+  echo "✅ Certificate created: $dir/cert.pem and $dir/key.pem (valid for $cn)"
+  echo "   Add to .env:"
   echo "   AI_WEB_TLS_CERT=$dir/cert.pem"
   echo "   AI_WEB_TLS_KEY=$dir/key.pem"
-  echo "   แล้วรัน: $(basename "$0") --restart"
-  echo "   หมายเหตุ: ใบรับรอง self-signed จะทำให้เบราว์เซอร์เตือนความปลอดภัยครั้งแรก"
+  echo "   Then run: $(basename "$0") --restart"
+  echo "   Note: a self-signed certificate makes the browser show a security warning on first visit"
 }
 
 pair_device() {
   if [ -z "$PYTHON" ]; then
-    echo "❌ ไม่พบ python3 หรือ .venv/bin/python"
+    echo "❌ python3 or .venv/bin/python not found"
     return 1
   fi
   cd "$APP_DIR" || return 1
@@ -310,6 +310,6 @@ case "${1:-}" in
   --pair) pair_device ;;
   --make-cert) make_cert "${2:-}" ;;
   *)
-    echo "ใช้: $(basename "$0") --check | --start | --restart | --stop | --pair | --make-cert [ip]"
+    echo "Usage: $(basename "$0") --check | --start | --restart | --stop | --pair | --make-cert [ip]"
     ;;
 esac
