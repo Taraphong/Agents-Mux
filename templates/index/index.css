@@ -570,6 +570,10 @@ label span {
   display: block;
   margin-bottom: 7px;
 }
+label span.label-inline {
+  display: inline;
+  margin-bottom: 0;
+}
 .full {
   grid-column: 1 / -1;
 }

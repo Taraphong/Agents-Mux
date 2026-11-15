@@ -14,7 +14,7 @@
           <div class="brand-mark">✦</div>
           <div class="brand-copy">
             <strong>AI Control Center</strong
-            ><small>Operational Terminal</small>
+            ><small data-i18n="header.tagline">Operational Terminal</small>
           </div>
         </div>
         <button class="new-chat" id="new-chat" data-i18n="sidebar.newChat">
@@ -262,7 +262,7 @@
               </p>
               <div class="grid">
                 <label
-                  ><span>Provider</span
+                  ><span data-i18n="settings.providerLabel">Provider</span
                   ><select id="provider">
                     <option value="openai">OpenAI / OpenAI-compatible</option>
                     <option value="gemini">Google Gemini</option>
@@ -274,7 +274,7 @@
                 >
                 <label
                   ><span
-                    >Model
+                    ><span class="label-inline" data-i18n="settings.modelLabel">Model</span>
                     <small
                       id="model_status"
                       class="model-status"
@@ -298,7 +298,7 @@
                         data-i18n="settings.fallbackEnable"
                         >เปิดใช้งาน</span
                       ></label
-                    ><select id="fallback_provider_select" aria-label="Fallback provider">
+                    ><select id="fallback_provider_select" aria-label="Fallback provider" data-i18n-aria-label="settings.fallbackProviderAria">
                       <option value="openai">OpenAI / OpenAI-compatible</option>
                       <option value="gemini">Google Gemini</option>
                       <option value="anthropic">Anthropic Claude</option>
@@ -318,12 +318,12 @@
                   >
                 </label>
                 <label class="full"
-                  ><span"
+                  ><span data-i18n="settings.baseUrlLabel"
                     >Base URL</span
                   ><input id="base_url" placeholder="https://api.openai.com/v1"
                 /></label>
                 <label class="full"
-                  ><span>API key</span
+                  ><span data-i18n="settings.apiKeyLabel">API key</span
                   ><input
                     id="api_key"
                     type="password"
@@ -420,7 +420,7 @@
               </p>
               <div class="grid">
                 <label class="full"
-                  ><span>System prompt</span
+                  ><span data-i18n="settings.systemPromptLabel">System prompt</span
                   ><textarea id="system_prompt" rows="5"></textarea>
                 </label>
                 <label class="full"
@@ -435,10 +435,10 @@
                 </label>
                 <label
                   ><span data-i18n="settings.newSkillName">ชื่อ Skill ใหม่</span
-                  ><input id="new-skill-name" placeholder="เช่น code-review" /></label>
+                  ><input id="new-skill-name" placeholder="เช่น code-review" data-i18n-placeholder="settings.newSkillNamePlaceholder" /></label>
                 <label
                   ><span data-i18n="settings.newSkillContent">เนื้อหา Skill</span
-                  ><textarea id="new-skill-content" rows="3" placeholder="เขียนแนวทางการทำงานของ Skill"></textarea></label>
+                  ><textarea id="new-skill-content" rows="3" placeholder="เขียนแนวทางการทำงานของ Skill" data-i18n-placeholder="settings.newSkillContentPlaceholder"></textarea></label>
                 <div class="actions full">
                   <button id="create-skill" type="button" class="secondary" data-i18n="settings.createSkill">สร้าง Skill</button>
                   <button id="update-skill" type="button" class="secondary" data-i18n="settings.updateSkill">บันทึกการแก้ไข</button>
@@ -469,7 +469,7 @@
                   </div><small class="hint" data-i18n="settings.topPHint">เลือกคำจากกลุ่มที่มีความน่าจะเป็นรวมกันตามค่านี้ ค่ายิ่งต่ำยิ่งจำกัดคำที่เลือก</small></label
                 >
                 <label
-                  ><span>Max output tokens</span
+                  ><span data-i18n="settings.maxTokensLabel">Max output tokens</span
                   ><input id="max_tokens" type="number" min="1" max="100000"
                 /></label>
                 <label
@@ -518,7 +518,7 @@
                   >ตั้ง prompt ให้ AI ทำงานซ้ำตามเวลา ระบบจะทำงานเมื่อ server
                   กำลังเปิดอยู่</span
                 >
-                · Timezone:
+                · <span data-i18n="schedule.timezoneLabel">Timezone:</span>
                 <b id="schedule-timezone" data-i18n="schedule.loading"
                   >กำลังโหลด...</b
                 >
@@ -665,7 +665,7 @@
                   </button>
                 </div>
               </div>
-              <div class="logs-filter" role="tablist" aria-label="Log type">
+              <div class="logs-filter" role="tablist" aria-label="Log type" data-i18n-aria-label="logs.filterAria">
                 <button id="logs-system-filter" class="active" type="button" data-logs-filter="system" data-i18n="logs.system">System logs</button>
                 <button id="logs-agent-filter" type="button" data-logs-filter="agent" data-i18n="logs.agent">Agent logs</button>
               </div>

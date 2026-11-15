@@ -27,6 +27,7 @@ const I18N = {
     "header.openMenu": "เปิดเมนู",
     "header.toolsAria": "เครื่องมือแชต",
     "header.themeTitle": "สลับธีม",
+    "header.tagline": "ศูนย์ควบคุมการทำงาน",
     "language.title": "ภาษา",
     "status.checkingModel": "กำลังตรวจสอบ...",
     "chat.title": "แชตกับ AI",
@@ -48,6 +49,7 @@ const I18N = {
     "chat.typingWorking": "AI กำลังเรียบเรียงคำตอบ",
     "chat.typingStillWorking": "AI ยังทำงานอยู่ กรุณารออีกนิด",
     "chat.typingElapsed": "· {seconds} วิ",
+    "chat.fallbackUsed": " · สำรอง: {model}",
     "chat.newConversationTitle": "บทสนทนาใหม่",
     "chat.defaultAttachmentPrompt": "ช่วยวิเคราะห์ไฟล์แนบนี้ให้หน่อย",
     "chat.error": "เกิดข้อผิดพลาด",
@@ -106,6 +108,8 @@ const I18N = {
     "settings.languageAuto": "ตามภาษาผู้ใช้",
     "settings.languageTh": "ไทย",
     "settings.languageEn": "English",
+    "settings.providerLabel": "ผู้ให้บริการ",
+    "settings.modelLabel": "โมเดล",
     "settings.providerHint":
       "เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ OpenAI-compatible API",
     "settings.modelNotFetched": "ยังไม่ได้ดึงจาก API",
@@ -116,6 +120,9 @@ const I18N = {
     "settings.fallbackNone": "ไม่ใช้ fallback",
     "settings.fallbackHint":
       "จะลองใช้เมื่อ API ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา",
+    "settings.fallbackProviderAria": "ผู้ให้บริการ Fallback",
+    "settings.baseUrlLabel": "Base URL",
+    "settings.apiKeyLabel": "คีย์ API",
     "settings.apiKeyPlaceholder": "เว้นว่างเพื่อใช้คีย์เดิม",
     "settings.assistantTitle": "พฤติกรรมของผู้ช่วย",
     "settings.memoryReview": "ทบทวนความจำ",
@@ -125,6 +132,8 @@ const I18N = {
     "settings.skillsHint": "เลือกได้หลายสกิล ระบบจะส่งเนื้อหาไปเป็นแนวทางให้ Agent",
     "settings.newSkillName": "ชื่อ Skill ใหม่",
     "settings.newSkillContent": "เนื้อหา Skill",
+    "settings.newSkillNamePlaceholder": "เช่น code-review",
+    "settings.newSkillContentPlaceholder": "เขียนแนวทางการทำงานของ Skill",
     "settings.createSkill": "สร้าง Skill",
     "settings.createSkillDone": "สร้าง Skill แล้ว",
     "settings.createSkillFailed": "สร้าง Skill ไม่สำเร็จ",
@@ -135,11 +144,13 @@ const I18N = {
     "settings.skillDeleted": "ลบ Skill แล้ว",
     "settings.assistantHint":
       "ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ",
+    "settings.systemPromptLabel": "System prompt",
     "settings.thinkingLevel": "ระดับการคิด",
     "settings.temperatureLabel": "Temperature",
     "settings.temperatureHint": "ค่าต่ำให้คำตอบสม่ำเสมอและคาดเดาง่าย ค่าสูงให้คำตอบหลากหลายขึ้น",
     "settings.topPLabel": "Top P",
     "settings.topPHint": "เลือกคำจากกลุ่มที่มีความน่าจะเป็นรวมกันตามค่านี้ ค่ายิ่งต่ำยิ่งจำกัดคำที่เลือก",
+    "settings.maxTokensLabel": "จำนวน token สูงสุด",
     "settings.thinkingOff": "ปิด",
     "settings.thinkingLow": "ต่ำ",
     "settings.thinkingMedium": "กลาง",
@@ -150,6 +161,8 @@ const I18N = {
     "settings.discordEnable": "เปิดใช้งาน Discord bot",
     "settings.discordToken": "Bot token",
     "settings.discordTokenPlaceholder": "เว้นว่างเพื่อใช้ token เดิม",
+    "settings.discordTokenHintHas": "มี token แล้ว — เว้นว่างเพื่อคงค่าเดิม",
+    "settings.discordTokenHintMissing": "ยังไม่มี token — ใส่ token จาก Discord Developer Portal",
     "settings.discordPrefix": "Prefix",
     "settings.terminalTitle": "Terminal",
     "settings.terminalHint":
@@ -184,6 +197,7 @@ const I18N = {
     "schedule.hint":
       "ตั้ง prompt ให้ AI ทำงานซ้ำตามเวลา ระบบจะทำงานเมื่อ server กำลังเปิดอยู่",
     "schedule.loading": "กำลังโหลด...",
+    "schedule.timezoneLabel": "Timezone:",
     "schedule.cronSummary": "วิธีตั้งค่า Cron jobs",
     "schedule.cronFieldsText": "รูปแบบมี 5 ช่อง:",
     "schedule.cronFieldsCode":
@@ -233,8 +247,9 @@ const I18N = {
     "schedule.editing": "กำลังแก้ไขงานตามเวลา",
     "schedule.updated": "บันทึกการแก้ไขแล้ว",
     "logs.title": "Log ระบบ",
-    "logs.system": "System logs",
-    "logs.agent": "Agent logs",
+    "logs.system": "Log ระบบ",
+    "logs.agent": "Log Agent",
+    "logs.filterAria": "ประเภท log",
     "logs.hint":
       "ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง API key หรือเนื้อหาไฟล์",
     "logs.saveFile": "บันทึกไฟล์",
@@ -363,6 +378,7 @@ const I18N = {
     "header.openMenu": "Open menu",
     "header.toolsAria": "Chat tools",
     "header.themeTitle": "Toggle theme",
+    "header.tagline": "Operational Terminal",
     "language.title": "Language",
     "status.checkingModel": "Checking...",
     "chat.title": "Chat with AI",
@@ -384,6 +400,7 @@ const I18N = {
     "chat.typingWorking": "AI is composing a reply",
     "chat.typingStillWorking": "AI is still working — one moment",
     "chat.typingElapsed": "· {seconds}s",
+    "chat.fallbackUsed": " · fallback: {model}",
     "chat.newConversationTitle": "New conversation",
     "chat.defaultAttachmentPrompt": "Please analyze this attachment",
     "chat.error": "Something went wrong",
@@ -442,6 +459,8 @@ const I18N = {
     "settings.languageAuto": "Match the user's language",
     "settings.languageTh": "Thai",
     "settings.languageEn": "English",
+    "settings.providerLabel": "Provider",
+    "settings.modelLabel": "Model",
     "settings.providerHint":
       "Choose the provider used for chat and set a custom endpoint for OpenAI-compatible APIs.",
     "settings.modelNotFetched": "Not fetched from API yet",
@@ -452,6 +471,9 @@ const I18N = {
     "settings.fallbackNone": "No fallback",
     "settings.fallbackHint":
       "Used when the API reports the model is unavailable or rate-limited.",
+    "settings.fallbackProviderAria": "Fallback provider",
+    "settings.baseUrlLabel": "Base URL",
+    "settings.apiKeyLabel": "API key",
     "settings.apiKeyPlaceholder": "Leave blank to keep the current key",
     "settings.assistantTitle": "Assistant behavior",
     "settings.memoryReview": "Memory review",
@@ -461,6 +483,8 @@ const I18N = {
     "settings.skillsHint": "Select multiple skills. Their content will guide the agent.",
     "settings.newSkillName": "New skill name",
     "settings.newSkillContent": "Skill content",
+    "settings.newSkillNamePlaceholder": "e.g. code-review",
+    "settings.newSkillContentPlaceholder": "Describe how the skill should work",
     "settings.createSkill": "Create skill",
     "settings.createSkillDone": "Skill created",
     "settings.createSkillFailed": "Could not create skill",
@@ -471,11 +495,13 @@ const I18N = {
     "settings.skillDeleted": "Skill deleted",
     "settings.assistantHint":
       "Set the system prompt and response parameters.",
+    "settings.systemPromptLabel": "System prompt",
     "settings.thinkingLevel": "Thinking level",
     "settings.temperatureLabel": "Temperature",
     "settings.temperatureHint": "Lower values make answers steadier; higher values make them more varied.",
     "settings.topPLabel": "Top P",
     "settings.topPHint": "Select from the smallest high-probability token group whose total probability reaches this value.",
+    "settings.maxTokensLabel": "Max output tokens",
     "settings.thinkingOff": "Off",
     "settings.thinkingLow": "Low",
     "settings.thinkingMedium": "Medium",
@@ -486,6 +512,8 @@ const I18N = {
     "settings.discordEnable": "Enable Discord bot",
     "settings.discordToken": "Bot token",
     "settings.discordTokenPlaceholder": "Leave blank to keep the current token",
+    "settings.discordTokenHintHas": "A token is saved — leave blank to keep it",
+    "settings.discordTokenHintMissing": "No token yet — enter a token from the Discord Developer Portal",
     "settings.discordPrefix": "Prefix",
     "settings.terminalTitle": "Terminal",
     "settings.terminalHint":
@@ -520,6 +548,7 @@ const I18N = {
     "schedule.hint":
       "Schedule prompts for the AI to run repeatedly. Jobs run while the server is up.",
     "schedule.loading": "Loading...",
+    "schedule.timezoneLabel": "Timezone:",
     "schedule.cronSummary": "How to configure Cron jobs",
     "schedule.cronFieldsText": "The format has 5 fields:",
     "schedule.cronFieldsCode": "minute hour day month weekday",
@@ -570,6 +599,7 @@ const I18N = {
     "logs.title": "System logs",
     "logs.system": "System logs",
     "logs.agent": "Agent logs",
+    "logs.filterAria": "Log type",
     "logs.hint":
       "Review recent AI and tool activity without exposing API keys or file contents.",
     "logs.saveFile": "Save file",
@@ -743,6 +773,7 @@ let chatSessionToken = 0;
 let slashMatches = [];
 let slashIndex = 0;
 let keyProviders = [];
+let hasDiscordToken = false;
 let conversationId = null;
 let conversationCreatedAt = null;
 let conversationTitle = null;
@@ -1297,7 +1328,7 @@ function addMessage(role, content, meta = null) {
   if (role === "assistant" && meta) {
     const details = document.createElement("small");
     details.className = "message-meta";
-    details.textContent = `${formatUsage(meta.duration_ms, meta.usage)}${meta.fallback_used ? ` · fallback: ${meta.fallback_used}` : ""}`;
+    details.textContent = `${formatUsage(meta.duration_ms, meta.usage)}${meta.fallback_used ? t("chat.fallbackUsed", { model: meta.fallback_used }) : ""}`;
     el.appendChild(details);
   }
   $("messages").appendChild(el);
@@ -2978,6 +3009,11 @@ function updateApiKeyHint(provider) {
     ? t("apiKey.hasHint", { provider: label })
     : t("apiKey.missingHint", { provider: label });
 }
+function updateDiscordTokenHint() {
+  $("discord_token_hint").textContent = hasDiscordToken
+    ? t("settings.discordTokenHintHas")
+    : t("settings.discordTokenHintMissing");
+}
 async function loadSettings() {
   const r = await fetch("/api/settings");
   const s = await r.json();
@@ -3028,9 +3064,8 @@ async function loadSettings() {
   applyTerminalEnabled(s.terminal_enabled !== false);
   $("discord_prefix").value = s.discord_prefix ?? "!ai";
   $("discord_token").value = "";
-  $("discord_token_hint").textContent = s.has_discord_token
-    ? "มี token แล้ว — เว้นว่างเพื่อคงค่าเดิม"
-    : "ยังไม่มี token — ใส่ token จาก Discord Developer Portal";
+  hasDiscordToken = !!s.has_discord_token;
+  updateDiscordTokenHint();
   updateFallbackModelOptions([], s.fallback_model ?? "");
   $("api_key").value = "";
   updateApiKeyHint($("provider").value);
@@ -3512,6 +3547,7 @@ function applyTranslations() {
     currentFallbackSelected,
   );
   updateApiKeyHint($("provider").value);
+  updateDiscordTokenHint();
   if (connectionState.known) updateConnectionUi();
   renderMessages();
   renderHistoryList(currentHistoryItems);
