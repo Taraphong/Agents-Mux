@@ -1418,6 +1418,7 @@ function addTypingIndicator() {
   $("send").classList.add("is-loading");
 
   const started = performance.now();
+  el.dataset.startedAt = String(started);
   const update = () => {
     const seconds = Math.round((performance.now() - started) / 1000);
     const key =
@@ -3581,10 +3582,34 @@ $("reset").addEventListener("click", async () => {
   await loadSettings();
   showNotice(t("notice.resetDone"));
 });
-function renderMessages() {
-  removeTypingIndicator();
+function renderMessages(keepTyping = false) {
+  // A live "AI is thinking" indicator must survive re-renders such as a
+  // language switch, so keep the same node and its running elapsed timer
+  // instead of tearing it down and rebuilding it.
+  const indicator = keepTyping ? typingIndicator : null;
+  if (indicator) {
+    indicator.remove();
+  } else {
+    removeTypingIndicator();
+  }
   const container = $("messages");
   container.innerHTML = "";
+  const restoreIndicator = () => {
+    if (!indicator) return;
+    const label = indicator.querySelector(".typing-label");
+    const key = label?.dataset.key || "chat.typingThinking";
+    if (label) label.textContent = t(key);
+    indicator.setAttribute("aria-label", t(key));
+    const elapsed = indicator.querySelector(".typing-elapsed");
+    const startedAt = Number(indicator.dataset.startedAt || 0);
+    if (elapsed && startedAt) {
+      const seconds = Math.round((performance.now() - startedAt) / 1000);
+      elapsed.textContent =
+        seconds >= 2 ? t("chat.typingElapsed", { seconds }) : "";
+    }
+    container.appendChild(indicator);
+    container.scrollTop = container.scrollHeight;
+  };
   if (!messages.length) {
     if (emptyConversationMode === "deleted") {
       const el = document.createElement("div");
@@ -3604,11 +3629,13 @@ function renderMessages() {
       divider.appendChild(span);
       container.appendChild(divider);
     }
+    restoreIndicator();
     return;
   }
   messages.forEach((message) =>
     addMessage(message.role, message.content, message),
   );
+  restoreIndicator();
 }
 function applyStaticTranslations() {
   document.documentElement.lang = currentLanguage;
@@ -3659,7 +3686,7 @@ function applyTranslations() {
   updateApiKeyHint($("provider").value);
   updateDiscordTokenHint();
   if (connectionState.known) updateConnectionUi();
-  renderMessages();
+  renderMessages(true);
   renderHistoryList(currentHistoryItems);
   renderSchedules(currentSchedules);
   renderAuthSessions();
