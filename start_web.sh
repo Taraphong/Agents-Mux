@@ -185,8 +185,9 @@ status_line() {
 # healthy server that died on startup.
 server_answers() {
   local scheme="${1:-$(tls_scheme)}"
+  local max_time="${2:-2}"
   if command -v curl >/dev/null 2>&1; then
-    curl -sk -o /dev/null --max-time 2 "$scheme://127.0.0.1:$PORT/" 2>/dev/null
+    curl -sk -o /dev/null --noproxy 127.0.0.1 --max-time "$max_time" "$scheme://127.0.0.1:$PORT/" 2>/dev/null
     return $?
   fi
   # Minimal Termux installs may not have curl; bash can still open the port.
@@ -202,9 +203,14 @@ port_is_busy() {
 start_server() {
   local i misses=0 serving=0 scheme log_offset=0
   if is_running; then
-    status_line
-    warn_if_stale
-    return 0
+    if server_answers; then
+      status_line
+      warn_if_stale
+      return 0
+    else
+      echo "❌ Not answering on $(tls_scheme)://127.0.0.1:$PORT — process is alive but not responding"
+      return 1
+    fi
   fi
   if [ ! -f "$APP_FILE" ]; then
     echo "❌ App file not found: $APP_FILE"
@@ -235,7 +241,9 @@ start_server() {
   scheme="$(tls_scheme)"
   # Wait for an answer, not just for a PID. 10 s is enough for Flask to import
   # on a phone; a process that exits twice in a row is a startup failure.
-  for i in $(seq 1 40); do
+  START_SECONDS="$(date +%s)"
+  END_TIME=$((START_SECONDS + 10))
+  while [ "$(date +%s)" -lt "$END_TIME" ]; do
     sleep 0.25
     if ! is_running; then
       misses=$((misses + 1))
@@ -243,7 +251,11 @@ start_server() {
       continue
     fi
     misses=0
-    if server_answers "$scheme"; then
+    REMAINING=$((END_TIME - $(date +%s)))
+    if [ "$REMAINING" -le 0 ]; then
+      break
+    fi
+    if server_answers "$scheme" "$REMAINING"; then
       serving=1
       break
     fi
