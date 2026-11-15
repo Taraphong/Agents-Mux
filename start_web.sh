@@ -27,12 +27,19 @@ for _ in 1 2 3 4 5 6 7 8; do
 done
 APP_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
 APP_FILE="$APP_DIR/app.py"
-LOG_FILE="${AI_WEB_LOG:-$APP_DIR/debug-ai-web.log}"
+# Keep the default log inside logs/, which is ignored by Git and excluded
+# from the rsync deploy, so diagnostic output never ends up in the repo.
+LOG_FILE="${AI_WEB_LOG:-$APP_DIR/logs/ai-web.log}"
 PORT="${PORT:-5000}"
 
 # Use a [p] character class so pgrep never matches this script's own command
 # line (otherwise --restart could kill the shell that is running it).
 SERVER_PATTERN='[p]ython[0-9.]* .*[a]pp\.py'
+
+# Keep only processes that run from this project directory. Another project's
+# `python app.py` must not be reported as this server or killed by --stop.
+# When /proc/<pid>/cwd is unreadable (some Android builds) fall back to the
+# previous pattern-only behaviour instead of losing the running server.
 
 if [ -x "$APP_DIR/.venv/bin/python" ]; then
   PYTHON="$APP_DIR/.venv/bin/python"
@@ -41,7 +48,14 @@ else
 fi
 
 server_pids() {
-  pgrep -f "$SERVER_PATTERN" 2>/dev/null || true
+  local pid cwd
+  for pid in $(pgrep -f "$SERVER_PATTERN" 2>/dev/null || true); do
+    cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+    if [ -n "$cwd" ] && [ "$cwd" != "$APP_DIR" ]; then
+      continue
+    fi
+    echo "$pid"
+  done
 }
 
 is_running() {
@@ -181,6 +195,7 @@ start_server() {
     return 1
   fi
   cd "$APP_DIR" || return 1
+  mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
   if command -v setsid >/dev/null 2>&1; then
     setsid nohup "$PYTHON" app.py >>"$LOG_FILE" 2>&1 </dev/null &
   else
