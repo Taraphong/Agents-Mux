@@ -78,8 +78,9 @@ file_mtime() {
 
 # Flask runs with debug=False, so app.py and the Jinja templates are loaded
 # once at startup. If those deployed files are newer than the process, new
-# features will not appear until the server is restarted. Files under static/
-# are read from disk on every request, so they never need a restart.
+# features will not appear until the server is restarted. Page CSS and
+# JavaScript (templates/<page>/*.css and *.js) are read from disk on every
+# request, so they never need a restart.
 warn_if_stale() {
   local pid epoch latest=0 file mtime
   while IFS= read -r file; do
@@ -88,7 +89,7 @@ warn_if_stale() {
     if [ -n "$mtime" ] && [ "$mtime" -gt "$latest" ]; then
       latest="$mtime"
     fi
-  done < <(printf '%s\n' "$APP_FILE"; find "$APP_DIR/templates" -type f 2>/dev/null)
+  done < <(printf '%s\n' "$APP_FILE"; find "$APP_DIR/templates" -type f -name '*.html' 2>/dev/null)
   [ "$latest" -gt 0 ] || return 0
   for pid in $(server_pids); do
     epoch="$(process_start_epoch "$pid")" || continue

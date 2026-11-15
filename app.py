@@ -29,7 +29,7 @@ from collections import deque
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template, request
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.serving import (
     ThreadedWSGIServer,
@@ -66,6 +66,9 @@ SCHEDULE_FILE = Path(os.getenv("AI_WEB_SCHEDULE_FILE", "scheduled-jobs.json"))
 SCHEDULE_LOCK = threading.Lock()
 HISTORY_LOCK = threading.Lock()
 PROJECT_ROOT = Path(__file__).resolve().parent
+# Each page keeps its template and its CSS/JS together in templates/<page>/.
+TEMPLATES_ROOT = PROJECT_ROOT / "templates"
+PAGE_ASSETS = {"index", "pair"}
 SKILLS_ROOT = Path(os.getenv("AI_WEB_SKILLS_DIR", "skills"))
 TOOL_MAX_READ_BYTES = 200_000
 TOOL_MAX_WRITE_BYTES = 200_000
@@ -102,6 +105,8 @@ AUTH_PAIRING_FAILURES: dict[str, list[float]] = {}
 AUTH_PAIRING_MAX_FAILURES = 8
 AUTH_PAIRING_FAILURE_WINDOW = 300
 AUTH_PUBLIC_PATHS = {"/pair", "/api/auth/pair", "/api/auth/status"}
+# Styles and scripts must load before the device is paired; they hold no secrets.
+AUTH_PUBLIC_PREFIXES = ("/static/", "/templates/")
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 AUTH_TRUST_PROXY = os.getenv("AI_WEB_TRUST_PROXY", "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -2639,7 +2644,7 @@ def require_web_auth():
     if not AUTH_ENABLED:
         return None
     path = request.path or ""
-    if path in AUTH_PUBLIC_PATHS or path.startswith("/static/"):
+    if path in AUTH_PUBLIC_PATHS or path.startswith(AUTH_PUBLIC_PREFIXES):
         return None
     if current_auth_session():
         return None
@@ -2648,12 +2653,24 @@ def require_web_auth():
     return redirect("/pair", code=302)
 
 
+@app.get("/templates/<page>/<filename>")
+def page_asset(page: str, filename: str):
+    """Serve the CSS/JS stored beside a page template.
+
+    Only known page folders and the .css/.js extensions are exposed, so the
+    Jinja templates themselves can never be downloaded.
+    """
+    if page not in PAGE_ASSETS or Path(filename).suffix.lower() not in {".css", ".js"}:
+        abort(404)
+    return send_from_directory(TEMPLATES_ROOT / page, filename)
+
+
 @app.get("/pair")
 def pair_page():
     """Render the pairing page where a client submits the server key."""
     if current_auth_session():
         return redirect("/")
-    return render_template("pair.html", ttl_minutes=AUTH_PAIRING_TTL_MINUTES, session_days=AUTH_SESSION_DAYS)
+    return render_template("pair/pair.html", ttl_minutes=AUTH_PAIRING_TTL_MINUTES, session_days=AUTH_SESSION_DAYS)
 
 
 @app.get("/api/auth/status")
@@ -2768,7 +2785,7 @@ def auth_revoke_session(session_id: str):
 @app.get("/")
 def index():
     """Render the single-page web application."""
-    return render_template("index.html")
+    return render_template("index/index.html")
 
 
 @app.get("/api/settings")
