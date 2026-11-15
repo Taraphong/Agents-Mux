@@ -96,6 +96,29 @@ const I18N = {
     "slash.skillsEmpty": "ยังไม่มี Skill ในโฟลเดอร์ skills",
     "slash.statusOn": "พร้อมใช้งาน",
     "slash.statusOff": "ยังไม่พร้อม: {reason}",
+    "settings.categoriesAria": "หมวดหมู่การตั้งค่า",
+    "settings.group.connection": "การเชื่อมต่อ",
+    "settings.group.connectionDesc":
+      "ผู้ให้บริการ โมเดล และคีย์ API ที่ใช้ตอบแชต",
+    "settings.group.agent": "Agent",
+    "settings.group.agentDesc": "ตัวตน บทบาท คำสั่งประจำ และ Skill ของ Agent",
+    "settings.group.response": "การตอบ",
+    "settings.group.responseDesc":
+      "พารามิเตอร์การสร้างคำตอบและระดับการคิด",
+    "settings.group.integrations": "ช่องทางและเครื่องมือ",
+    "settings.group.integrationsDesc": "Discord bot และแท็บ Terminal",
+    "settings.group.security": "ความปลอดภัย",
+    "settings.group.securityDesc": "Pairing Key และอุปกรณ์ที่เชื่อมต่อ",
+    "settings.saveScopeHint": "การบันทึกมีผลกับการตั้งค่าทุกหมวด",
+    "settings.agentInstructionsTitle": "คำสั่งประจำ Agent",
+    "settings.agentInstructionsHint":
+      "System prompt และสิ่งที่ Agent ควรทบทวนก่อนตอบ",
+    "settings.skillsCardTitle": "Skills",
+    "settings.skillsCardHint":
+      "เลือก Skill ที่จะใช้กับ Agent หรือสร้าง Skill ใหม่จากที่นี่",
+    "settings.responseParamsTitle": "พารามิเตอร์การสร้างคำตอบ",
+    "settings.responseParamsHint":
+      "ปรับความสร้างสรรค์ ความยาว และระดับการคิดของคำตอบ",
     "settings.providerTitle": "ผู้ให้บริการและโมเดล",
     "settings.agentProfileTitle": "โปรไฟล์ Agent",
     "settings.agentProfileHint": "กำหนดตัวตน บทบาท ภาษา และรูปแบบการตอบของ Agent",
@@ -124,7 +147,6 @@ const I18N = {
     "settings.baseUrlLabel": "Base URL",
     "settings.apiKeyLabel": "คีย์ API",
     "settings.apiKeyPlaceholder": "เว้นว่างเพื่อใช้คีย์เดิม",
-    "settings.assistantTitle": "พฤติกรรมของผู้ช่วย",
     "settings.memoryReview": "ทบทวนความจำ",
     "settings.memoryReviewPlaceholder": "กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ",
     "settings.memoryReviewHint": "แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด",
@@ -142,8 +164,6 @@ const I18N = {
     "settings.deleteSkillConfirm": "ต้องการลบ Skill นี้ถาวรหรือไม่?",
     "settings.skillSaved": "บันทึก Skill แล้ว",
     "settings.skillDeleted": "ลบ Skill แล้ว",
-    "settings.assistantHint":
-      "ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ",
     "settings.systemPromptLabel": "System prompt",
     "settings.thinkingLevel": "ระดับการคิด",
     "settings.temperatureLabel": "Temperature",
@@ -447,6 +467,30 @@ const I18N = {
     "slash.skillsEmpty": "No skills found in the skills folder",
     "slash.statusOn": "Ready",
     "slash.statusOff": "Not ready: {reason}",
+    "settings.categoriesAria": "Settings categories",
+    "settings.group.connection": "Connection",
+    "settings.group.connectionDesc":
+      "Provider, model and the API key used for replies",
+    "settings.group.agent": "Agent",
+    "settings.group.agentDesc":
+      "Identity, role, standing instructions and skills",
+    "settings.group.response": "Response",
+    "settings.group.responseDesc":
+      "Generation parameters and thinking level",
+    "settings.group.integrations": "Channels and tools",
+    "settings.group.integrationsDesc": "Discord bot and the Terminal tab",
+    "settings.group.security": "Security",
+    "settings.group.securityDesc": "Pairing key and paired devices",
+    "settings.saveScopeHint": "Saving applies to every section",
+    "settings.agentInstructionsTitle": "Agent instructions",
+    "settings.agentInstructionsHint":
+      "System prompt and what the agent should review before answering",
+    "settings.skillsCardTitle": "Skills",
+    "settings.skillsCardHint":
+      "Pick the skills that guide the agent, or add a new one here",
+    "settings.responseParamsTitle": "Generation parameters",
+    "settings.responseParamsHint":
+      "Tune creativity, response length and thinking depth",
     "settings.providerTitle": "Provider and model",
     "settings.agentProfileTitle": "Agent profile",
     "settings.agentProfileHint": "Define the agent identity, role, language, and response style.",
@@ -475,7 +519,6 @@ const I18N = {
     "settings.baseUrlLabel": "Base URL",
     "settings.apiKeyLabel": "API key",
     "settings.apiKeyPlaceholder": "Leave blank to keep the current key",
-    "settings.assistantTitle": "Assistant behavior",
     "settings.memoryReview": "Memory review",
     "settings.memoryReviewPlaceholder": "Define what the agent should review before answering",
     "settings.memoryReviewHint": "This guidance is sent to the agent on every response to preserve context and reduce errors.",
@@ -493,8 +536,6 @@ const I18N = {
     "settings.deleteSkillConfirm": "Delete this skill permanently?",
     "settings.skillSaved": "Skill saved",
     "settings.skillDeleted": "Skill deleted",
-    "settings.assistantHint":
-      "Set the system prompt and response parameters.",
     "settings.systemPromptLabel": "System prompt",
     "settings.thinkingLevel": "Thinking level",
     "settings.temperatureLabel": "Temperature",
@@ -1474,6 +1515,36 @@ document.querySelectorAll("nav button").forEach((button) =>
     closeSidebar();
   }),
 );
+const SETTINGS_SECTIONS = [
+  "connection",
+  "agent",
+  "response",
+  "integrations",
+  "security",
+];
+let activeSettingsSection = SETTINGS_SECTIONS[0];
+function activateSettingsSection(section) {
+  activeSettingsSection = SETTINGS_SECTIONS.includes(section)
+    ? section
+    : SETTINGS_SECTIONS[0];
+  document.querySelectorAll("[data-settings-section]").forEach((button) => {
+    const active = button.dataset.settingsSection === activeSettingsSection;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  document.querySelectorAll("[data-settings-panel]").forEach((panel) => {
+    panel.classList.toggle(
+      "active",
+      panel.dataset.settingsPanel === activeSettingsSection,
+    );
+  });
+  $("settings-view").scrollTop = 0;
+}
+document.querySelectorAll("[data-settings-section]").forEach((button) => {
+  button.addEventListener("click", () =>
+    activateSettingsSection(button.dataset.settingsSection),
+  );
+});
 function renderLogs() {
   const list = $("logs-list");
   if (logsError) {

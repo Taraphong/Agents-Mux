@@ -252,269 +252,590 @@
             </div>
           </section>
           <section id="settings-view" class="view">
-            <div class="card">
-              <div class="card-head">
-                <h2 data-i18n="settings.providerTitle">ผู้ให้บริการและโมเดล</h2>
-                <button
-                  class="secondary"
-                  id="test"
-                  type="button"
-                  data-i18n="settings.test"
-                >
-                  ทดสอบการเชื่อมต่อ
-                </button>
-              </div>
-              <p class="hint" data-i18n="settings.providerHint">
-                เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ
-                OpenAI-compatible API
-              </p>
-              <div class="grid">
-                <label
-                  ><span data-i18n="settings.providerLabel">Provider</span
-                  ><select id="provider">
-                    <option value="openai">OpenAI / OpenAI-compatible</option>
-                    <option value="gemini">Google Gemini</option>
-                    <option value="anthropic">Anthropic Claude</option>
-                    <option value="hf">Hugging Face</option>
-                    <option value="or">OpenRouter</option>
-                    <option value="groq">Groq</option>
-                  </select></label
-                >
-                <label
-                  ><span
-                    ><span class="label-inline" data-i18n="settings.modelLabel">Model</span>
-                    <small
-                      id="model_status"
-                      class="model-status"
-                      data-i18n="settings.modelNotFetched"
-                      >ยังไม่ได้ดึงจาก API</small
-                    ></span
-                  ><select id="model_select"></select
-                  ><input
-                    id="model_custom"
-                    placeholder="พิมพ์ชื่อโมเดลเอง"
-                    data-i18n-placeholder="settings.modelCustomPlaceholder"
-                    style="display: none; margin-top: 8px"
-                /></label>
-                <label class="full fallback-setting"
-                  ><span data-i18n="settings.fallbackTitle"
-                    >Fallback model เมื่อโมเดลหลักใช้ไม่ได้</span
-                  >
-                  <div class="fallback-row">
-                    <label class="toggle"
-                      ><input id="fallback_enabled" type="checkbox" /><span
-                        data-i18n="settings.fallbackEnable"
-                        >เปิดใช้งาน</span
-                      ></label
-                    ><select id="fallback_provider_select" aria-label="Fallback provider" data-i18n-aria-label="settings.fallbackProviderAria">
-                      <option value="openai">OpenAI / OpenAI-compatible</option>
-                      <option value="gemini">Google Gemini</option>
-                      <option value="anthropic">Anthropic Claude</option>
-                      <option value="hf">Hugging Face</option>
-                      <option value="or">OpenRouter</option>
-                      <option value="groq">Groq</option>
-                    </select>
-                    <select id="fallback_model_select">
-                      <option value="" data-i18n="settings.fallbackNone">
-                        ไม่ใช้ fallback
-                      </option>
-                    </select>
-                  </div>
-                  <small class="hint" data-i18n="settings.fallbackHint"
-                    >จะลองใช้เมื่อ API
-                    ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา</small
-                  >
-                </label>
-                <label class="full"
-                  ><span data-i18n="settings.baseUrlLabel"
-                    >Base URL</span
-                  ><input id="base_url" placeholder="https://api.openai.com/v1"
-                /></label>
-                <label class="full"
-                  ><span data-i18n="settings.apiKeyLabel">API key</span
-                  ><input
-                    id="api_key"
-                    type="password"
-                    placeholder="เว้นว่างเพื่อใช้คีย์เดิม"
-                    data-i18n-placeholder="settings.apiKeyPlaceholder"
-                  /><small class="hint" id="api_key_hint"></small
-                ></label>
-              </div>
-            </div>
-            <div class="card">
-              <h2 data-i18n="settings.agentProfileTitle">โปรไฟล์ Agent</h2>
-              <p class="hint" data-i18n="settings.agentProfileHint">กำหนดตัวตน บทบาท ภาษา และรูปแบบการตอบของ Agent</p>
-              <div class="grid">
-                <label><span data-i18n="settings.agentName">ชื่อ Agent</span><input id="agent_name" maxlength="80" /></label>
-                <label><span data-i18n="settings.agentRole">บทบาท</span><input id="agent_role" maxlength="500" /></label>
-                <label><span data-i18n="settings.responseLanguage">ภาษาคำตอบ</span><select id="response_language"><option value="auto" data-i18n="settings.languageAuto">ตามภาษาผู้ใช้</option><option value="th" data-i18n="settings.languageTh">ไทย</option><option value="en" data-i18n="settings.languageEn">English</option></select></label>
-                <label class="full"><span data-i18n="settings.responseStyle">โทนและสไตล์</span><textarea id="response_style" rows="2" maxlength="500"></textarea></label>
-                <label class="toggle"><input id="use_markdown" type="checkbox" /><span data-i18n="settings.useMarkdown">ใช้ Markdown</span></label>
-                <label class="toggle"><input id="ask_clarifying_questions" type="checkbox" /><span data-i18n="settings.askQuestions">ถามกลับเมื่อข้อมูลไม่พอ</span></label>
-              </div>
-            </div>
-            <div class="card">
-              <h2 data-i18n="settings.discordTitle">Discord bot</h2>
-              <p class="hint" data-i18n="settings.discordHint">
-                ให้ bot รับข้อความจาก Discord แล้วตอบด้วย provider/model หลักของระบบ
-              </p>
-              <div class="grid">
-                <label class="full toggle"
-                  ><input id="discord_enabled" type="checkbox" /><span data-i18n="settings.discordEnable">เปิดใช้งาน Discord bot</span></label
-                >
-                <label class="full"
-                  ><span data-i18n="settings.discordToken">Bot token</span
-                  ><input id="discord_token" type="password" placeholder="เว้นว่างเพื่อใช้ token เดิม" data-i18n-placeholder="settings.discordTokenPlaceholder" /><small class="hint" id="discord_token_hint"></small
-                ></label>
-                <label
-                  ><span data-i18n="settings.discordPrefix">Prefix</span
-                  ><input id="discord_prefix" value="!ai" maxlength="30" /></label
-                >
-              </div>
-            </div>
-            <div class="card">
-              <h2 data-i18n="settings.terminalTitle">Terminal</h2>
-              <p class="hint" data-i18n="settings.terminalHint">
-                เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง
-                คำสั่งถูกจำกัดให้อยู่ในโฟลเดอร์โปรเจกต์
-              </p>
-              <label class="toggle"
-                ><input id="terminal_enabled" type="checkbox" /><span
-                  data-i18n="settings.terminalEnable"
-                  >แสดงแท็บ Terminal ในแถบด้านข้าง</span
-                ></label
+            <div class="settings-shell">
+              <div
+                class="settings-rail"
+                role="tablist"
+                aria-orientation="vertical"
+                aria-label="หมวดหมู่การตั้งค่า"
+                data-i18n-aria-label="settings.categoriesAria"
               >
-            </div>
-            <div class="card">
-              <h2 data-i18n="auth.title">ความปลอดภัยและการจับคู่อุปกรณ์</h2>
-              <p class="hint" data-i18n="auth.hint">
-                เว็บนี้ต้องจับคู่อุปกรณ์ก่อนใช้งาน สร้าง Pairing Key จากฝั่ง
-                server แล้วนำคีย์ไปใส่ที่หน้า /pair ของ client
-                คีย์ใช้ได้ครั้งเดียวและมีอายุจำกัด
-              </p>
-              <div class="auth-key-row">
                 <button
-                  id="auth-generate-key"
                   type="button"
-                  data-i18n="auth.generate"
+                  role="tab"
+                  class="active"
+                  id="settings-tab-connection"
+                  aria-controls="settings-panel-connection"
+                  aria-selected="true"
+                  data-settings-section="connection"
+                  data-i18n="settings.group.connection"
                 >
-                  สร้าง Pairing Key
+                  การเชื่อมต่อ
                 </button>
                 <button
-                  id="auth-logout"
                   type="button"
-                  class="danger"
-                  data-i18n="auth.logout"
+                  role="tab"
+                  id="settings-tab-agent"
+                  aria-controls="settings-panel-agent"
+                  aria-selected="false"
+                  data-settings-section="agent"
+                  data-i18n="settings.group.agent"
                 >
-                  ออกจากระบบอุปกรณ์นี้
+                  Agent
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="settings-tab-response"
+                  aria-controls="settings-panel-response"
+                  aria-selected="false"
+                  data-settings-section="response"
+                  data-i18n="settings.group.response"
+                >
+                  การตอบ
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="settings-tab-integrations"
+                  aria-controls="settings-panel-integrations"
+                  aria-selected="false"
+                  data-settings-section="integrations"
+                  data-i18n="settings.group.integrations"
+                >
+                  ช่องทางและเครื่องมือ
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="settings-tab-security"
+                  aria-controls="settings-panel-security"
+                  aria-selected="false"
+                  data-settings-section="security"
+                  data-i18n="settings.group.security"
+                >
+                  ความปลอดภัย
                 </button>
               </div>
-              <div id="auth-key-output" class="auth-key-output" hidden>
-                <span data-i18n="auth.keyGenerated"
-                  >Pairing Key ใหม่ (ใช้ได้ครั้งเดียว)</span
+              <div class="settings-panels">
+                <div
+                  class="settings-panel active"
+                  id="settings-panel-connection"
+                  role="tabpanel"
+                  aria-labelledby="settings-tab-connection"
+                  data-settings-panel="connection"
                 >
-                <code id="auth-key-value"></code>
-                <small id="auth-key-expiry" class="hint"></small>
-              </div>
-              <h3 class="auth-subtitle" data-i18n="auth.devices">
-                อุปกรณ์ที่เชื่อมต่อ
-              </h3>
-              <div id="auth-sessions"></div>
-            </div>
-            <div class="card">
-              <h2 data-i18n="settings.assistantTitle">พฤติกรรมของผู้ช่วย</h2>
-              <p class="hint" data-i18n="settings.assistantHint">
-                ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ
-              </p>
-              <div class="grid">
-                <label class="full"
-                  ><span data-i18n="settings.systemPromptLabel">System prompt</span
-                  ><textarea id="system_prompt" rows="5"></textarea>
-                </label>
-                <label class="full"
-                  ><span data-i18n="settings.memoryReview">ทบทวนความจำ</span
-                  ><textarea id="memory_review" rows="4" data-i18n-placeholder="settings.memoryReviewPlaceholder" placeholder="กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ"></textarea>
-                  <small class="hint" data-i18n="settings.memoryReviewHint">แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด</small>
-                </label>
-                <label class="full"
-                  ><span data-i18n="settings.skills">Skills ที่ใช้กับ Agent</span>
-                  <select id="skills" multiple size="4"></select>
-                  <small class="hint" data-i18n="settings.skillsHint">เลือกได้หลายสกิล ระบบจะส่งเนื้อหาไปเป็นแนวทางให้ Agent</small>
-                </label>
-                <label
-                  ><span data-i18n="settings.newSkillName">ชื่อ Skill ใหม่</span
-                  ><input id="new-skill-name" placeholder="เช่น code-review" data-i18n-placeholder="settings.newSkillNamePlaceholder" /></label>
-                <label
-                  ><span data-i18n="settings.newSkillContent">เนื้อหา Skill</span
-                  ><textarea id="new-skill-content" rows="3" placeholder="เขียนแนวทางการทำงานของ Skill" data-i18n-placeholder="settings.newSkillContentPlaceholder"></textarea></label>
-                <div class="actions full">
-                  <button id="create-skill" type="button" class="secondary" data-i18n="settings.createSkill">สร้าง Skill</button>
-                  <button id="update-skill" type="button" class="secondary" data-i18n="settings.updateSkill">บันทึกการแก้ไข</button>
-                  <button id="delete-skill" type="button" class="danger" data-i18n="settings.deleteSkill">ลบ Skill</button>
+                  <div class="settings-panel-head">
+                    <h2 data-i18n="settings.group.connection">การเชื่อมต่อ</h2>
+                    <p class="hint" data-i18n="settings.group.connectionDesc">
+                      ผู้ให้บริการ โมเดล และคีย์ API ที่ใช้ตอบแชต
+                    </p>
+                  </div>
+                  <div class="card">
+                    <div class="card-head">
+                      <h2 data-i18n="settings.providerTitle">
+                        ผู้ให้บริการและโมเดล
+                      </h2>
+                      <button
+                        class="secondary"
+                        id="test"
+                        type="button"
+                        data-i18n="settings.test"
+                      >
+                        ทดสอบการเชื่อมต่อ
+                      </button>
+                    </div>
+                    <p class="hint" data-i18n="settings.providerHint">
+                      เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ
+                      OpenAI-compatible API
+                    </p>
+                    <div class="grid">
+                      <label
+                        ><span data-i18n="settings.providerLabel"
+                          >Provider</span
+                        ><select id="provider">
+                          <option value="openai">
+                            OpenAI / OpenAI-compatible
+                          </option>
+                          <option value="gemini">Google Gemini</option>
+                          <option value="anthropic">Anthropic Claude</option>
+                          <option value="hf">Hugging Face</option>
+                          <option value="or">OpenRouter</option>
+                          <option value="groq">Groq</option>
+                        </select></label
+                      >
+                      <label
+                        ><span
+                          ><span
+                            class="label-inline"
+                            data-i18n="settings.modelLabel"
+                            >Model</span
+                          >
+                          <small
+                            id="model_status"
+                            class="model-status"
+                            data-i18n="settings.modelNotFetched"
+                            >ยังไม่ได้ดึงจาก API</small
+                          ></span
+                        ><select id="model_select"></select
+                        ><input
+                          id="model_custom"
+                          placeholder="พิมพ์ชื่อโมเดลเอง"
+                          data-i18n-placeholder="settings.modelCustomPlaceholder"
+                          style="display: none; margin-top: 8px"
+                      /></label>
+                      <label class="full fallback-setting"
+                        ><span data-i18n="settings.fallbackTitle"
+                          >Fallback model เมื่อโมเดลหลักใช้ไม่ได้</span
+                        >
+                        <div class="fallback-row">
+                          <label class="toggle"
+                            ><input id="fallback_enabled" type="checkbox" /><span
+                              data-i18n="settings.fallbackEnable"
+                              >เปิดใช้งาน</span
+                            ></label
+                          ><select
+                            id="fallback_provider_select"
+                            aria-label="Fallback provider"
+                            data-i18n-aria-label="settings.fallbackProviderAria"
+                          >
+                            <option value="openai">
+                              OpenAI / OpenAI-compatible
+                            </option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="anthropic">Anthropic Claude</option>
+                            <option value="hf">Hugging Face</option>
+                            <option value="or">OpenRouter</option>
+                            <option value="groq">Groq</option>
+                          </select>
+                          <select id="fallback_model_select">
+                            <option value="" data-i18n="settings.fallbackNone">
+                              ไม่ใช้ fallback
+                            </option>
+                          </select>
+                        </div>
+                        <small class="hint" data-i18n="settings.fallbackHint"
+                          >จะลองใช้เมื่อ API
+                          ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา</small
+                        >
+                      </label>
+                      <label class="full"
+                        ><span data-i18n="settings.baseUrlLabel"
+                          >Base URL</span
+                        ><input
+                          id="base_url"
+                          placeholder="https://api.openai.com/v1"
+                      /></label>
+                      <label class="full"
+                        ><span data-i18n="settings.apiKeyLabel">API key</span
+                        ><input
+                          id="api_key"
+                          type="password"
+                          placeholder="เว้นว่างเพื่อใช้คีย์เดิม"
+                          data-i18n-placeholder="settings.apiKeyPlaceholder"
+                        /><small class="hint" id="api_key_hint"></small
+                      ></label>
+                    </div>
+                  </div>
                 </div>
-                <label
-                  ><span><span data-i18n="settings.temperatureLabel">Temperature</span> <b id="temperature-value">0.7</b></span>
-                  <div class="range-row">
-                    <input
-                      id="temperature"
-                      type="range"
-                      min="0"
-                      max="2"
-                      step="0.1"
-                    /><span class="range-value" id="temp-label">0.7</span>
-                  </div><small class="hint" data-i18n="settings.temperatureHint">ค่าต่ำให้คำตอบสม่ำเสมอและคาดเดาง่าย ค่าสูงให้คำตอบหลากหลายขึ้น</small></label
+                <div
+                  class="settings-panel"
+                  id="settings-panel-agent"
+                  role="tabpanel"
+                  aria-labelledby="settings-tab-agent"
+                  data-settings-panel="agent"
                 >
-                <label
-                  ><span><span data-i18n="settings.topPLabel">Top P</span> <b id="top_p-value">1</b></span>
-                  <div class="range-row">
-                    <input
-                      id="top_p"
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                    /><span class="range-value" id="top-label">1</span>
-                  </div><small class="hint" data-i18n="settings.topPHint">เลือกคำจากกลุ่มที่มีความน่าจะเป็นรวมกันตามค่านี้ ค่ายิ่งต่ำยิ่งจำกัดคำที่เลือก</small></label
+                  <div class="settings-panel-head">
+                    <h2 data-i18n="settings.group.agent">Agent</h2>
+                    <p class="hint" data-i18n="settings.group.agentDesc">
+                      ตัวตน บทบาท คำสั่งประจำ และ Skill ของ Agent
+                    </p>
+                  </div>
+                  <div class="card">
+                    <h2 data-i18n="settings.agentProfileTitle">โปรไฟล์ Agent</h2>
+                    <p class="hint" data-i18n="settings.agentProfileHint">
+                      กำหนดตัวตน บทบาท ภาษา และรูปแบบการตอบของ Agent
+                    </p>
+                    <div class="grid">
+                      <label
+                        ><span data-i18n="settings.agentName">ชื่อ Agent</span
+                        ><input id="agent_name" maxlength="80"
+                      /></label>
+                      <label
+                        ><span data-i18n="settings.agentRole">บทบาท</span
+                        ><input id="agent_role" maxlength="500"
+                      /></label>
+                      <label
+                        ><span data-i18n="settings.responseLanguage"
+                          >ภาษาคำตอบ</span
+                        ><select id="response_language">
+                          <option value="auto" data-i18n="settings.languageAuto">
+                            ตามภาษาผู้ใช้
+                          </option>
+                          <option value="th" data-i18n="settings.languageTh">
+                            ไทย
+                          </option>
+                          <option value="en" data-i18n="settings.languageEn">
+                            English
+                          </option>
+                        </select></label
+                      >
+                      <label class="full"
+                        ><span data-i18n="settings.responseStyle"
+                          >โทนและสไตล์</span
+                        ><textarea
+                          id="response_style"
+                          rows="2"
+                          maxlength="500"
+                        ></textarea>
+                      </label>
+                      <label class="toggle"
+                        ><input id="use_markdown" type="checkbox" /><span
+                          data-i18n="settings.useMarkdown"
+                          >ใช้ Markdown</span
+                        ></label
+                      >
+                      <label class="toggle"
+                        ><input
+                          id="ask_clarifying_questions"
+                          type="checkbox"
+                        /><span data-i18n="settings.askQuestions"
+                          >ถามกลับเมื่อข้อมูลไม่พอ</span
+                        ></label
+                      >
+                    </div>
+                  </div>
+                  <div class="card">
+                    <h2 data-i18n="settings.agentInstructionsTitle">
+                      คำสั่งประจำ Agent
+                    </h2>
+                    <p class="hint" data-i18n="settings.agentInstructionsHint">
+                      System prompt และสิ่งที่ Agent ควรทบทวนก่อนตอบ
+                    </p>
+                    <div class="grid">
+                      <label class="full"
+                        ><span data-i18n="settings.systemPromptLabel"
+                          >System prompt</span
+                        ><textarea id="system_prompt" rows="5"></textarea>
+                      </label>
+                      <label class="full"
+                        ><span data-i18n="settings.memoryReview"
+                          >ทบทวนความจำ</span
+                        ><textarea
+                          id="memory_review"
+                          rows="4"
+                          data-i18n-placeholder="settings.memoryReviewPlaceholder"
+                          placeholder="กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ"
+                        ></textarea>
+                        <small class="hint" data-i18n="settings.memoryReviewHint"
+                          >แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ
+                          เพื่อรักษาบริบทและลดความผิดพลาด</small
+                        >
+                      </label>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <h2 data-i18n="settings.skillsCardTitle">Skills</h2>
+                    <p class="hint" data-i18n="settings.skillsCardHint">
+                      เลือก Skill ที่จะใช้กับ Agent หรือสร้าง Skill ใหม่จากที่นี่
+                    </p>
+                    <div class="grid">
+                      <label class="full"
+                        ><span data-i18n="settings.skills"
+                          >Skills ที่ใช้กับ Agent</span
+                        >
+                        <select id="skills" multiple size="4"></select>
+                        <small class="hint" data-i18n="settings.skillsHint"
+                          >เลือกได้หลายสกิล
+                          ระบบจะส่งเนื้อหาไปเป็นแนวทางให้ Agent</small
+                        >
+                      </label>
+                      <label
+                        ><span data-i18n="settings.newSkillName"
+                          >ชื่อ Skill ใหม่</span
+                        ><input
+                          id="new-skill-name"
+                          placeholder="เช่น code-review"
+                          data-i18n-placeholder="settings.newSkillNamePlaceholder"
+                      /></label>
+                      <label
+                        ><span data-i18n="settings.newSkillContent"
+                          >เนื้อหา Skill</span
+                        ><textarea
+                          id="new-skill-content"
+                          rows="3"
+                          placeholder="เขียนแนวทางการทำงานของ Skill"
+                          data-i18n-placeholder="settings.newSkillContentPlaceholder"
+                        ></textarea>
+                      </label>
+                      <div class="actions full">
+                        <button
+                          id="create-skill"
+                          type="button"
+                          class="secondary"
+                          data-i18n="settings.createSkill"
+                        >
+                          สร้าง Skill
+                        </button>
+                        <button
+                          id="update-skill"
+                          type="button"
+                          class="secondary"
+                          data-i18n="settings.updateSkill"
+                        >
+                          บันทึกการแก้ไข
+                        </button>
+                        <button
+                          id="delete-skill"
+                          type="button"
+                          class="danger"
+                          data-i18n="settings.deleteSkill"
+                        >
+                          ลบ Skill
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="settings-panel"
+                  id="settings-panel-response"
+                  role="tabpanel"
+                  aria-labelledby="settings-tab-response"
+                  data-settings-panel="response"
                 >
-                <label
-                  ><span data-i18n="settings.maxTokensLabel">Max output tokens</span
-                  ><input id="max_tokens" type="number" min="1" max="100000"
-                /></label>
-                <label
-                  ><span data-i18n="settings.thinkingLevel">ระดับการคิด</span
-                  ><select id="thinking_level">
-                    <option value="off" data-i18n="settings.thinkingOff">
-                      ปิด
-                    </option>
-                    <option value="low" data-i18n="settings.thinkingLow">
-                      ต่ำ
-                    </option>
-                    <option value="medium" data-i18n="settings.thinkingMedium">
-                      กลาง
-                    </option>
-                    <option value="high" data-i18n="settings.thinkingHigh">
-                      สูง
-                    </option>
-                  </select></label
+                  <div class="settings-panel-head">
+                    <h2 data-i18n="settings.group.response">การตอบ</h2>
+                    <p class="hint" data-i18n="settings.group.responseDesc">
+                      พารามิเตอร์การสร้างคำตอบและระดับการคิด
+                    </p>
+                  </div>
+                  <div class="card">
+                    <div class="card-head">
+                      <h2 data-i18n="settings.responseParamsTitle">
+                        พารามิเตอร์การสร้างคำตอบ
+                      </h2>
+                    </div>
+                    <p class="hint" data-i18n="settings.responseParamsHint">
+                      ปรับความสร้างสรรค์ ความยาว และระดับการคิดของคำตอบ
+                    </p>
+                    <div class="grid">
+                      <label
+                        ><span
+                          ><span data-i18n="settings.temperatureLabel"
+                            >Temperature</span
+                          >
+                          <b id="temperature-value">0.7</b></span
+                        >
+                        <div class="range-row">
+                          <input
+                            id="temperature"
+                            type="range"
+                            min="0"
+                            max="2"
+                            step="0.1"
+                          /><span class="range-value" id="temp-label"
+                            >0.7</span
+                          >
+                        </div>
+                        <small
+                          class="hint"
+                          data-i18n="settings.temperatureHint"
+                          >ค่าต่ำให้คำตอบสม่ำเสมอและคาดเดาง่าย
+                          ค่าสูงให้คำตอบหลากหลายขึ้น</small
+                        ></label
+                      >
+                      <label
+                        ><span
+                          ><span data-i18n="settings.topPLabel">Top P</span>
+                          <b id="top_p-value">1</b></span
+                        >
+                        <div class="range-row">
+                          <input
+                            id="top_p"
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                          /><span class="range-value" id="top-label"
+                            >1</span
+                          >
+                        </div>
+                        <small class="hint" data-i18n="settings.topPHint"
+                          >เลือกคำจากกลุ่มที่มีความน่าจะเป็นรวมกันตามค่านี้
+                          ค่ายิ่งต่ำยิ่งจำกัดคำที่เลือก</small
+                        ></label
+                      >
+                      <label
+                        ><span data-i18n="settings.maxTokensLabel"
+                          >Max output tokens</span
+                        ><input
+                          id="max_tokens"
+                          type="number"
+                          min="1"
+                          max="100000"
+                      /></label>
+                      <label
+                        ><span data-i18n="settings.thinkingLevel"
+                          >ระดับการคิด</span
+                        ><select id="thinking_level">
+                          <option value="off" data-i18n="settings.thinkingOff">
+                            ปิด
+                          </option>
+                          <option value="low" data-i18n="settings.thinkingLow">
+                            ต่ำ
+                          </option>
+                          <option
+                            value="medium"
+                            data-i18n="settings.thinkingMedium"
+                          >
+                            กลาง
+                          </option>
+                          <option value="high" data-i18n="settings.thinkingHigh">
+                            สูง
+                          </option>
+                        </select></label
+                      >
+                      <label class="toggle full"
+                        ><input id="stream" type="checkbox" /><span
+                          data-i18n="settings.stream"
+                          >เปิดการตอบแบบ streaming (เตรียมรองรับ)</span
+                        ></label
+                      >
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="settings-panel"
+                  id="settings-panel-integrations"
+                  role="tabpanel"
+                  aria-labelledby="settings-tab-integrations"
+                  data-settings-panel="integrations"
                 >
-                <label class="toggle"
-                  ><input id="stream" type="checkbox" /><span
-                    data-i18n="settings.stream"
-                    >เปิดการตอบแบบ streaming (เตรียมรองรับ)</span
-                  ></label
+                  <div class="settings-panel-head">
+                    <h2 data-i18n="settings.group.integrations">
+                      ช่องทางและเครื่องมือ
+                    </h2>
+                    <p class="hint" data-i18n="settings.group.integrationsDesc">
+                      Discord bot และแท็บ Terminal
+                    </p>
+                  </div>
+                  <div class="card">
+                    <h2 data-i18n="settings.discordTitle">Discord bot</h2>
+                    <p class="hint" data-i18n="settings.discordHint">
+                      ให้ bot รับข้อความจาก Discord แล้วตอบด้วย provider/model
+                      หลักของระบบ
+                    </p>
+                    <div class="grid">
+                      <label class="full toggle"
+                        ><input id="discord_enabled" type="checkbox" /><span
+                          data-i18n="settings.discordEnable"
+                          >เปิดใช้งาน Discord bot</span
+                        ></label
+                      >
+                      <label class="full"
+                        ><span data-i18n="settings.discordToken"
+                          >Bot token</span
+                        ><input
+                          id="discord_token"
+                          type="password"
+                          placeholder="เว้นว่างเพื่อใช้ token เดิม"
+                          data-i18n-placeholder="settings.discordTokenPlaceholder"
+                        /><small class="hint" id="discord_token_hint"></small
+                      ></label>
+                      <label
+                        ><span data-i18n="settings.discordPrefix">Prefix</span
+                        ><input
+                          id="discord_prefix"
+                          value="!ai"
+                          maxlength="30"
+                      /></label>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <h2 data-i18n="settings.terminalTitle">Terminal</h2>
+                    <p class="hint" data-i18n="settings.terminalHint">
+                      เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง
+                      คำสั่งถูกจำกัดให้อยู่ในโฟลเดอร์โปรเจกต์
+                    </p>
+                    <label class="toggle"
+                      ><input id="terminal_enabled" type="checkbox" /><span
+                        data-i18n="settings.terminalEnable"
+                        >แสดงแท็บ Terminal ในแถบด้านข้าง</span
+                      ></label
+                    >
+                  </div>
+                </div>
+                <div
+                  class="settings-panel"
+                  id="settings-panel-security"
+                  role="tabpanel"
+                  aria-labelledby="settings-tab-security"
+                  data-settings-panel="security"
                 >
+                  <div class="settings-panel-head">
+                    <h2 data-i18n="settings.group.security">ความปลอดภัย</h2>
+                    <p class="hint" data-i18n="settings.group.securityDesc">
+                      Pairing Key และอุปกรณ์ที่เชื่อมต่อ
+                    </p>
+                  </div>
+                  <div class="card">
+                    <h2 data-i18n="auth.title">
+                      ความปลอดภัยและการจับคู่อุปกรณ์
+                    </h2>
+                    <p class="hint" data-i18n="auth.hint">
+                      เว็บนี้ต้องจับคู่อุปกรณ์ก่อนใช้งาน สร้าง Pairing Key จากฝั่ง
+                      server แล้วนำคีย์ไปใส่ที่หน้า /pair ของ client
+                      คีย์ใช้ได้ครั้งเดียวและมีอายุจำกัด
+                    </p>
+                    <div class="auth-key-row">
+                      <button
+                        id="auth-generate-key"
+                        type="button"
+                        data-i18n="auth.generate"
+                      >
+                        สร้าง Pairing Key
+                      </button>
+                      <button
+                        id="auth-logout"
+                        type="button"
+                        class="danger"
+                        data-i18n="auth.logout"
+                      >
+                        ออกจากระบบอุปกรณ์นี้
+                      </button>
+                    </div>
+                    <div id="auth-key-output" class="auth-key-output" hidden>
+                      <span data-i18n="auth.keyGenerated"
+                        >Pairing Key ใหม่ (ใช้ได้ครั้งเดียว)</span
+                      >
+                      <code id="auth-key-value"></code>
+                      <small id="auth-key-expiry" class="hint"></small>
+                    </div>
+                    <h3 class="auth-subtitle" data-i18n="auth.devices">
+                      อุปกรณ์ที่เชื่อมต่อ
+                    </h3>
+                    <div id="auth-sessions"></div>
+                  </div>
+                </div>
               </div>
-              <div class="actions">
-                <button id="save" data-i18n="settings.save">
-                  บันทึกการตั้งค่า</button
-                ><button
-                  class="danger"
-                  id="reset"
-                  type="button"
-                  data-i18n="settings.reset"
-                >
-                  รีเซ็ต
-                </button>
+              <div class="settings-footer">
+                <p class="hint settings-footer-hint" data-i18n="settings.saveScopeHint">
+                  การบันทึกมีผลกับการตั้งค่าทุกหมวด
+                </p>
+                <div class="actions">
+                  <button id="save" data-i18n="settings.save">
+                    บันทึกการตั้งค่า
+                  </button>
+                  <button
+                    class="danger"
+                    id="reset"
+                    type="button"
+                    data-i18n="settings.reset"
+                  >
+                    รีเซ็ต
+                  </button>
+                </div>
               </div>
             </div>
           </section>
