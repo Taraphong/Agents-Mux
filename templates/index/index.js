@@ -252,6 +252,8 @@ const I18N = {
     "schedule.promptPlaceholder": "Prompt ที่ต้องการให้ AI ทำงาน",
     "schedule.enableNow": "เปิดใช้งานทันที",
     "schedule.add": "เพิ่มงานตามเวลา",
+    "schedule.saveEdit": "บันทึกการแก้ไข",
+    "schedule.cancelEdit": "ยกเลิกการแก้ไข",
     "schedule.empty": "ยังไม่มีงานตามเวลา",
     "schedule.timezoneFallback": "เวลาของเครื่อง Server",
     "schedule.modelLabel": "โมเดล: {model}",
@@ -270,6 +272,7 @@ const I18N = {
     "schedule.edit": "แก้ไข",
     "schedule.editing": "กำลังแก้ไขงานตามเวลา",
     "schedule.updated": "บันทึกการแก้ไขแล้ว",
+    "schedule.editCancelled": "ยกเลิกการแก้ไขแล้ว",
     "logs.title": "Log ระบบ",
     "logs.system": "Log ระบบ",
     "logs.agent": "Log Agent",
@@ -627,6 +630,8 @@ const I18N = {
     "schedule.promptPlaceholder": "Prompt for the AI to run",
     "schedule.enableNow": "Enable immediately",
     "schedule.add": "Add scheduled job",
+    "schedule.saveEdit": "Save changes",
+    "schedule.cancelEdit": "Cancel edit",
     "schedule.empty": "No scheduled jobs yet",
     "schedule.timezoneFallback": "Server timezone",
     "schedule.modelLabel": "Model: {model}",
@@ -645,6 +650,7 @@ const I18N = {
     "schedule.edit": "Edit",
     "schedule.editing": "Editing scheduled job",
     "schedule.updated": "Scheduled job updated",
+    "schedule.editCancelled": "Edit cancelled",
     "logs.title": "System logs",
     "logs.system": "System logs",
     "logs.agent": "Agent logs",
@@ -2411,9 +2417,26 @@ $("schedule-preset").addEventListener("change", () => {
   if ($("schedule-preset").value)
     $("schedule-expression").value = $("schedule-preset").value;
 });
+function updateScheduleFormMode() {
+  const editing = Boolean(currentScheduleEditingId);
+  $("schedule-submit").textContent = t(
+    editing ? "schedule.saveEdit" : "schedule.add",
+  );
+  $("schedule-cancel").hidden = !editing;
+}
+function resetScheduleForm() {
+  currentScheduleEditingId = "";
+  $("schedule-form").reset();
+  updateScheduleFormMode();
+}
 $("schedule-form").addEventListener("reset", () => {
   currentScheduleSelected = "";
   currentScheduleEditingId = "";
+  updateScheduleFormMode();
+});
+$("schedule-cancel").addEventListener("click", () => {
+  resetScheduleForm();
+  showNotice(t("schedule.editCancelled"));
 });
 function updateScheduleModelOptions(models, selected = "") {
   const select = $("schedule-model");
@@ -2448,8 +2471,7 @@ $("schedule-form").addEventListener("submit", async (event) => {
   const data = await response.json();
   if (!response.ok)
     return showNotice(data.error || t("schedule.addFailed"), true);
-  $("schedule-form").reset();
-  currentScheduleEditingId = "";
+  resetScheduleForm();
   await loadSchedules();
   showNotice(t(editing ? "schedule.updated" : "schedule.added"));
 });
@@ -2481,6 +2503,7 @@ $("schedule-list").addEventListener("click", async (event) => {
     $("schedule-discord-channel").value = job.discord_channel_id || "";
     $("schedule-prompt").value = job.prompt || "";
     $("schedule-enabled").checked = job.enabled !== false;
+    updateScheduleFormMode();
     $("schedule-name").focus();
     showNotice(t("schedule.editing"));
     return;
@@ -3689,6 +3712,7 @@ function applyTranslations() {
   renderMessages(true);
   renderHistoryList(currentHistoryItems);
   renderSchedules(currentSchedules);
+  updateScheduleFormMode();
   renderAuthSessions();
   renderLogs();
   updateTerminalUi();

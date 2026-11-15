@@ -968,9 +968,24 @@
                     >เปิดใช้งานทันที</span
                   ></label
                 >
-                <button type="submit" data-i18n="schedule.add">
-                  เพิ่มงานตามเวลา
-                </button>
+                <div class="schedule-form-actions">
+                  <button
+                    type="submit"
+                    id="schedule-submit"
+                    data-i18n="schedule.add"
+                  >
+                    เพิ่มงานตามเวลา
+                  </button>
+                  <button
+                    type="button"
+                    id="schedule-cancel"
+                    class="secondary"
+                    data-i18n="schedule.cancelEdit"
+                    hidden
+                  >
+                    ยกเลิกการแก้ไข
+                  </button>
+                </div>
               </form>
               <div id="schedule-list" class="schedule-list"></div>
             </div>

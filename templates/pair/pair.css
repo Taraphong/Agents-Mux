@@ -99,6 +99,18 @@ body {
   padding: 0;
   font-size: 0.95rem;
 }
+/* The language control is a toggle button like the one on the main screen. */
+.language-toggle {
+  width: auto;
+  min-width: 44px;
+  padding: 0 8px;
+}
+.language-display {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
 .controls select {
   padding: 0 6px;
 }

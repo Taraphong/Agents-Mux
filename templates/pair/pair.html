@@ -18,15 +18,17 @@
           <div>AI Control Center</div>
         </div>
         <div class="controls">
-          <select
-            id="language-select"
+          <button
+            id="language-toggle"
+            class="icon-button language-toggle"
+            type="button"
             data-i18n-title="control.language"
             data-i18n-aria-label="control.language"
             title="Language"
+            aria-label="Language"
           >
-            <option value="en">English</option>
-            <option value="th">ไทย</option>
-          </select>
+            <span id="language-display" class="language-display">TH</span>
+          </button>
           <button
             id="theme-toggle"
             class="icon-button"
