@@ -610,7 +610,7 @@ input[type="range"] {
   top: 80px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 50;
+  z-index: 60;
   width: min(560px, calc(100% - 32px));
   padding: 12px 14px;
   border-radius: 10px;
@@ -1347,8 +1347,12 @@ button:hover:not(:disabled) {
 }
 .notice {
   border-radius: 4px;
-  background: rgba(52, 211, 153, 0.12);
+  /* Opaque: a translucent toast shows the settings cards through it and looks
+     like it is painted behind the page content. */
+  background: #163a30;
+  border: 1px solid rgba(52, 211, 153, 0.45);
   color: #a7f3d0;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
 }
 .log-row,
 .schedule-item {
