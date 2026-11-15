@@ -2693,8 +2693,10 @@ $("api_key").addEventListener("input", () => {
   if (key.length < 8) return;
   // Fetch with the key that was just typed, before it is saved, so the
   // model selector fills in as soon as the user finishes entering it.
+  const keyProvider = $("provider").value;
   apiKeyFetchTimer = setTimeout(() => {
-    fetchModels($("provider").value, currentModel(), "", key);
+    if ($("provider").value !== keyProvider) return;
+    fetchModels(keyProvider, currentModel(), "", key);
   }, 700);
 });
 $("fallback_provider_select").addEventListener("change", (event) => {
