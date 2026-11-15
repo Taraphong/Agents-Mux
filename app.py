@@ -861,41 +861,80 @@ def terminal_secret_values() -> list[str]:
     return sorted(values, key=len, reverse=True)
 
 
+PEM_REDACTED_MARKER = "•••••••• (ซ่อน private key)"
 PEM_BLOCK_PATTERN = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
     re.DOTALL,
 )
+PEM_MARKER_PATTERN = re.compile(
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|-----END [A-Z0-9 ]*PRIVATE KEY-----"
+)
+# How far before a truncated capture tail to look for an opening BEGIN line.
+TERMINAL_PEM_LOOKBACK_BYTES = 8192
+
+
+def terminal_pem_state(text: str, inside: bool = False) -> bool:
+    """Report whether the text ends inside a private key block."""
+    for match in PEM_MARKER_PATTERN.finditer(text):
+        inside = match.group(0).startswith("-----BEGIN")
+    return inside
+
+
+def mask_unterminated_pem(text: str, starts_inside: bool = False) -> str:
+    """Mask private key blocks, including one cut in half by the read boundary."""
+    if not text:
+        return text
+    ranges: list[tuple[int, int]] = []
+    inside = starts_inside
+    opened_at = 0
+    for match in PEM_MARKER_PATTERN.finditer(text):
+        if match.group(0).startswith("-----BEGIN"):
+            if not inside:
+                inside = True
+                opened_at = match.start()
+        elif inside:
+            inside = False
+            ranges.append((opened_at, match.end()))
+    if inside:
+        ranges.append((opened_at, len(text)))
+    for start, end in reversed(ranges):
+        text = text[:start] + PEM_REDACTED_MARKER + text[end:]
+    return text
 
 
 def redact_terminal_output(text: str, secrets_found: list[str]) -> str:
     """Replace known secrets and any private key block in terminal output."""
     for secret in secrets_found:
         text = text.replace(secret, "••••••••")
-    return PEM_BLOCK_PATTERN.sub("•••••••• (ซ่อน private key)", text)
+    return PEM_BLOCK_PATTERN.sub(PEM_REDACTED_MARKER, text)
+
+
+SHELL_PATH_SEPARATOR_PATTERN = re.compile(r"[;&|<>()`$\s=]+")
 
 
 def ensure_terminal_paths_allowed(command: str) -> None:
     """Reject terminal commands whose arguments point at protected project paths.
 
-    The web terminal runs through a real shell, so this is a token-level guard:
-    it catches the ordinary ways to read a protected file, while a command that
-    assembles a path at runtime can still slip past it. Output is additionally
-    scrubbed of API keys and PEM private keys before it leaves the server.
+    The web terminal runs through a real shell, so each token is split on the
+    shell operators (`;`, `|`, `&`, redirections, `$`, `=`) before the protected
+    names are checked, so `cd .env; ls` is checked as `cd .env`. This is still a
+    best-effort guard: a path assembled at runtime can slip past it, so the real
+    boundary is running the server as an unprivileged user. Output is
+    additionally scrubbed of API keys and PEM private keys before it leaves the
+    server.
     """
     try:
         tokens = shlex.split(command)
     except ValueError:
         tokens = command.split()
     for token in tokens:
-        candidate = token.replace("\\", "/").strip()
-        for prefix in (">>", ">", "<", "2>", "1>"):
-            if candidate.startswith(prefix):
-                candidate = candidate[len(prefix):]
-        if not candidate or candidate.startswith("-"):
-            continue
-        parts = [part for part in candidate.split("/") if part not in {"", "."}]
-        if any(part in PROTECTED_PARTS or part in PROTECTED_NAMES for part in parts):
-            raise PermissionError("Terminal ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
+        for fragment in SHELL_PATH_SEPARATOR_PATTERN.split(token):
+            candidate = fragment.replace("\\", "/").strip()
+            if not candidate or candidate.startswith("-"):
+                continue
+            parts = [part for part in candidate.split("/") if part not in {"", "."}]
+            if any(part in PROTECTED_PARTS or part in PROTECTED_NAMES for part in parts):
+                raise PermissionError("Terminal ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
 
 
 SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
@@ -920,11 +959,24 @@ def read_terminal_capture(handle: Any) -> tuple[str, bool]:
     handle.seek(0, os.SEEK_END)
     size = handle.tell()
     start = max(0, size - TERMINAL_MAX_OUTPUT_BYTES)
+    cut = start > 0
+    # A private key block may open before the tail starts, so derive the
+    # redaction state from a bounded window in front of it instead of relying on
+    # the BEGIN line being inside the returned text.
+    starts_inside = False
+    if cut:
+        lookback_start = max(0, start - TERMINAL_PEM_LOOKBACK_BYTES)
+        handle.seek(lookback_start)
+        starts_inside = terminal_pem_state(
+            handle.read(start - lookback_start).decode("utf-8", errors="replace")
+        )
     handle.seek(start)
-    text = handle.read().decode("utf-8", errors="replace")
-    if start > 0:
+    text = mask_unterminated_pem(
+        handle.read().decode("utf-8", errors="replace"), starts_inside
+    )
+    if cut:
         text = "… (ตัดข้อความส่วนต้นออก เนื่องจากมีผลลัพธ์จำนวนมาก)\n" + text
-    return text, start > 0
+    return text, cut
 
 
 def resolve_terminal_cwd(raw_path: Any) -> Path:
@@ -1298,7 +1350,7 @@ def read_history_file(path: Path) -> dict[str, Any] | None:
     """Read one history file, or None when it is unreadable or malformed."""
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, json.JSONDecodeError, UnicodeError) as exc:
         # Only the file name is logged: conversation content must stay private.
         LOGGER.warning("อ่านไฟล์ประวัติไม่สำเร็จ (%s): %s", path.name, exc)
         return None

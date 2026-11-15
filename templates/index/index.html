@@ -38,7 +38,12 @@
         </div>
         <div id="history-list"></div>
         <div class="modal-backdrop" id="history-modal">
-          <div class="modal">
+          <div
+            class="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="history-modal-title"
+          >
             <h3 id="history-modal-title" data-i18n="history.renameTitle">
               เปลี่ยนชื่อประวัติ
             </h3>
@@ -154,12 +159,15 @@
                 ></textarea>
                 <div class="chat-tools">
                   <div class="chat-tools-left">
-                    <label
+                    <button
                       class="attach-button"
-                      for="file-input"
+                      id="attach-button"
+                      type="button"
+                      aria-label="แนบไฟล์"
+                      data-i18n-aria-label="chat.attach"
                       title="แนบไฟล์"
                       data-i18n-title="chat.attach"
-                      ><span aria-hidden="true">+</span></label
+                      ><span aria-hidden="true">+</span></button
                     >
                     <input
                       id="file-input"

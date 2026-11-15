@@ -1406,6 +1406,10 @@ async function approveToolRequest(event) {
   const button = event.currentTarget;
   button.disabled = true;
   button.textContent = t("tool.working");
+  // The result belongs to the chat that was open when the tool finished, so
+  // hold the session and conversation until then.
+  const sessionToken = chatSessionToken;
+  const targetConversationId = conversationId;
   try {
     const request = button.toolRequest;
     const response = await fetch("/api/tools/execute", {
@@ -1424,6 +1428,13 @@ async function approveToolRequest(event) {
       throw error;
     }
     button.textContent = t("tool.done");
+    if (
+      sessionToken !== chatSessionToken ||
+      conversationId !== targetConversationId
+    ) {
+      // Another chat was opened while the tool ran: leave its composer alone.
+      return;
+    }
     $("input").value =
       `${t("tool.resultPrefix")}\n${JSON.stringify(data.result, null, 2)}`;
     resizeInput();
@@ -1895,6 +1906,7 @@ $("slash-menu").addEventListener("mousedown", (event) => {
   applySlashSuggestion(Number(item.dataset.slashIndex));
 });
 $("skill-chip").addEventListener("click", () => clearPendingSkill());
+$("attach-button").addEventListener("click", () => $("file-input").click());
 $("file-input").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -2105,6 +2117,23 @@ async function appendAssistantToHistory(
 }
 async function sendChatMessage(content, requestedSkills = null) {
   const sessionToken = chatSessionToken;
+  // A previous send recorded its message but could not persist it. Retry that
+  // save first, reusing the recorded message_id, so this submission does not add
+  // a duplicate of it.
+  if (failedSend && failedSend.sessionToken === sessionToken) {
+    const retried = await saveConversation(sessionToken);
+    if (sessionToken !== chatSessionToken) return;
+    if (retried?.id) {
+      // Clear the flag only once the message is really persisted.
+      failedSend = null;
+      const staleWarning = document.querySelector(
+        "#messages .message.assistant:last-child",
+      );
+      if (staleWarning?.textContent.includes(t("chat.saveWarning"))) {
+        staleWarning.remove();
+      }
+    }
+  }
   const userMessage = {
     role: "user",
     content: content || t("chat.defaultAttachmentPrompt"),
@@ -2200,117 +2229,41 @@ async function sendChatMessage(content, requestedSkills = null) {
       showNotice(t("chat.saveWarning"), true);
     }
   } catch (e) {
-    // Only consume failure state recorded by this request's own session,
-    // so a newer chat cannot be retried with an older prompt.
-    const pendingFailure =
-      failedSend && failedSend.sessionToken === sessionToken
-        ? failedSend
-        : null;
-    if (!pendingFailure) {
-      // Unexpected error after a successful save – just render the error.
-      const errorMessage = {
-        role: "assistant",
-        content: t("chat.errorPrefix", { message: e.message }),
-        message_id: newMessageId(),
-      };
-      if (sessionToken !== chatSessionToken) {
-        if (
-          targetConversationId &&
-          conversationId === targetConversationId
-        ) {
-          messages.push(errorMessage);
-          addMessage("assistant", errorMessage.content);
-        }
-        if (targetConversationId) {
-          await appendAssistantToHistory(
-            targetConversationId,
-            errorMessage,
-            targetGeneration,
-          );
-        }
-        return;
-      }
-      messages.push(errorMessage);
-      addMessage("assistant", errorMessage.content);
-      const saved = targetConversationId
-        ? await saveConversation(sessionToken)
-        : null;
-      if (!saved && targetConversationId) {
-        queuePendingAppend(
-          targetConversationId,
-          [errorMessage],
-          targetGeneration,
-        );
-        showNotice(t("chat.saveWarning"), true);
-      }
-      await refreshConnectionState();
-      return;
-    }
-    // We have a failedSend from an earlier initial-save failure in this
-    // same session. Retry: reuse the exact same user message (same
-    // message_id) and the same skills; do not append a duplicate.
-    const { message: retryMessage, skills: retrySkills } = pendingFailure;
-    // Remove the error message we added after the initial save failure
-    // and replace it with the AI reply.
-    const errorIdx = messages.findIndex(
-      (m) => m.role === "assistant" && m.content.includes(t("chat.saveWarning")),
-    );
-    if (errorIdx >= 0) messages.splice(errorIdx, 1);
-    // Re-push the retry user message (preserving its message_id)
-    messages.push(retryMessage);
-    // Clear the failedSend flag so further sends don't retry again.
-    if (failedSend === pendingFailure) failedSend = null;
-    // Now proceed with the AI request using the (now-present) retryMessage
-    // as part of messages. We already have the payload ready; just send it.
-    const payload = {
-      messages,
-      thinking_level: $("chat-thinking-level").value,
-      command_mode: $("chat-command-mode").value,
-      model: $("chat-model-select").value,
-    };
-    if (retrySkills?.length) payload.skills = retrySkills;
-    const r = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || t("chat.error"));
-    const assistantMessage = {
+    // Unexpected error after a successful save – just render the error. An
+    // earlier unsaved message is retried before the next submission instead.
+    const errorMessage = {
       role: "assistant",
-      content: data.answer,
+      content: t("chat.errorPrefix", { message: e.message }),
       message_id: newMessageId(),
-      duration_ms: data.duration_ms,
-      usage: data.usage,
-      tool_request: data.tool_request,
-      approval_id: data.approval_id,
-      fallback_used: data.fallback_used,
     };
     if (sessionToken !== chatSessionToken) {
       if (targetConversationId && conversationId === targetConversationId) {
-        messages.push(assistantMessage);
-        removeTypingIndicator();
-        addMessage("assistant", data.answer, assistantMessage);
+        messages.push(errorMessage);
+        addMessage("assistant", errorMessage.content);
       }
-      await appendAssistantToHistory(
-        targetConversationId,
-        assistantMessage,
-        targetGeneration,
-      );
+      if (targetConversationId) {
+        await appendAssistantToHistory(
+          targetConversationId,
+          errorMessage,
+          targetGeneration,
+        );
+      }
       return;
     }
-    messages.push(assistantMessage);
-    removeTypingIndicator();
-    addMessage("assistant", data.answer, assistantMessage);
-    const saved = await saveConversation(sessionToken);
-    if (!saved) {
+    messages.push(errorMessage);
+    addMessage("assistant", errorMessage.content);
+    const saved = targetConversationId
+      ? await saveConversation(sessionToken)
+      : null;
+    if (!saved && targetConversationId) {
       queuePendingAppend(
         targetConversationId,
-        [assistantMessage],
+        [errorMessage],
         targetGeneration,
       );
       showNotice(t("chat.saveWarning"), true);
     }
+    await refreshConnectionState();
   } finally {
     if (sessionToken === chatSessionToken) {
       removeTypingIndicator();
@@ -2421,7 +2374,21 @@ $("schedule-list").addEventListener("click", async (event) => {
     currentScheduleEditingId = id;
     $("schedule-name").value = job.name || "";
     $("schedule-expression").value = job.schedule || "";
-    $("schedule-model").value = job.model || "";
+    const scheduleModel = $("schedule-model");
+    if (
+      job.model &&
+      !Array.from(scheduleModel.options).some(
+        (option) => option.value === job.model,
+      )
+    ) {
+      // Keep the stored model selectable even when the provider list no longer
+      // offers it, so saving an unrelated edit does not clear it.
+      scheduleModel.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${escapeHtml(job.model)}">${escapeHtml(job.model)}</option>`,
+      );
+    }
+    scheduleModel.value = job.model || "";
     $("schedule-discord-channel").value = job.discord_channel_id || "";
     $("schedule-prompt").value = job.prompt || "";
     $("schedule-enabled").checked = job.enabled !== false;
@@ -2523,12 +2490,7 @@ function updateModelOptions(provider, selected = "", models = null) {
   }
 }
 let modelsRequestGeneration = 0;
-async function fetchModels(
-  provider,
-  selected = "",
-  fallbackSelected = "",
-  apiKey = "",
-) {
+async function fetchModels(provider, selected = "", apiKey = "") {
   const generation = ++modelsRequestGeneration;
   $("model_status").textContent = t("model.fetching");
   try {
@@ -2553,14 +2515,14 @@ async function fetchModels(
         updateModelOptions(provider, selected, data.models);
         updateChatModelOptions(data.models, selected);
         updateScheduleModelOptions(data.models, "");
-        updateFallbackModelOptions(data.models, fallbackSelected);
       }
       throw new Error(data.error || t("model.fetchError"));
     }
+    // The fallback list is owned by fetchFallbackModels and the provider chosen
+    // in fallback_provider_select; a primary lookup must not overwrite it.
     updateModelOptions(provider, selected, data.models);
     updateChatModelOptions(data.models, selected);
     updateScheduleModelOptions(data.models, "");
-    updateFallbackModelOptions(data.models, fallbackSelected);
     setModelStatus("model.fetched", { count: data.models.length });
   } catch (e) {
     if (generation !== modelsRequestGeneration) return;
@@ -2570,10 +2532,6 @@ async function fetchModels(
       selected,
     );
     updateScheduleModelOptions(MODEL_OPTIONS[provider]?.models || [], "");
-    updateFallbackModelOptions(
-      MODEL_OPTIONS[provider]?.models || [],
-      fallbackSelected,
-    );
     setModelStatus("model.fallback", {}, e.message);
   }
 }
@@ -2643,13 +2601,38 @@ function confirmDialog({ title, text, confirmLabel }) {
     actions.append(cancel, accept);
     modal.append(heading, body, actions);
     backdrop.append(modal);
+    const trigger = document.activeElement;
     const close = (result) => {
       document.removeEventListener("keydown", onKey);
       backdrop.remove();
+      // Focus goes back to whatever opened the dialog.
+      if (
+        trigger &&
+        typeof trigger.focus === "function" &&
+        document.contains(trigger)
+      ) {
+        trigger.focus();
+      }
       resolve(result);
     };
     const onKey = (event) => {
-      if (event.key === "Escape") close(false);
+      if (event.key === "Escape") {
+        close(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      // Keep Tab inside the dialog while it is open.
+      const focusable = [cancel, accept].filter((element) => !element.disabled);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     cancel.addEventListener("click", () => close(false));
     accept.addEventListener("click", () => close(true));
@@ -2696,7 +2679,7 @@ $("api_key").addEventListener("input", () => {
   const keyProvider = $("provider").value;
   apiKeyFetchTimer = setTimeout(() => {
     if ($("provider").value !== keyProvider) return;
-    fetchModels(keyProvider, currentModel(), "", key);
+    fetchModels(keyProvider, currentModel(), key);
   }, 700);
 });
 $("fallback_provider_select").addEventListener("change", (event) => {
@@ -2833,7 +2816,7 @@ async function loadChatMeta() {
     const r = await fetch("/api/settings");
     const s = await r.json();
     applyChatMeta(s);
-    await fetchModels(s.provider ?? "openai", s.model ?? "", "");
+    await fetchModels(s.provider ?? "openai", s.model ?? "");
     await refreshConnectionState();
   } catch (e) {
     updateChatModelOptions([], t("chatModel.notConnected"));
@@ -3071,11 +3054,7 @@ async function loadSettings() {
   updateFallbackModelOptions([], s.fallback_model ?? "");
   $("api_key").value = "";
   updateApiKeyHint($("provider").value);
-  await fetchModels(
-    $("provider").value,
-    s.model ?? "",
-    s.fallback_model ?? "",
-  );
+  await fetchModels($("provider").value, s.model ?? "");
   await fetchFallbackModels(
     $("fallback_provider_select").value,
     s.fallback_model ?? "",
@@ -3122,45 +3101,53 @@ function collectSettingsBody() {
 $("save").addEventListener("click", async () => {
   const body = collectSettingsBody();
   const apiKey = body.api_key.trim();
-  if (apiKey && apiKey !== "••••••••") {
-    $("save").disabled = true;
-    $("save").textContent = t("notice.testing");
-    const testResponse = await fetch("/api/settings/test", {
-      method: "POST",
+  const restoreSaveButton = () => {
+    $("save").disabled = false;
+    $("save").textContent = t("settings.save");
+  };
+  try {
+    if (apiKey && apiKey !== "••••••••") {
+      $("save").disabled = true;
+      $("save").textContent = t("notice.testing");
+      const testResponse = await fetch("/api/settings/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const testData = await testResponse.json();
+      if (!testResponse.ok || !testData.ok) {
+        showNotice(
+          t("notice.testFailed", {
+            error: testData.error || t("notice.settingsSaveFailed"),
+          }),
+          true,
+        );
+        return;
+      }
+    }
+    const r = await fetch("/api/settings", {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const testData = await testResponse.json();
-    if (!testResponse.ok || !testData.ok) {
-      showNotice(
-        t("notice.testFailed", { error: testData.error || t("notice.settingsSaveFailed") }),
-        true,
-      );
-      $("save").disabled = false;
-      $("save").textContent = t("settings.save");
-      return;
+    showNotice(
+      r.ok ? t("notice.settingsSaved") : t("notice.settingsSaveFailed"),
+      !r.ok,
+    );
+    if (r.ok) {
+      await loadSettings();
+      applyChatMeta({
+        thinking_level: $("thinking_level").value,
+        model: $("model_select").value === "__custom__"
+          ? $("model_custom").value.trim()
+          : $("model_select").value,
+      });
+      await refreshConnectionState();
     }
-  }
-  const r = await fetch("/api/settings", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  $("save").disabled = false;
-  $("save").textContent = t("settings.save");
-  showNotice(
-    r.ok ? t("notice.settingsSaved") : t("notice.settingsSaveFailed"),
-    !r.ok,
-  );
-  if (r.ok) {
-    await loadSettings();
-    applyChatMeta({
-      thinking_level: $("thinking_level").value,
-      model: $("model_select").value === "__custom__"
-        ? $("model_custom").value.trim()
-        : $("model_select").value,
-    });
-    await refreshConnectionState();
+  } catch (error) {
+    showNotice(t("notice.settingsSaveFailed"), true);
+  } finally {
+    restoreSaveButton();
   }
 });
 $("create-skill").addEventListener("click", async () => {
@@ -3223,23 +3210,28 @@ $("delete-skill").addEventListener("click", async () => {
 $("test").addEventListener("click", async () => {
   $("test").disabled = true;
   $("test").textContent = t("notice.testing");
-  // Send the form values so an API key that is typed but not saved yet
-  // can still be tested.
-  const r = await fetch("/api/settings/test", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(collectSettingsBody()),
-  });
-  const data = await r.json();
-  showNotice(
-    data.ok
-      ? t("notice.testSuccess", { answer: data.answer })
-      : t("notice.testFailed", { error: data.error }),
-    !data.ok,
-  );
-  $("test").disabled = false;
-  $("test").textContent = t("settings.test");
-  await refreshConnectionState();
+  try {
+    // Send the form values so an API key that is typed but not saved yet
+    // can still be tested.
+    const r = await fetch("/api/settings/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collectSettingsBody()),
+    });
+    const data = await r.json();
+    showNotice(
+      data.ok
+        ? t("notice.testSuccess", { answer: data.answer })
+        : t("notice.testFailed", { error: data.error }),
+      !data.ok,
+    );
+    await refreshConnectionState();
+  } catch (error) {
+    showNotice(t("notice.testFailed", { error: error.message }), true);
+  } finally {
+    $("test").disabled = false;
+    $("test").textContent = t("settings.test");
+  }
 });
 function escapeHtml(value) {
   return String(value).replace(
