@@ -188,6 +188,10 @@ const I18N = {
     "settings.terminalHint":
       "เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง (เริ่มต้นในโฟลเดอร์โปรเจกต์)",
     "settings.terminalEnable": "แสดงแท็บ Terminal ในแถบด้านข้าง",
+    "settings.machineTitle": "สิทธิ์เข้าถึงเครื่อง",
+    "settings.machineHint":
+      "ให้ agent เข้าถึงทุก path ในเครื่องและรันคำสั่งผ่าน shell จริง (รวม sudo ถ้าผู้ใช้ที่รันแอปมีสิทธิ์) ทุกการเรียกเครื่องมือจะขออนุมัติในแชตก่อนทุกครั้ง",
+    "settings.machineEnable": "ให้ agent เข้าถึงทั้งเครื่อง (ขออนุมัติทุกครั้ง)",
     "auth.title": "ความปลอดภัยและการจับคู่อุปกรณ์",
     "auth.hint":
       "เว็บนี้ต้องจับคู่อุปกรณ์ก่อนใช้งาน สร้าง Pairing Key จากฝั่ง server แล้วนำคีย์ไปใส่ที่หน้า /pair ของ client คีย์ใช้ได้ครั้งเดียวและมีอายุจำกัด",
@@ -560,6 +564,10 @@ const I18N = {
     "settings.terminalHint":
       "Show or hide the Terminal tab in the sidebar. It starts in the project folder.",
     "settings.terminalEnable": "Show the Terminal tab in the sidebar",
+    "settings.machineTitle": "Machine access",
+    "settings.machineHint":
+      "Let agents reach every path on this machine and run commands through a real shell (including sudo when the user running the app is allowed to). Every tool call asks for approval in the chat first.",
+    "settings.machineEnable": "Let agents reach the whole machine (approval every time)",
     "auth.title": "Security and device pairing",
     "auth.hint":
       "This web app requires a paired device. Generate a Pairing Key on the server and enter it on the client's /pair page. Each key is single-use and expires.",
@@ -1410,6 +1418,7 @@ function addTypingIndicator() {
   $("send").classList.add("is-loading");
 
   const started = performance.now();
+  el.dataset.startedAt = String(started);
   const update = () => {
     const seconds = Math.round((performance.now() - started) / 1000);
     const key =
@@ -3126,6 +3135,7 @@ async function loadSettings() {
   $("fallback_provider_select").value = s.fallback_provider ?? "openai";
   $("discord_enabled").checked = !!s.discord_enabled;
   $("terminal_enabled").checked = s.terminal_enabled !== false;
+  $("machine_access").checked = s.machine_access !== false;
   applyTerminalEnabled(s.terminal_enabled !== false);
   $("discord_prefix").value = s.discord_prefix ?? "!ai";
   $("discord_token").value = "";
@@ -3176,6 +3186,7 @@ function collectSettingsBody() {
     discord_token: $("discord_token").value,
     discord_prefix: $("discord_prefix").value,
     terminal_enabled: $("terminal_enabled").checked,
+    machine_access: $("machine_access").checked,
   };
 }
 $("save").addEventListener("click", async () => {
@@ -3571,10 +3582,34 @@ $("reset").addEventListener("click", async () => {
   await loadSettings();
   showNotice(t("notice.resetDone"));
 });
-function renderMessages() {
-  removeTypingIndicator();
+function renderMessages(keepTyping = false) {
+  // A live "AI is thinking" indicator must survive re-renders such as a
+  // language switch, so keep the same node and its running elapsed timer
+  // instead of tearing it down and rebuilding it.
+  const indicator = keepTyping ? typingIndicator : null;
+  if (indicator) {
+    indicator.remove();
+  } else {
+    removeTypingIndicator();
+  }
   const container = $("messages");
   container.innerHTML = "";
+  const restoreIndicator = () => {
+    if (!indicator) return;
+    const label = indicator.querySelector(".typing-label");
+    const key = label?.dataset.key || "chat.typingThinking";
+    if (label) label.textContent = t(key);
+    indicator.setAttribute("aria-label", t(key));
+    const elapsed = indicator.querySelector(".typing-elapsed");
+    const startedAt = Number(indicator.dataset.startedAt || 0);
+    if (elapsed && startedAt) {
+      const seconds = Math.round((performance.now() - startedAt) / 1000);
+      elapsed.textContent =
+        seconds >= 2 ? t("chat.typingElapsed", { seconds }) : "";
+    }
+    container.appendChild(indicator);
+    container.scrollTop = container.scrollHeight;
+  };
   if (!messages.length) {
     if (emptyConversationMode === "deleted") {
       const el = document.createElement("div");
@@ -3594,11 +3629,13 @@ function renderMessages() {
       divider.appendChild(span);
       container.appendChild(divider);
     }
+    restoreIndicator();
     return;
   }
   messages.forEach((message) =>
     addMessage(message.role, message.content, message),
   );
+  restoreIndicator();
 }
 function applyStaticTranslations() {
   document.documentElement.lang = currentLanguage;
@@ -3649,7 +3686,7 @@ function applyTranslations() {
   updateApiKeyHint($("provider").value);
   updateDiscordTokenHint();
   if (connectionState.known) updateConnectionUi();
-  renderMessages();
+  renderMessages(true);
   renderHistoryList(currentHistoryItems);
   renderSchedules(currentSchedules);
   renderAuthSessions();
