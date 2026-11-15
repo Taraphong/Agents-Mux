@@ -3366,7 +3366,13 @@ def chat():
                 tool_requests = []
             if not tool_requests:
                 break
-            required_tools = approval_required_tools(settings)
+            # Refresh required-tool set using both policy observations
+            # so machine access enabled during call_provider includes
+            # read_file and list_files in the approval decision.
+            _machine_access = machine_access_enabled(settings) or machine_access_enabled(load_settings())
+            required_tools = approval_required_tools(
+                {"machine_access": _machine_access} if _machine_access is not None else settings
+            )
             approval_request = next(
                 (item for item in tool_requests if TOOL_ALIASES.get(item["name"], item["name"]) in required_tools),
                 None,
