@@ -77,6 +77,9 @@ PENDING_APPROVAL_LOCK = threading.Lock()
 APPROVAL_TTL_SECONDS = 15 * 60
 MAX_PENDING_APPROVALS = 50
 APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command", "create_skill", "create_schedule", "update_schedule"}
+# With machine access on, every tool can touch the whole host, so every tool
+# call is also an approval-required call.
+MACHINE_TOOL_NAMES = {"list_files", "read_file", "write_file", "run_command", "create_skill", "create_schedule", "update_schedule"}
 SCHEDULE_LOCK_FILE = Path(f"{SCHEDULE_FILE}.lock")
 SCHEDULE_CONTEXT_MESSAGES = 40
 SCHEDULE_RUNNING: set[str] = set()
@@ -115,11 +118,11 @@ if AUTH_TRUST_PROXY:
     # request.is_secure (and the Secure session cookie) reflects the client.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 TOOL_INSTRUCTIONS = """
-คุณมีเครื่องมือจำกัดอยู่ในโฟลเดอร์โปรเจกต์เท่านั้น หากต้องอ่านไฟล์หรือดูรายการไฟล์ ให้ร้องขอด้วยรูปแบบนี้เพียงอย่างเดียว:
-<tool_call>{"name":"read_file","arguments":{"path":"app.py"}}</tool_call>
-หรือ <tool_call>{"name":"list_files","arguments":{"path":"."}}</tool_call>
-หากต้องเขียนไฟล์ ให้ใช้ชื่อ write_file และหากต้องรันคำสั่ง ให้ใช้ชื่อ run_command (ระบบยอมรับ execute_command เป็นชื่อเก่าด้วย) ระบบจะรอการอนุมัติจากผู้ใช้ก่อนเสมอ
-ห้ามขออ่าน .env, .app-settings.json, history, .venv, .git หรือไฟล์ลับ
+คุณใช้เครื่องมือกับเครื่องนี้ได้เต็มรูปแบบ: path แบบ absolute หรือ ~/... เข้าถึงได้ทุกที่ในเครื่อง และ run_command รันผ่าน shell จริง (รวมถึง sudo ถ้าผู้ใช้ที่รันแอปมีสิทธิ์) โดยเริ่มในโฟลเดอร์โปรเจกต์
+ทุกครั้งที่เรียกเครื่องมือ ระบบจะหยุดรอให้ผู้ใช้อนุมัติในแชตก่อนเสมอ และอนุมัติได้ครั้งเดียวต่อหนึ่งคำขอ ห้ามถือว่าอนุมัติแล้วหรือข้ามการขออนุมัติ
+รูปแบบการเรียก: <tool_call>{"name":"read_file","arguments":{"path":"/etc/hostname"}}</tool_call> หรือ <tool_call>{"name":"list_files","arguments":{"path":"~"}}</tool_call>
+ใช้ write_file สำหรับเขียนไฟล์, run_command (ชื่อเดิม execute_command ก็ได้) สำหรับรันคำสั่ง, list_files/read_file สำหรับสำรวจเครื่อง
+ระบบจะปิดบัง API key และ private key ที่รู้จักในผลลัพธ์ให้อัตโนมัติ
 หากต้องสร้างหรือปรับปรุงสกิล ให้ใช้เครื่องมือ create_skill พร้อมชื่อไฟล์ .md และเนื้อหาสกิลที่ชัดเจน ระบบจะจำกัดการเขียนไว้ในโฟลเดอร์ skills เท่านั้น
 เมื่อผู้ใช้สั่งให้สร้างหรือแก้ไขงานตามเวลา/Cron อย่างชัดเจน ให้ใช้ create_schedule หรือ update_schedule โดย create_schedule รับ arguments: name, schedule (Cron 5 ช่อง), prompt, model (ไม่บังคับ), enabled (ไม่บังคับ) และ discord_channel_id (ไม่บังคับ เป็น Channel ID ของ Discord); ส่วน update_schedule รับ job_id และฟิลด์ที่ต้องการแก้ไข โดยใช้ timezone ของ Server
 """.strip()
@@ -245,6 +248,7 @@ DEFAULT_SETTINGS = {
     "discord_enabled": bool(os.getenv("DISCORD_BOT_TOKEN", "").strip()),
     "discord_prefix": os.getenv("DISCORD_BOT_PREFIX", "!ai"),
     "terminal_enabled": True,
+    "machine_access": True,
 }
 
 FALLBACK_MODELS = {
@@ -587,6 +591,46 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     return candidate
 
 
+def machine_access_enabled(settings: dict[str, Any] | None = None) -> bool:
+    """Return whether tools may reach the whole machine instead of the project only."""
+    settings = settings if settings is not None else load_settings()
+    return bool(settings.get("machine_access", True))
+
+
+def approval_required_tools(settings: dict[str, Any] | None = None) -> set[str]:
+    """Return the tools that need a fresh, single-use user approval."""
+    if machine_access_enabled(settings):
+        return set(MACHINE_TOOL_NAMES)
+    return set(APPROVAL_REQUIRED_TOOLS)
+
+
+def resolve_tool_path(raw_path: str, must_exist: bool = False) -> Path:
+    """Resolve a tool path, reaching the whole machine when machine access is on.
+
+    With machine access the path may be absolute, start with `~`, or be relative
+    to the project folder. Without it the old project-only guard applies.
+    """
+    if not machine_access_enabled():
+        return resolve_project_path(raw_path, must_exist)
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("ต้องระบุ path")
+    candidate = Path(os.path.expanduser(raw_path.strip()))
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    candidate = candidate.resolve()
+    if must_exist and not candidate.exists():
+        raise FileNotFoundError(f"ไม่พบ path: {raw_path}")
+    return candidate
+
+
+def display_tool_path(path: Path) -> str:
+    """Show a project-relative path when possible, otherwise the absolute path."""
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(path)
+
+
 def ensure_safe_command_token(token: str) -> None:
     """Reject command arguments that point outside the project or at protected files."""
     normalized = token.replace("\\", "/").strip()
@@ -764,46 +808,54 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         log_event("schedule.updated", f"แก้ไขงานตามเวลา {job['name']} สำเร็จ", job=job_id)
         return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
     if name == "list_files":
-        root = resolve_project_path(arguments.get("path", "."), must_exist=True)
+        machine_access = machine_access_enabled()
+        root = resolve_tool_path(arguments.get("path", "."), must_exist=True)
         if not root.is_dir():
             raise ValueError("path นี้ไม่ใช่โฟลเดอร์")
         files: list[str] = []
         truncated = False
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = sorted(directory for directory in dirnames if directory not in PROTECTED_PARTS)
+            if not machine_access:
+                dirnames[:] = sorted(directory for directory in dirnames if directory not in PROTECTED_PARTS)
             for filename in sorted(filenames):
-                if filename in PROTECTED_NAMES:
+                if not machine_access and filename in PROTECTED_NAMES:
                     continue
                 if len(files) >= 500:
                     truncated = True
                     break
-                files.append(str(Path(dirpath, filename).relative_to(PROJECT_ROOT)))
+                files.append(display_tool_path(Path(dirpath, filename)))
             if truncated:
                 break
-        result = {"tool": name, "files": files, "truncated": truncated}
+        result = {"tool": name, "files": files, "truncated": truncated, "scope": "machine" if machine_access else "project"}
         log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, count=len(files))
         return result
 
     if name == "read_file":
-        path = resolve_project_path(arguments.get("path", ""), must_exist=True)
+        machine_access = machine_access_enabled()
+        path = resolve_tool_path(arguments.get("path", ""), must_exist=True)
         if not path.is_file():
             raise ValueError("path นี้ไม่ใช่ไฟล์")
         if path.stat().st_size > TOOL_MAX_READ_BYTES:
             raise ValueError("ไฟล์ใหญ่เกินขนาดที่อนุญาตให้อ่าน")
-        result = {"tool": name, "path": str(path.relative_to(PROJECT_ROOT)), "content": path.read_text(encoding="utf-8")}
+        content = path.read_text(encoding="utf-8", errors="replace")
+        if machine_access:
+            # Whole-machine reads must not copy stored credentials into the chat
+            # transcript or the saved conversation history.
+            content = redact_secrets(content)
+        result = {"tool": name, "path": display_tool_path(path), "content": content, "scope": "machine" if machine_access else "project"}
         log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, path=result["path"])
         return result
 
     if name == "write_file":
         if not approved:
             raise PermissionError("การเขียนไฟล์ต้องได้รับการอนุมัติก่อน")
-        path = resolve_project_path(arguments.get("path", ""))
+        path = resolve_tool_path(arguments.get("path", ""))
         content = arguments.get("content", "")
         if not isinstance(content, str) or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
             raise ValueError("เนื้อหาไฟล์ใหญ่เกินขนาดที่อนุญาต")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        result = {"tool": name, "path": str(path.relative_to(PROJECT_ROOT)), "bytes": len(content.encode("utf-8"))}
+        result = {"tool": name, "path": display_tool_path(path), "bytes": len(content.encode("utf-8"))}
         log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, path=result["path"], bytes=result["bytes"])
         return result
 
@@ -813,9 +865,39 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         command = arguments.get("command", "")
         if not isinstance(command, str) or not command.strip():
             raise ValueError("ต้องระบุคำสั่ง")
+        command = command.strip()
+        if len(command) > 4000:
+            raise ValueError("คำสั่งยาวเกินไป (สูงสุด 4000 ตัวอักษร)")
+        if machine_access_enabled():
+            # A real shell with the app user's privileges: any binary, pipes,
+            # sudo (when the user may run it without a password prompt), and
+            # any path on the machine. The approval click is the boundary.
+            returncode, stdout, stderr, timed_out, truncated, duration_ms = run_terminal_process(command, PROJECT_ROOT)
+            if timed_out:
+                returncode = 124
+            secrets_found = terminal_secret_values()
+            result = {
+                "tool": name,
+                "command": redact_terminal_output(command, secrets_found),
+                "returncode": returncode,
+                "stdout": redact_terminal_output(stdout, secrets_found),
+                "stderr": redact_terminal_output(stderr, secrets_found),
+                "timed_out": timed_out,
+                "truncated": truncated,
+                "duration_ms": duration_ms,
+                "scope": "machine",
+            }
+            log_event(
+                "tool.success" if returncode == 0 else "tool.failed",
+                f"รันคำสั่งเสร็จ ({returncode})",
+                tool=name,
+                command=redact_terminal_output(command, secrets_found)[:300],
+                duration_ms=duration_ms,
+            )
+            return result
         argv = parse_command(command)
         completed = subprocess.run(argv, cwd=PROJECT_ROOT, shell=False, capture_output=True, text=True, timeout=30)
-        result = {"tool": name, "command": command, "returncode": completed.returncode, "stdout": completed.stdout[-20_000:], "stderr": completed.stderr[-20_000:]}
+        result = {"tool": name, "command": command, "returncode": completed.returncode, "stdout": completed.stdout[-20_000:], "stderr": completed.stderr[-20_000:], "scope": "project"}
         log_event("tool.success" if completed.returncode == 0 else "tool.failed", f"รันคำสั่งเสร็จ ({completed.returncode})", tool=name, command=command)
         return result
 
@@ -2268,18 +2350,22 @@ def start_discord_bot() -> None:
 
 @app.get("/api/tools")
 def tools_get():
-    """List the local tools and which ones require user approval."""
+    """List the local tools, their scope, and which ones require approval."""
+    settings = load_settings()
+    required = approval_required_tools(settings)
+    machine_access = machine_access_enabled(settings)
     return jsonify({
-        "scope": str(PROJECT_ROOT),
+        "scope": "machine" if machine_access else str(PROJECT_ROOT),
+        "machine_access": machine_access,
         "tools": [
-            {"name": "list_files", "approval_required": False},
-            {"name": "read_file", "approval_required": False},
-            {"name": "write_file", "approval_required": True},
-            {"name": "run_command", "approval_required": True},
-            {"name": "create_skill", "approval_required": True},
-            {"name": "create_schedule", "approval_required": True},
-            {"name": "update_schedule", "approval_required": True},
-            {"name": "execute_command", "alias_for": "run_command", "approval_required": True},
+            {"name": "list_files", "approval_required": "list_files" in required},
+            {"name": "read_file", "approval_required": "read_file" in required},
+            {"name": "write_file", "approval_required": "write_file" in required},
+            {"name": "run_command", "approval_required": "run_command" in required},
+            {"name": "create_skill", "approval_required": "create_skill" in required},
+            {"name": "create_schedule", "approval_required": "create_schedule" in required},
+            {"name": "update_schedule", "approval_required": "update_schedule" in required},
+            {"name": "execute_command", "alias_for": "run_command", "approval_required": "run_command" in required},
         ],
     })
 
@@ -2296,7 +2382,7 @@ def tools_execute():
         return jsonify({"ok": False, "error": "ข้อมูลเครื่องมือไม่ถูกต้อง"}), 400
     canonical_name = TOOL_ALIASES.get(name, name)
     approved = False
-    if canonical_name in APPROVAL_REQUIRED_TOOLS:
+    if canonical_name in approval_required_tools():
         approved = consume_tool_approval(approval_id, name, arguments)
         if not approved:
             log_event("tool.denied", f"ปฏิเสธ {name} เพราะไม่มีการอนุมัติที่ถูกต้อง", tool=name)
@@ -3097,7 +3183,7 @@ def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
     previous_provider = normalize_provider(current.get("provider"))
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled"}
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled", "machine_access"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -3121,6 +3207,7 @@ def settings_put():
     current["discord_enabled"] = bool(current.get("discord_enabled"))
     current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
     current["terminal_enabled"] = bool(current.get("terminal_enabled", True))
+    current["machine_access"] = bool(current.get("machine_access", True))
     raw_skills = current.get("skills")
     available_skill_names = {item["name"] for item in list_skills()}
     current["skills"] = [
@@ -3279,11 +3366,13 @@ def chat():
                 tool_requests = []
             if not tool_requests:
                 break
+            required_tools = approval_required_tools(settings)
             approval_request = next(
-                (item for item in tool_requests if item["name"] not in {"list_files", "read_file"}),
+                (item for item in tool_requests if TOOL_ALIASES.get(item["name"], item["name"]) in required_tools),
                 None,
             )
-            if approval_request and command_mode not in {"auto", "fast"}:
+            # Machine access always asks, whatever the command mode says.
+            if approval_request and (machine_access_enabled(settings) or command_mode not in {"auto", "fast"}):
                 return jsonify({
                     "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
                     "provider": provider,

@@ -81,10 +81,15 @@ Conversations are stored by date and time in `history/YYYY-MM-DD/HH-MM-SS_<conve
 
 ## AI Tools
 
-- AI agents can read project files immediately.
-- Writing files and running commands require approval in the chat (valid for 15 minutes and usable once).
-- Paths are restricted to the project directory, excluding `.env`, `.app-settings.json`, `history/`, `.venv/`, and `.git/`.
-- Allowed commands are limited to `pwd`, `ls`, `git status|diff|log`, and `python -m py_compile app.py`.
+- Agents can reach the whole machine. Paths may be absolute (`/etc/hostname`), start with `~`, or be relative to the project folder.
+- **Every** tool call asks for approval in the chat — including `list_files` and `read_file`. Each approval is single-use, bound to the exact tool name and arguments, and expires after 15 minutes.
+- `run_command` runs through a real shell as the user running the app: pipes, redirections, and `sudo` work when that user may run them without a password prompt. Commands time out after 60 seconds and output is capped at 100 KB.
+- Known API keys, tokens, and PEM private keys are redacted from tool output.
+- Turn **Settings → Machine access** off to restore project-only paths and the `pwd` / `ls` / `git status|diff|log` allowlist.
+
+> ⚠️ An approved command runs as-is with the power of the app user — and with root power when the app runs as root or the user has passwordless `sudo`. Read every command before approving it.
+
+> ⚠️ Agents can now read any file on the machine. Approved reads of stored credentials are redacted in the chat, but treat the conversation history as sensitive.
 
 ### Web chat slash commands
 

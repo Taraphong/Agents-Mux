@@ -721,6 +721,22 @@
                     </p>
                   </div>
                   <div class="card">
+                    <h2 data-i18n="settings.machineTitle">
+                      สิทธิ์เข้าถึงเครื่อง
+                    </h2>
+                    <p class="hint" data-i18n="settings.machineHint">
+                      ให้ agent เข้าถึงทุก path ในเครื่องและรันคำสั่งผ่าน shell
+                      จริง (รวม sudo ถ้าผู้ใช้ที่รันแอปมีสิทธิ์)
+                      ทุกการเรียกเครื่องมือจะขออนุมัติในแชตก่อนทุกครั้ง
+                    </p>
+                    <label class="toggle"
+                      ><input id="machine_access" type="checkbox" /><span
+                        data-i18n="settings.machineEnable"
+                        >ให้ agent เข้าถึงทั้งเครื่อง (ขออนุมัติทุกครั้ง)</span
+                      ></label
+                    >
+                  </div>
+                  <div class="card">
                     <h2 data-i18n="settings.discordTitle">Discord bot</h2>
                     <p class="hint" data-i18n="settings.discordHint">
                       ให้ bot รับข้อความจาก Discord แล้วตอบด้วย provider/model
