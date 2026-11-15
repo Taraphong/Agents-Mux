@@ -2121,8 +2121,17 @@ async function sendChatMessage(content, requestedSkills = null) {
   // save first, reusing the recorded message_id, so this submission does not add
   // a duplicate of it.
   if (failedSend && failedSend.sessionToken === sessionToken) {
+    // Hold the composer while the retry save is in flight so a second submit
+    // cannot start from the same unsaved message.
+    chatBusy = true;
+    $("send").disabled = true;
     const retried = await saveConversation(sessionToken);
-    if (sessionToken !== chatSessionToken) return;
+    if (sessionToken !== chatSessionToken) {
+      chatBusy = false;
+      updateSendState();
+      return;
+    }
+    chatBusy = false;
     if (retried?.id) {
       // Clear the flag only once the message is really persisted.
       failedSend = null;
@@ -3361,6 +3370,7 @@ async function deleteHistory(id) {
   await loadHistoryList();
 }
 let historyModalAction = null;
+let historyModalTrigger = null;
 let historyModalId = null;
 function refreshHistoryModalText() {
   $("history-modal-title").textContent =
@@ -3380,6 +3390,8 @@ function refreshHistoryModalText() {
 function openHistoryModal(action, id, title = "") {
   historyModalAction = action;
   historyModalId = id;
+  // Remember what opened the dialog so focus can go back there on close.
+  historyModalTrigger = document.activeElement;
   $("history-modal").classList.add("open");
   $("history-modal-input").style.display =
     action === "rename" ? "block" : "none";
@@ -3387,11 +3399,31 @@ function openHistoryModal(action, id, title = "") {
     action === "error" ? "none" : "block";
   $("history-modal-input").value = title;
   refreshHistoryModalText();
+  // Move focus into the dialog: the name field for rename, otherwise the
+  // action the user is about to confirm.
+  if (action === "rename") {
+    $("history-modal-input").focus();
+  } else {
+    const confirmButton = $("history-modal-confirm");
+    (confirmButton.style.display === "none"
+      ? $("history-modal-cancel")
+      : confirmButton
+    ).focus();
+  }
 }
 function closeHistoryModal() {
   $("history-modal").classList.remove("open");
   historyModalAction = null;
   historyModalId = null;
+  const trigger = historyModalTrigger;
+  historyModalTrigger = null;
+  if (
+    trigger &&
+    typeof trigger.focus === "function" &&
+    document.contains(trigger)
+  ) {
+    trigger.focus();
+  }
 }
 $("history-modal-cancel").addEventListener("click", closeHistoryModal);
 $("history-modal").addEventListener("click", (event) => {
