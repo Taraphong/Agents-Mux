@@ -30,7 +30,11 @@ APP_FILE="$APP_DIR/app.py"
 # Keep the default log inside logs/, which is ignored by Git and excluded
 # from the rsync deploy, so diagnostic output never ends up in the repo.
 LOG_FILE="${AI_WEB_LOG:-$APP_DIR/logs/ai-web.log}"
-PORT="${PORT:-5000}"
+# Resolve PORT: exported env var first, then .env, then default 5000
+if [ -z "${PORT:-}" ]; then
+  PORT="$(dotenv_value PORT)"
+fi
+: "${PORT:=5000}"
 
 # Use a [p] character class so pgrep never matches this script's own command
 # line (otherwise --restart could kill the shell that is running it).
