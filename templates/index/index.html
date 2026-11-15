@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Control Center</title>
+    <link rel="stylesheet" href="/templates/index/index.css" />
+  </head>
+  <body>
+    <div class="app">
+      <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+      <aside>
+        <div class="brand">
+          <div class="brand-mark">✦</div>
+          <div class="brand-copy">
+            <strong>AI Control Center</strong
+            ><small data-i18n="header.tagline">Operational Terminal</small>
+          </div>
+        </div>
+        <button class="new-chat" id="new-chat" data-i18n="sidebar.newChat">
+          ＋ แชตใหม่
+        </button>
+        <nav>
+          <button class="active" data-view="chat" data-i18n="nav.chat">
+            ▰ แชต</button
+          ><button data-view="terminal" data-i18n="nav.terminal">
+            &gt;_ Terminal</button
+          ><button data-view="settings" data-i18n="nav.settings">
+            ⚙ Settings</button
+          ><button data-view="schedule" data-i18n="nav.schedule">
+            ◷ งานตามเวลา</button
+          ><button data-view="logs" data-i18n="nav.logs">
+            ▤ Log ระบบ</button
+          ><button data-view="about" data-i18n="nav.about">ⓘ เกี่ยวกับ</button>
+        </nav>
+        <div class="history-title" data-i18n="sidebar.history">
+          ประวัติการพูดคุย
+        </div>
+        <div id="history-list"></div>
+        <div class="modal-backdrop" id="history-modal">
+          <div
+            class="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="history-modal-title"
+          >
+            <h3 id="history-modal-title" data-i18n="history.renameTitle">
+              เปลี่ยนชื่อประวัติ
+            </h3>
+            <p id="history-modal-text"></p>
+            <input
+              id="history-modal-input"
+              placeholder="ชื่อประวัติใหม่"
+              data-i18n-placeholder="history.renamePlaceholder"
+            />
+            <div class="modal-actions">
+              <button
+                class="modal-cancel"
+                id="history-modal-cancel"
+                type="button"
+                data-i18n="common.cancel"
+              >
+                ยกเลิก</button
+              ><button
+                id="history-modal-confirm"
+                type="button"
+                data-i18n="common.save"
+              >
+                บันทึก
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <div class="layout">
+        <header>
+          <button
+            class="mobile-menu-toggle"
+            id="mobile-menu-toggle"
+            type="button"
+            aria-label="เปิดเมนู"
+            data-i18n-aria-label="header.openMenu"
+            aria-expanded="false"
+          >
+            ☰
+          </button>
+          <h1 id="page-title" data-i18n="chat.title">แชตกับ AI</h1>
+          <div
+            class="header-tools"
+            aria-label="เครื่องมือแชต"
+            data-i18n-aria-label="header.toolsAria"
+          >
+            <span class="header-model"
+              ><i></i
+              ><span id="header-model-name" data-i18n="status.checkingModel"
+                >กำลังตรวจสอบ...</span
+              ></span
+            >
+            <button
+              type="button"
+              id="language-toggle"
+              class="header-icon theme-toggle"
+              title="สลับภาษา"
+              aria-label="สลับภาษา"
+              data-i18n-title="language.title"
+              data-i18n-aria-label="language.title"
+            >
+              <span id="language-display" class="language-display">TH</span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                style="display: none"
+              >
+                <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="header-icon theme-toggle"
+              id="theme-toggle"
+              title="สลับธีม"
+              aria-label="สลับธีม"
+              data-i18n-title="header.themeTitle"
+              data-i18n-aria-label="header.themeTitle"
+            >
+              ☼
+            </button>
+          </div>
+        </header>
+        <div
+          id="notice"
+          class="notice"
+          role="status"
+          aria-live="polite"
+        ></div>
+        <div class="content">
+          <section id="chat-view" class="view active">
+            <div class="messages">
+              <div id="messages">
+                <div class="session-divider">
+                  <span>2026-11-03 · SESSION READY #T-098</span>
+                </div>
+              </div>
+              <form class="chat-form" id="chat-form">
+                <div
+                  id="slash-menu"
+                  class="slash-menu"
+                  role="listbox"
+                  aria-label="คำสั่ง"
+                  data-i18n-aria-label="slash.menuAria"
+                  hidden
+                ></div>
+                <textarea
+                  id="input"
+                  placeholder="ส่งข้อความถึง AI..."
+                  data-i18n-placeholder="chat.placeholder"
+                ></textarea>
+                <div class="chat-tools">
+                  <div class="chat-tools-left">
+                    <button
+                      class="attach-button"
+                      id="attach-button"
+                      type="button"
+                      aria-label="แนบไฟล์"
+                      data-i18n-aria-label="chat.attach"
+                      title="แนบไฟล์"
+                      data-i18n-title="chat.attach"
+                      ><span aria-hidden="true">+</span></button
+                    >
+                    <input
+                      id="file-input"
+                      type="file"
+                      hidden
+                      accept=".txt,.md,.csv,.json,.py,.js,.ts,.tsx,.jsx,.html,.css,.xml,.yaml,.yml,.sql,.sh,.log"
+                    />
+                    <select
+                      id="chat-command-mode"
+                      class="composer-select"
+                      title="โหมดการรันคำสั่ง"
+                      data-i18n-title="chat.commandModeTitle"
+                    >
+                      <option value="ask" data-i18n="chat.commandAsk">
+                        ถามก่อน
+                      </option>
+                      <option value="auto" data-i18n="chat.commandAuto">
+                        อัตโนมัติ
+                      </option>
+                      <option value="fast" data-i18n="chat.commandFast">
+                        Fast+
+                      </option>
+                    </select>
+                    <span
+                      id="attachment-chip"
+                      class="attachment-chip"
+                      hidden
+                    ></span>
+                    <span
+                      id="skill-chip"
+                      class="skill-chip"
+                      title="ยกเลิก Skill ที่รอใช้"
+                      data-i18n-title="slash.clearSkill"
+                      hidden
+                    ></span>
+                  </div>
+                  <div class="chat-tools-right">
+                    <span class="composer-pill">
+                      <select
+                        id="chat-model-select"
+                        class="composer-select"
+                        title="เลือกโมเดล"
+                        data-i18n-title="chat.modelTitle"
+                      >
+                        <option value="" data-i18n="chat.modelLoading">
+                          กำลังโหลดโมเดล...
+                        </option>
+                      </select>
+                      <span class="composer-divider" aria-hidden="true"></span>
+                      <select
+                        id="chat-thinking-level"
+                        class="composer-select"
+                        title="ระดับการคิด"
+                        data-i18n-title="chat.thinkingTitle"
+                      >
+                        <option value="off" data-i18n="chat.thinkingOff">
+                          ปิด
+                        </option>
+                        <option value="low" data-i18n="chat.thinkingLow">
+                          ต่ำ
+                        </option>
+                        <option value="medium" data-i18n="chat.thinkingMedium">
+                          กลาง
+                        </option>
+                        <option value="high" data-i18n="chat.thinkingHigh">
+                          สูง
+                        </option>
+                      </select>
+                    </span>
+                    <button
+                      class="send-round"
+                      id="send"
+                      type="submit"
+                      title="ส่ง"
+                      data-i18n-title="chat.send"
+                    >
+                      ↑
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </section>
+          <section id="settings-view" class="view">
+            <div class="card">
+              <div class="card-head">
+                <h2 data-i18n="settings.providerTitle">ผู้ให้บริการและโมเดล</h2>
+                <button
+                  class="secondary"
+                  id="test"
+                  type="button"
+                  data-i18n="settings.test"
+                >
+                  ทดสอบการเชื่อมต่อ
+                </button>
+              </div>
+              <p class="hint" data-i18n="settings.providerHint">
+                เลือกเส้นทางที่ใช้ตอบแชต และกำหนด endpoint ได้เองสำหรับ
+                OpenAI-compatible API
+              </p>
+              <div class="grid">
+                <label
+                  ><span data-i18n="settings.providerLabel">Provider</span
+                  ><select id="provider">
+                    <option value="openai">OpenAI / OpenAI-compatible</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="anthropic">Anthropic Claude</option>
+                    <option value="hf">Hugging Face</option>
+                    <option value="or">OpenRouter</option>
+                    <option value="groq">Groq</option>
+                  </select></label
+                >
+                <label
+                  ><span
+                    ><span class="label-inline" data-i18n="settings.modelLabel">Model</span>
+                    <small
+                      id="model_status"
+                      class="model-status"
+                      data-i18n="settings.modelNotFetched"
+                      >ยังไม่ได้ดึงจาก API</small
+                    ></span
+                  ><select id="model_select"></select
+                  ><input
+                    id="model_custom"
+                    placeholder="พิมพ์ชื่อโมเดลเอง"
+                    data-i18n-placeholder="settings.modelCustomPlaceholder"
+                    style="display: none; margin-top: 8px"
+                /></label>
+                <label class="full fallback-setting"
+                  ><span data-i18n="settings.fallbackTitle"
+                    >Fallback model เมื่อโมเดลหลักใช้ไม่ได้</span
+                  >
+                  <div class="fallback-row">
+                    <label class="toggle"
+                      ><input id="fallback_enabled" type="checkbox" /><span
+                        data-i18n="settings.fallbackEnable"
+                        >เปิดใช้งาน</span
+                      ></label
+                    ><select id="fallback_provider_select" aria-label="Fallback provider" data-i18n-aria-label="settings.fallbackProviderAria">
+                      <option value="openai">OpenAI / OpenAI-compatible</option>
+                      <option value="gemini">Google Gemini</option>
+                      <option value="anthropic">Anthropic Claude</option>
+                      <option value="hf">Hugging Face</option>
+                      <option value="or">OpenRouter</option>
+                      <option value="groq">Groq</option>
+                    </select>
+                    <select id="fallback_model_select">
+                      <option value="" data-i18n="settings.fallbackNone">
+                        ไม่ใช้ fallback
+                      </option>
+                    </select>
+                  </div>
+                  <small class="hint" data-i18n="settings.fallbackHint"
+                    >จะลองใช้เมื่อ API
+                    ตอบกลับว่าโมเดลไม่พร้อมใช้งานหรือถูกจำกัดอัตรา</small
+                  >
+                </label>
+                <label class="full"
+                  ><span data-i18n="settings.baseUrlLabel"
+                    >Base URL</span
+                  ><input id="base_url" placeholder="https://api.openai.com/v1"
+                /></label>
+                <label class="full"
+                  ><span data-i18n="settings.apiKeyLabel">API key</span
+                  ><input
+                    id="api_key"
+                    type="password"
+                    placeholder="เว้นว่างเพื่อใช้คีย์เดิม"
+                    data-i18n-placeholder="settings.apiKeyPlaceholder"
+                  /><small class="hint" id="api_key_hint"></small
+                ></label>
+              </div>
+            </div>
+            <div class="card">
+              <h2 data-i18n="settings.agentProfileTitle">โปรไฟล์ Agent</h2>
+              <p class="hint" data-i18n="settings.agentProfileHint">กำหนดตัวตน บทบาท ภาษา และรูปแบบการตอบของ Agent</p>
+              <div class="grid">
+                <label><span data-i18n="settings.agentName">ชื่อ Agent</span><input id="agent_name" maxlength="80" /></label>
+                <label><span data-i18n="settings.agentRole">บทบาท</span><input id="agent_role" maxlength="500" /></label>
+                <label><span data-i18n="settings.responseLanguage">ภาษาคำตอบ</span><select id="response_language"><option value="auto" data-i18n="settings.languageAuto">ตามภาษาผู้ใช้</option><option value="th" data-i18n="settings.languageTh">ไทย</option><option value="en" data-i18n="settings.languageEn">English</option></select></label>
+                <label class="full"><span data-i18n="settings.responseStyle">โทนและสไตล์</span><textarea id="response_style" rows="2" maxlength="500"></textarea></label>
+                <label class="toggle"><input id="use_markdown" type="checkbox" /><span data-i18n="settings.useMarkdown">ใช้ Markdown</span></label>
+                <label class="toggle"><input id="ask_clarifying_questions" type="checkbox" /><span data-i18n="settings.askQuestions">ถามกลับเมื่อข้อมูลไม่พอ</span></label>
+              </div>
+            </div>
+            <div class="card">
+              <h2 data-i18n="settings.discordTitle">Discord bot</h2>
+              <p class="hint" data-i18n="settings.discordHint">
+                ให้ bot รับข้อความจาก Discord แล้วตอบด้วย provider/model หลักของระบบ
+              </p>
+              <div class="grid">
+                <label class="full toggle"
+                  ><input id="discord_enabled" type="checkbox" /><span data-i18n="settings.discordEnable">เปิดใช้งาน Discord bot</span></label
+                >
+                <label class="full"
+                  ><span data-i18n="settings.discordToken">Bot token</span
+                  ><input id="discord_token" type="password" placeholder="เว้นว่างเพื่อใช้ token เดิม" data-i18n-placeholder="settings.discordTokenPlaceholder" /><small class="hint" id="discord_token_hint"></small
+                ></label>
+                <label
+                  ><span data-i18n="settings.discordPrefix">Prefix</span
+                  ><input id="discord_prefix" value="!ai" maxlength="30" /></label
+                >
+              </div>
+            </div>
+            <div class="card">
+              <h2 data-i18n="settings.terminalTitle">Terminal</h2>
+              <p class="hint" data-i18n="settings.terminalHint">
+                เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง
+                คำสั่งถูกจำกัดให้อยู่ในโฟลเดอร์โปรเจกต์
+              </p>
+              <label class="toggle"
+                ><input id="terminal_enabled" type="checkbox" /><span
+                  data-i18n="settings.terminalEnable"
+                  >แสดงแท็บ Terminal ในแถบด้านข้าง</span
+                ></label
+              >
+            </div>
+            <div class="card">
+              <h2 data-i18n="auth.title">ความปลอดภัยและการจับคู่อุปกรณ์</h2>
+              <p class="hint" data-i18n="auth.hint">
+                เว็บนี้ต้องจับคู่อุปกรณ์ก่อนใช้งาน สร้าง Pairing Key จากฝั่ง
+                server แล้วนำคีย์ไปใส่ที่หน้า /pair ของ client
+                คีย์ใช้ได้ครั้งเดียวและมีอายุจำกัด
+              </p>
+              <div class="auth-key-row">
+                <button
+                  id="auth-generate-key"
+                  type="button"
+                  data-i18n="auth.generate"
+                >
+                  สร้าง Pairing Key
+                </button>
+                <button
+                  id="auth-logout"
+                  type="button"
+                  class="danger"
+                  data-i18n="auth.logout"
+                >
+                  ออกจากระบบอุปกรณ์นี้
+                </button>
+              </div>
+              <div id="auth-key-output" class="auth-key-output" hidden>
+                <span data-i18n="auth.keyGenerated"
+                  >Pairing Key ใหม่ (ใช้ได้ครั้งเดียว)</span
+                >
+                <code id="auth-key-value"></code>
+                <small id="auth-key-expiry" class="hint"></small>
+              </div>
+              <h3 class="auth-subtitle" data-i18n="auth.devices">
+                อุปกรณ์ที่เชื่อมต่อ
+              </h3>
+              <div id="auth-sessions"></div>
+            </div>
+            <div class="card">
+              <h2 data-i18n="settings.assistantTitle">พฤติกรรมของผู้ช่วย</h2>
+              <p class="hint" data-i18n="settings.assistantHint">
+                ตั้ง system prompt และพารามิเตอร์การสร้างคำตอบ
+              </p>
+              <div class="grid">
+                <label class="full"
+                  ><span data-i18n="settings.systemPromptLabel">System prompt</span
+                  ><textarea id="system_prompt" rows="5"></textarea>
+                </label>
+                <label class="full"
+                  ><span data-i18n="settings.memoryReview">ทบทวนความจำ</span
+                  ><textarea id="memory_review" rows="4" data-i18n-placeholder="settings.memoryReviewPlaceholder" placeholder="กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ"></textarea>
+                  <small class="hint" data-i18n="settings.memoryReviewHint">แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด</small>
+                </label>
+                <label class="full"
+                  ><span data-i18n="settings.skills">Skills ที่ใช้กับ Agent</span>
+                  <select id="skills" multiple size="4"></select>
+                  <small class="hint" data-i18n="settings.skillsHint">เลือกได้หลายสกิล ระบบจะส่งเนื้อหาไปเป็นแนวทางให้ Agent</small>
+                </label>
+                <label
+                  ><span data-i18n="settings.newSkillName">ชื่อ Skill ใหม่</span
+                  ><input id="new-skill-name" placeholder="เช่น code-review" data-i18n-placeholder="settings.newSkillNamePlaceholder" /></label>
+                <label
+                  ><span data-i18n="settings.newSkillContent">เนื้อหา Skill</span
+                  ><textarea id="new-skill-content" rows="3" placeholder="เขียนแนวทางการทำงานของ Skill" data-i18n-placeholder="settings.newSkillContentPlaceholder"></textarea></label>
+                <div class="actions full">
+                  <button id="create-skill" type="button" class="secondary" data-i18n="settings.createSkill">สร้าง Skill</button>
+                  <button id="update-skill" type="button" class="secondary" data-i18n="settings.updateSkill">บันทึกการแก้ไข</button>
+                  <button id="delete-skill" type="button" class="danger" data-i18n="settings.deleteSkill">ลบ Skill</button>
+                </div>
+                <label
+                  ><span><span data-i18n="settings.temperatureLabel">Temperature</span> <b id="temperature-value">0.7</b></span>
+                  <div class="range-row">
+                    <input
+                      id="temperature"
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                    /><span class="range-value" id="temp-label">0.7</span>
+                  </div><small class="hint" data-i18n="settings.temperatureHint">ค่าต่ำให้คำตอบสม่ำเสมอและคาดเดาง่าย ค่าสูงให้คำตอบหลากหลายขึ้น</small></label
+                >
+                <label
+                  ><span><span data-i18n="settings.topPLabel">Top P</span> <b id="top_p-value">1</b></span>
+                  <div class="range-row">
+                    <input
+                      id="top_p"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                    /><span class="range-value" id="top-label">1</span>
+                  </div><small class="hint" data-i18n="settings.topPHint">เลือกคำจากกลุ่มที่มีความน่าจะเป็นรวมกันตามค่านี้ ค่ายิ่งต่ำยิ่งจำกัดคำที่เลือก</small></label
+                >
+                <label
+                  ><span data-i18n="settings.maxTokensLabel">Max output tokens</span
+                  ><input id="max_tokens" type="number" min="1" max="100000"
+                /></label>
+                <label
+                  ><span data-i18n="settings.thinkingLevel">ระดับการคิด</span
+                  ><select id="thinking_level">
+                    <option value="off" data-i18n="settings.thinkingOff">
+                      ปิด
+                    </option>
+                    <option value="low" data-i18n="settings.thinkingLow">
+                      ต่ำ
+                    </option>
+                    <option value="medium" data-i18n="settings.thinkingMedium">
+                      กลาง
+                    </option>
+                    <option value="high" data-i18n="settings.thinkingHigh">
+                      สูง
+                    </option>
+                  </select></label
+                >
+                <label class="toggle"
+                  ><input id="stream" type="checkbox" /><span
+                    data-i18n="settings.stream"
+                    >เปิดการตอบแบบ streaming (เตรียมรองรับ)</span
+                  ></label
+                >
+              </div>
+              <div class="actions">
+                <button id="save" data-i18n="settings.save">
+                  บันทึกการตั้งค่า</button
+                ><button
+                  class="danger"
+                  id="reset"
+                  type="button"
+                  data-i18n="settings.reset"
+                >
+                  รีเซ็ต
+                </button>
+              </div>
+            </div>
+          </section>
+          <section id="schedule-view" class="view">
+            <div class="card">
+              <h2 data-i18n="schedule.title">งานตามเวลา (Cron jobs)</h2>
+              <p class="hint">
+                <span data-i18n="schedule.hint"
+                  >ตั้ง prompt ให้ AI ทำงานซ้ำตามเวลา ระบบจะทำงานเมื่อ server
+                  กำลังเปิดอยู่</span
+                >
+                · <span data-i18n="schedule.timezoneLabel">Timezone:</span>
+                <b id="schedule-timezone" data-i18n="schedule.loading"
+                  >กำลังโหลด...</b
+                >
+              </p>
+              <details class="cron-help">
+                <summary data-i18n="schedule.cronSummary">
+                  วิธีตั้งค่า Cron jobs
+                </summary>
+                <p>
+                  <span data-i18n="schedule.cronFieldsText"
+                    >รูปแบบมี 5 ช่อง:</span
+                  >
+                  <code data-i18n="schedule.cronFieldsCode"
+                    >นาที ชั่วโมง วันที่ เดือน วันในสัปดาห์</code
+                  >
+                </p>
+                <p>
+                  <code>*</code>
+                  <span data-i18n="schedule.cronEvery">= ทุกค่า</span> ·
+                  <code>*/5</code>
+                  <span data-i18n="schedule.cronStep">= ทุก 5 หน่วย</span> ·
+                  <code>1-5</code>
+                  <span data-i18n="schedule.cronRange">= ช่วง</span> ·
+                  <code>1,15</code>
+                  <span data-i18n="schedule.cronList">= หลายค่า</span>
+                </p>
+                <p>
+                  <span data-i18n="schedule.cronExamplesText">ตัวอย่าง:</span>
+                  <code>*/5 * * * *</code>
+                  <span data-i18n="schedule.cronEvery5">ทุก 5 นาที</span> ·
+                  <code>0 9 * * 1-5</code>
+                  <span data-i18n="schedule.cronWeekdays">จันทร์-ศุกร์ 09:00</span>
+                  · <code>0 0 * * *</code>
+                  <span data-i18n="schedule.cronMidnight">ทุกวันเที่ยงคืน</span>
+                </p>
+                <p class="hint" data-i18n="schedule.cronNote">
+                  งานจะใช้โมเดลตามที่เลือก และบันทึกผลลัพธ์เป็นประวัติการสนทนา
+                  งานที่มีการรันคำสั่งระบบจะไม่ทำงานอัตโนมัติ
+                </p>
+              </details>
+              <form id="schedule-form" class="schedule-form">
+                <input
+                  id="schedule-name"
+                  placeholder="ชื่องาน เช่น สรุปข่าวประจำวัน"
+                  data-i18n-placeholder="schedule.namePlaceholder"
+                  required
+                />
+                <select
+                  id="schedule-preset"
+                  title="ตัวอย่างเวลา"
+                  data-i18n-title="schedule.presetTitle"
+                >
+                  <option value="" data-i18n="schedule.presetPlaceholder">
+                    เลือกตัวอย่างเวลา หรือพิมพ์เองด้านล่าง
+                  </option>
+                  <option value="*/5 * * * *" data-i18n="schedule.every5">
+                    ทุก 5 นาที
+                  </option>
+                  <option value="0 * * * *" data-i18n="schedule.hourly">
+                    ทุกชั่วโมง
+                  </option>
+                  <option value="0 9 * * 1-5" data-i18n="schedule.weekdays9">
+                    จันทร์-ศุกร์ เวลา 09:00
+                  </option>
+                  <option value="0 0 * * *" data-i18n="schedule.dailyMidnight">
+                    ทุกวัน เวลา 00:00
+                  </option>
+                </select>
+                <input
+                  id="schedule-expression"
+                  placeholder="Cron เช่น 0 9 * * 1-5"
+                  data-i18n-placeholder="schedule.expressionPlaceholder"
+                  required
+                />
+                <select
+                  id="schedule-model"
+                  title="โมเดลสำหรับงาน"
+                  data-i18n-title="schedule.modelTitle"
+                >
+                  <option value="" data-i18n="schedule.useMainModel">
+                    ใช้โมเดลหลักจาก Settings
+                  </option>
+                </select>
+                <input
+                  id="schedule-discord-channel"
+                  inputmode="numeric"
+                  placeholder="Discord Channel ID (ไม่บังคับ)"
+                  data-i18n-placeholder="schedule.discordChannelPlaceholder"
+                  title="Discord Channel ID"
+                  data-i18n-title="schedule.discordChannelTitle"
+                />
+                <textarea
+                  id="schedule-prompt"
+                  rows="3"
+                  placeholder="Prompt ที่ต้องการให้ AI ทำงาน"
+                  data-i18n-placeholder="schedule.promptPlaceholder"
+                  required
+                ></textarea>
+                <label class="toggle"
+                  ><input id="schedule-enabled" type="checkbox" checked /><span
+                    data-i18n="schedule.enableNow"
+                    >เปิดใช้งานทันที</span
+                  ></label
+                >
+                <button type="submit" data-i18n="schedule.add">
+                  เพิ่มงานตามเวลา
+                </button>
+              </form>
+              <div id="schedule-list" class="schedule-list"></div>
+            </div>
+          </section>
+          <section id="logs-view" class="view">
+            <div class="card">
+              <div class="logs-toolbar">
+                <div>
+                  <h2 data-i18n="logs.title">Log ระบบ</h2>
+                  <p class="hint" data-i18n="logs.hint">
+                    ดูขั้นตอนการเรียก AI และเครื่องมือย้อนหลังล่าสุด โดยไม่แสดง
+                    API key หรือเนื้อหาไฟล์
+                  </p>
+                </div>
+                <div class="logs-actions">
+                  <button
+                    id="save-logs"
+                    type="button"
+                    data-i18n="logs.saveFile"
+                  >
+                    ดาวน์โหลด
+                  </button>
+                  <button
+                    id="delete-logs"
+                    class="danger"
+                    type="button"
+                    data-i18n="logs.delete"
+                  >
+                    ลบ Log
+                  </button>
+                  <button
+                    id="refresh-logs"
+                    type="button"
+                    data-i18n="logs.refresh"
+                  >
+                    รีเฟรช
+                  </button>
+                </div>
+              </div>
+              <div class="logs-filter" role="tablist" aria-label="Log type" data-i18n-aria-label="logs.filterAria">
+                <button id="logs-system-filter" class="active" type="button" data-logs-filter="system" data-i18n="logs.system">System logs</button>
+                <button id="logs-agent-filter" type="button" data-logs-filter="agent" data-i18n="logs.agent">Agent logs</button>
+              </div>
+              <div id="logs-list" class="logs-list">
+                <p class="hint" data-i18n="logs.loading">กำลังโหลด...</p>
+              </div>
+            </div>
+          </section>
+          <section id="terminal-view" class="view">
+            <div class="card terminal-card">
+              <div class="terminal-toolbar">
+                <div>
+                  <h2 data-i18n="terminal.title">Terminal</h2>
+                  <p class="hint" data-i18n="terminal.hint">
+                    พิมพ์คำสั่งเพื่อทำงานบนเครื่อง Server โดยตรง
+                  </p>
+                </div>
+                <div class="terminal-actions">
+                  <button
+                    id="terminal-clear"
+                    type="button"
+                    class="secondary"
+                    data-i18n="terminal.clear"
+                  >
+                    ล้างจอ
+                  </button>
+                </div>
+              </div>
+              <div class="terminal-warning">
+                <span data-i18n="terminal.warning"
+                  >⚠ คำสั่งจะทำงานบน Server ด้วยสิทธิ์ของผู้ใช้ที่รันแอป
+                  และถูกจำกัดอยู่ภายในโฟลเดอร์โปรเจกต์</span
+                >
+                <strong id="terminal-scope"></strong>
+              </div>
+              <div class="terminal-window">
+                <div
+                  id="terminal-output"
+                  class="terminal-output"
+                  role="log"
+                  aria-live="polite"
+                ></div>
+                <form id="terminal-form" class="terminal-input-row" autocomplete="off">
+                  <span id="terminal-prompt" class="terminal-prompt">$</span>
+                  <input
+                    id="terminal-input"
+                    type="text"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    autocorrect="off"
+                    placeholder="พิมพ์คำสั่ง..."
+                    data-i18n-placeholder="terminal.placeholder"
+                  />
+                  <button
+                    id="terminal-run"
+                    type="submit"
+                    data-i18n="terminal.run"
+                  >
+                    รัน
+                  </button>
+                </form>
+              </div>
+              <div class="terminal-status">
+                <span
+                  ><span id="terminal-dot" class="terminal-dot">●</span>
+                  <span
+                    id="terminal-status-text"
+                    data-i18n="terminal.connecting"
+                    >กำลังเชื่อมต่อ...</span
+                  ></span
+                >
+                <span id="terminal-cwd"></span>
+              </div>
+            </div>
+          </section>
+          <section id="about-view" class="view">
+            <div class="card">
+              <h2 data-i18n="about.title">เกี่ยวกับระบบ</h2>
+              <p class="hint" data-i18n="about.text1">
+                เว็บแชต AI ที่รันบน Termux พร้อมหน้า settings สำหรับควบคุม
+                provider, model, endpoint, prompt และพารามิเตอร์ต่าง ๆ
+              </p>
+              <p class="hint" data-i18n="about.text2">
+                API key จะเก็บฝั่งเซิร์ฟเวอร์ในไฟล์ตั้งค่าที่ไม่ถูก commit เข้า
+                Git
+              </p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+    <script src="/templates/index/index.js"></script>
+  </body>
+</html>

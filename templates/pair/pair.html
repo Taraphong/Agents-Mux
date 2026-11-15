@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pair this device · AI Control Center</title>
+    <script src="/templates/pair/pair-theme.js"></script>
+    <link rel="stylesheet" href="/templates/pair/pair.css" />
+  </head>
+  <body
+    data-pairing-ttl-minutes="{{ ttl_minutes }}"
+    data-session-days="{{ session_days }}"
+  >
+    <main class="card">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark">✦</div>
+          <div>AI Control Center</div>
+        </div>
+        <div class="controls">
+          <select
+            id="language-select"
+            data-i18n-title="control.language"
+            data-i18n-aria-label="control.language"
+            title="Language"
+          >
+            <option value="en">English</option>
+            <option value="th">ไทย</option>
+          </select>
+          <button
+            id="theme-toggle"
+            class="icon-button"
+            type="button"
+            data-i18n-title="control.theme"
+            data-i18n-aria-label="control.theme"
+            title="Toggle theme"
+            aria-label="Toggle theme"
+          >
+            ☼
+          </button>
+        </div>
+      </div>
+      <h1 data-i18n="pair.title">Pair this device</h1>
+      <p data-i18n="pair.intro">
+        This web app requires a paired device. Generate a Pairing Key on the
+        server, then enter it here. Each key is single-use.
+      </p>
+      <form id="pair-form" method="post" autocomplete="off">
+        <label>
+          <span data-i18n="pair.keyLabel">Pairing Key</span>
+          <input
+            id="pairing-key"
+            class="key"
+            name="key"
+            placeholder="XXXX-XXXX-XXXX"
+            inputmode="text"
+            autocapitalize="characters"
+            spellcheck="false"
+            required
+          />
+        </label>
+        <label>
+          <span data-i18n="pair.labelLabel">Device name (optional)</span>
+          <input
+            id="pairing-label"
+            name="label"
+            maxlength="60"
+            data-i18n-placeholder="pair.labelPlaceholder"
+            placeholder="e.g. Phone, Laptop"
+          />
+        </label>
+        <button id="pair-submit" type="submit" data-i18n="pair.submit">
+          Pair device
+        </button>
+        <div class="error" id="pair-error" role="status" aria-live="polite"></div>
+      </form>
+      <div class="foot">
+        <span data-i18n="pair.footCreate"
+          >Create a key on the server that runs the app:</span
+        ><br />
+        <code>python app.py --pairing-key</code> ·
+        <code>./start_web.sh --pair</code><br />
+        <span id="pair-foot-note" data-i18n="pair.footNote"
+          >Once paired, this device stays signed in or until you revoke it in
+          Settings.</span
+        >
+      </div>
+    </main>
+    <script src="/templates/pair/pair.js"></script>
+  </body>
+</html>
