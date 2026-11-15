@@ -2,6 +2,8 @@
 
 แชต AI แบบ self-hosted รันบน Termux เปิดผ่านเบราว์เซอร์ในเครือข่ายเดียวกัน รองรับ OpenAI, Gemini และ Anthropic
 
+นโยบายความปลอดภัย: **[SECURITY.md](SECURITY.md)**
+
 ## เริ่มใช้งาน
 
 คู่มือติดตั้งแบบละเอียดสำหรับ Termux / Linux / macOS: **[INSTALL.md](INSTALL.md)**

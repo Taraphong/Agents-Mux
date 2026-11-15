@@ -4,6 +4,8 @@ Self-hosted AI chat running on Termux and accessible through a browser on the sa
 
 ภาษาไทย: **[README.th.md](README.th.md)**
 
+Security policy: **[SECURITY.md](SECURITY.md)**
+
 ## Getting Started
 
 Detailed install guide for Termux / Linux / macOS: **[INSTALL.md](INSTALL.md)**
