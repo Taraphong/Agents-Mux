@@ -2830,3 +2830,25 @@ body.light-theme .settings-rail button.active {
     flex: 1 1 auto;
   }
 }
+
+/* Narrow settings pane (tablet): one field per row keeps long provider and
+   model names readable instead of clipping them inside a half-width select,
+   and the fallback controls wrap instead of squeezing two selects. */
+@media (max-width: 900px) {
+  .settings-panels .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings-panels .full {
+    grid-column: auto;
+  }
+  .fallback-row {
+    flex-wrap: wrap;
+  }
+  .fallback-row .toggle {
+    flex: 1 1 100%;
+  }
+  .fallback-row select {
+    flex: 1 1 240px;
+    min-width: 0;
+  }
+}
