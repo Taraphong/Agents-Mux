@@ -2127,8 +2127,8 @@ async function sendChatMessage(content, requestedSkills = null) {
     $("send").disabled = true;
     const retried = await saveConversation(sessionToken);
     if (sessionToken !== chatSessionToken) {
-      chatBusy = false;
-      updateSendState();
+      // invalidateChatSession() already reset the busy state for the new
+      // session; leave it (and the Send button) to the newer send.
       return;
     }
     chatBusy = false;
