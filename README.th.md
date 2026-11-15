@@ -2,7 +2,7 @@
 
 แชต AI แบบ self-hosted รันบน Termux เปิดผ่านเบราว์เซอร์ในเครือข่ายเดียวกัน รองรับ OpenAI, Gemini และ Anthropic
 
-นโยบายความปลอดภัย: **[SECURITY.md](SECURITY.md)**
+นโยบายความปลอดภัย: **[SECURITY.th.md](SECURITY.th.md)**
 
 ## เริ่มใช้งาน
 
