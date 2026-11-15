@@ -3372,7 +3372,11 @@ def chat():
                 None,
             )
             # Machine access always asks, whatever the command mode says.
-            if approval_request and (machine_access_enabled(settings) or command_mode not in {"auto", "fast"}):
+            if approval_request and (
+                machine_access_enabled(settings)
+                or machine_access_enabled(load_settings())
+                or command_mode not in {"auto", "fast"}
+            ):
                 return jsonify({
                     "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
                     "provider": provider,
