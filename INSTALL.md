@@ -251,8 +251,11 @@ change.
 If the GitHub repository is private, give the updater a read-only token:
 
 ```bash
-AI_WEB_UPDATE_TOKEN=ghp_xxxxxxxx ./update.sh
-# or export GITHUB_TOKEN=ghp_xxxxxxxx
+# Ask for the token without echoing it, then export it for this shell only.
+read -rsp "GitHub token: " AI_WEB_UPDATE_TOKEN; echo
+export AI_WEB_UPDATE_TOKEN
+./update.sh
+# or export GITHUB_TOKEN instead (same read prompt)
 ```
 
 The token is used only for the download and is never written to disk.

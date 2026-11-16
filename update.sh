@@ -17,7 +17,8 @@
 # Environment overrides:
 #   AI_WEB_UPDATE_REPO     Default: Taraphong/Agents-mux
 #   AI_WEB_UPDATE_BRANCH   Default: main
-#   AI_WEB_UPDATE_TOKEN    GitHub token for a private repository
+#   AI_WEB_UPDATE_TOKEN    GitHub token for a private repository (requires
+#                          curl; it is only sent to GitHub over HTTPS)
 #                          (or set GITHUB_TOKEN)
 #   AI_WEB_UPDATE_URL      Full tarball URL (mirror or offline copy)
 
@@ -99,12 +100,26 @@ esac
 
 UPDATE_TOKEN="${AI_WEB_UPDATE_TOKEN:-${GITHUB_TOKEN:-}}"
 
+# The token is only ever sent to GitHub's own HTTPS endpoints; a custom
+# AI_WEB_UPDATE_URL mirror must never inherit the GitHub credential.
+is_github_update_url() {
+  case "$1" in
+    https://api.github.com/*|https://github.com/*|https://codeload.github.com/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 fetch_to() {
-  local url="$1" output="$2"
+  local url="$1" output="$2" token=""
+  if [ -n "$UPDATE_TOKEN" ] && is_github_update_url "$url"; then
+    token="$UPDATE_TOKEN"
+  fi
   if command -v curl >/dev/null 2>&1; then
-    if [ -n "$UPDATE_TOKEN" ]; then
-      curl -fsSL --retry 2 --max-time 180 \
-        -H "Authorization: Bearer $UPDATE_TOKEN" \
+    if [ -n "$token" ]; then
+      # --proto/--proto-redir keep every hop on HTTPS, so the credential is
+      # never sent over plain HTTP after a redirect.
+      curl -fsSL --proto '=https' --proto-redir '=https' --retry 2 --max-time 180 \
+        -H "Authorization: Bearer $token" \
         -H "Accept: application/vnd.github+json" \
         "$url" -o "$output"
     else
@@ -113,11 +128,13 @@ fetch_to() {
     return $?
   fi
   if command -v wget >/dev/null 2>&1; then
-    if [ -n "$UPDATE_TOKEN" ]; then
-      wget -q -T 180 --header="Authorization: Bearer $UPDATE_TOKEN" -O "$output" "$url"
-    else
-      wget -q -T 180 -O "$output" "$url"
+    if [ -n "$token" ]; then
+      # wget re-sends headers after a redirect and cannot restrict the scheme
+      # of later hops, so authenticated downloads need curl.
+      say "❌ ดาวน์โหลด repo ส่วนตัวต้องใช้ curl — ติดตั้งก่อน: pkg install curl" >&2
+      return 1
     fi
+    wget -q -T 180 -O "$output" "$url"
     return $?
   fi
   say "❌ ไม่พบ curl หรือ wget — ติดตั้งก่อน: pkg install curl" >&2
@@ -203,6 +220,12 @@ DEPS_CHANGED=0
 if [ -n "$OLD_REQUIREMENTS" ] && [ -f "$APP_DIR/requirements.txt" ]; then
   cmp -s "$OLD_REQUIREMENTS" "$APP_DIR/requirements.txt" || DEPS_CHANGED=1
 fi
+# requirements.txt is already replaced when pip runs, so a failed install
+# cannot be detected by comparing files next time; the marker forces a retry.
+DEPS_MARKER="$APP_DIR/.deps-pending"
+if [ -f "$DEPS_MARKER" ]; then
+  DEPS_CHANGED=1
+fi
 if [ "${AI_WEB_UPDATE_FORCE_DEPS:-0}" = "1" ]; then
   DEPS_CHANGED=1
 fi
@@ -215,7 +238,11 @@ if [ "$DEPS_CHANGED" -eq 1 ]; then
   fi
   if [ -n "$PYTHON" ]; then
     say "🐍 requirements.txt เปลี่ยน — กำลังติดตั้ง dependencies"
-    (cd "$APP_DIR" && "$PYTHON" -m pip install -r requirements.txt) || die "ติดตั้ง dependencies ไม่สำเร็จ"
+    # Record the pending install before running pip and clear it only on
+    # success, so the next update retries a failed installation.
+    : > "$DEPS_MARKER" 2>/dev/null || true
+    (cd "$APP_DIR" && "$PYTHON" -m pip install -r requirements.txt) || die "ติดตั้ง dependencies ไม่สำเร็จ (จะลองใหม่ในการอัพเดทครั้งถัดไป)"
+    rm -f "$DEPS_MARKER"
   else
     say "⚠️  ไม่พบ python — ข้ามการติดตั้ง dependencies (รัน install.sh เอง)"
   fi

@@ -295,6 +295,7 @@ DISCORD_BOT: Any = None
 DISCORD_THREAD: threading.Thread | None = None
 DISCORD_LOOP: Any = None
 DISCORD_TOKEN_FINGERPRINT = ""
+SETTINGS_LOCK = threading.Lock()
 
 
 def normalize_provider(value: Any) -> str:
@@ -303,11 +304,12 @@ def normalize_provider(value: Any) -> str:
     return provider if provider in PROVIDERS else "openai"
 
 
-def normalize_discord_ids(value: Any, limit: int = 100) -> list[str]:
-    """Normalize a Discord allowlist into unique numeric IDs.
+def parse_discord_ids(value: Any, limit: int = 100) -> tuple[list[str], list[str]]:
+    """Split a Discord allowlist input into unique numeric IDs and bad entries.
 
     Accepts a comma/space separated string or a list, because the settings API
-    accepts both the web form input and a JSON array.
+    accepts both the web form input and a JSON array. Invalid entries are
+    reported instead of dropped so a typo cannot silently empty the allowlist.
     """
     if isinstance(value, str):
         raw_items: list[Any] = re.split(r"[\s,;]+", value)
@@ -316,14 +318,22 @@ def normalize_discord_ids(value: Any, limit: int = 100) -> list[str]:
     else:
         raw_items = []
     ids: list[str] = []
+    invalid: list[str] = []
     for item in raw_items:
         item = str(item).strip()
-        if not item or not item.isdigit() or item in ids:
+        if not item:
             continue
-        ids.append(item)
-        if len(ids) >= limit:
-            break
-    return ids
+        if not item.isdigit():
+            invalid.append(item[:40])
+            continue
+        if item not in ids and len(ids) < limit:
+            ids.append(item)
+    return ids, invalid
+
+
+def normalize_discord_ids(value: Any, limit: int = 100) -> list[str]:
+    """Normalize a stored Discord allowlist into unique numeric IDs."""
+    return parse_discord_ids(value, limit)[0]
 
 
 def discord_access_allowed(settings: dict[str, Any], channel_id: Any, user_id: Any) -> bool:
@@ -2307,16 +2317,24 @@ def start_discord_bot() -> None:
         if not await require_server_admin(interaction):
             return
         await interaction.response.defer()
-        if model.strip().lower() in {"off", "none", "ปิด"}:
-            channel_fallbacks.pop(channel_key, None)
-            message = "ปิด fallback เฉพาะห้องแล้วครับ (จะใช้ค่า fallback หลักถ้ามี)"
-        else:
-            channel_fallbacks[channel_key] = model.strip()[:200]
-            message = f"ตั้ง fallback model ของห้องนี้เป็น `{channel_fallbacks[channel_key]}` แล้วครับ"
-        current["discord_fallback_models"] = channel_fallbacks
-        save_settings(current)
-        if channel_key in channel_fallbacks:
-            availability = await check_model_availability(current.get("provider", "openai"), channel_fallbacks[channel_key], current)
+        # Reload after the defer and change only this key, so a concurrent
+        # /api/settings save (allowlists etc.) is not overwritten by the stale
+        # snapshot captured before the awaits.
+        with SETTINGS_LOCK:
+            latest = load_settings()
+            latest_fallbacks = latest.get("discord_fallback_models")
+            if not isinstance(latest_fallbacks, dict):
+                latest_fallbacks = {}
+            if model.strip().lower() in {"off", "none", "ปิด"}:
+                latest_fallbacks.pop(channel_key, None)
+                message = "ปิด fallback เฉพาะห้องแล้วครับ (จะใช้ค่า fallback หลักถ้ามี)"
+            else:
+                latest_fallbacks[channel_key] = model.strip()[:200]
+                message = f"ตั้ง fallback model ของห้องนี้เป็น `{latest_fallbacks[channel_key]}` แล้วครับ"
+            latest["discord_fallback_models"] = latest_fallbacks
+            save_settings(latest)
+        if channel_key in latest_fallbacks:
+            availability = await check_model_availability(latest.get("provider", "openai"), latest_fallbacks[channel_key], latest)
             state = "พร้อมใช้งาน" if availability.get("ready") else f"ยังใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
             message += f" · {state}"
         await interaction.followup.send(message)
@@ -3252,6 +3270,12 @@ def models_post():
 @app.put("/api/settings")
 def settings_put():
     """Persist editable settings, including the configured fallback provider."""
+    with SETTINGS_LOCK:
+        return apply_settings_update()
+
+
+def apply_settings_update():
+    """Apply a settings PUT body; call with SETTINGS_LOCK held."""
     body = request.get_json(silent=True) or {}
     current = load_settings()
     previous_provider = normalize_provider(current.get("provider"))
@@ -3278,8 +3302,16 @@ def settings_put():
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
     current["discord_enabled"] = bool(current.get("discord_enabled"))
     current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
-    current["discord_allowed_users"] = normalize_discord_ids(current.get("discord_allowed_users"))
-    current["discord_allowed_channels"] = normalize_discord_ids(current.get("discord_allowed_channels"))
+    # Invalid allowlist entries reject the save instead of being skipped: a
+    # dropped typo would empty the list and silently lift the restriction.
+    allowed_users, invalid_users = parse_discord_ids(current.get("discord_allowed_users"))
+    allowed_channels, invalid_channels = parse_discord_ids(current.get("discord_allowed_channels"))
+    if invalid_users or invalid_channels:
+        return jsonify({
+            "error": "Discord ID ต้องเป็นตัวเลขเท่านั้น: " + ", ".join((invalid_users + invalid_channels)[:5]),
+        }), 400
+    current["discord_allowed_users"] = allowed_users
+    current["discord_allowed_channels"] = allowed_channels
     current["terminal_enabled"] = bool(current.get("terminal_enabled", True))
     current["machine_access"] = bool(current.get("machine_access", True))
     raw_skills = current.get("skills")
