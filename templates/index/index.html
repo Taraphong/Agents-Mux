@@ -316,6 +316,17 @@
                 >
                   ความปลอดภัย
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="settings-tab-update"
+                  aria-controls="settings-panel-update"
+                  aria-selected="false"
+                  data-settings-section="update"
+                  data-i18n="settings.group.update"
+                >
+                  อัปเดต
+                </button>
               </div>
               <div class="settings-panels">
                 <div
@@ -861,6 +872,76 @@
                       อุปกรณ์ที่เชื่อมต่อ
                     </h3>
                     <div id="auth-sessions"></div>
+                  </div>
+                </div>
+                <div
+                  class="settings-panel"
+                  id="settings-panel-update"
+                  role="tabpanel"
+                  aria-labelledby="settings-tab-update"
+                  data-settings-panel="update"
+                >
+                  <div class="settings-panel-head">
+                    <h2 data-i18n="settings.group.update">อัปเดต</h2>
+                    <p class="hint" data-i18n="settings.group.updateDesc">
+                      ดึงไฟล์เวอร์ชันใหม่จาก GitHub และรีสตาร์ตเซิร์ฟเวอร์
+                    </p>
+                  </div>
+                  <div class="card">
+                    <h2 data-i18n="settings.updateBuildTitle">
+                      เวอร์ชันที่ติดตั้ง
+                    </h2>
+                    <p class="hint" data-i18n="settings.updateBuildHint">
+                      เวลาที่ไฟล์แอปถูกแก้ไขล่าสุดบนเครื่องนี้ และสถานะสคริปต์
+                      updater
+                    </p>
+                    <div class="update-metrics">
+                      <div class="update-metric">
+                        <span data-i18n="settings.updateAppUpdated"
+                          >ไฟล์แอปอัปเดตล่าสุด</span
+                        >
+                        <strong id="update-app-updated">—</strong>
+                      </div>
+                      <div class="update-metric">
+                        <span data-i18n="settings.updateScript"
+                          >สคริปต์ update.sh</span
+                        >
+                        <strong id="update-script-state">—</strong>
+                      </div>
+                    </div>
+                    <div class="update-actions">
+                      <button
+                        class="secondary"
+                        id="update-check"
+                        type="button"
+                        data-i18n="settings.updateCheck"
+                      >
+                        ตรวจสอบการอัปเดต
+                      </button>
+                      <button
+                        id="update-run"
+                        type="button"
+                        data-i18n="settings.updateRun"
+                      >
+                        อัปเดตเลย
+                      </button>
+                    </div>
+                    <p class="hint update-status" id="update-status">
+                      ยังไม่ได้ตรวจสอบในรอบนี้
+                    </p>
+                    <p class="hint update-note" data-i18n="settings.updateNote">
+                      การอัปเดตจะดาวน์โหลดจาก GitHub แล้วรีสตาร์ตเซิร์ฟเวอร์
+                      โดยไม่แตะ .env การตั้งค่า ประวัติ หรือใบรับรอง
+                      ระหว่างรีสตาร์ตหน้าเว็บอาจขาดการเชื่อมต่อชั่วครู่
+                    </p>
+                  </div>
+                  <div class="card">
+                    <div class="card-head">
+                      <h2 data-i18n="settings.updateLogTitle">
+                        ผลการทำงาน
+                      </h2>
+                    </div>
+                    <pre class="update-log is-empty" id="update-log"></pre>
                   </div>
                 </div>
               </div>

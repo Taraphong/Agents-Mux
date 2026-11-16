@@ -2863,3 +2863,106 @@ body.light-theme .settings-rail button.active {
     min-width: 0;
   }
 }
+
+/* Settings → Update: build metrics, actions and the updater output. */
+.update-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.update-metric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(17, 24, 39, 0.55);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+}
+.update-metric span {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.update-metric strong {
+  font-size: 0.92rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.update-metric strong.is-missing,
+.update-status.error {
+  color: #fca5a5;
+}
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.update-actions button {
+  flex: 1 1 180px;
+  min-height: 40px;
+}
+.update-status {
+  margin: 0 0 6px;
+}
+.update-note {
+  margin: 0;
+}
+.update-log {
+  margin: 0;
+  max-height: 300px;
+  overflow: auto;
+  padding: 12px;
+  background: rgba(2, 6, 23, 0.72);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.update-log.is-empty {
+  color: var(--muted);
+  font-family: inherit;
+}
+body.light-theme .update-metric {
+  background: #f4f6fb;
+  border-color: #d6dfec;
+}
+body.light-theme .update-log {
+  background: #f4f6fb;
+  border-color: #d6dfec;
+  color: #172033;
+}
+body.light-theme .update-metric strong.is-missing,
+body.light-theme .update-status.error {
+  color: #b91c1c;
+}
+@media (max-width: 900px) {
+  .update-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  .update-actions button {
+    flex: 1 1 100%;
+  }
+  .update-log {
+    max-height: 220px;
+    padding: 10px;
+    font-size: 0.74rem;
+  }
+}
+@media (max-width: 420px) {
+  /* One category per row: the wrapped two-column rail squeezed long Thai
+     labels on small phones. */
+  .settings-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .update-metric {
+    padding: 8px 10px;
+  }
+}

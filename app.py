@@ -3396,6 +3396,131 @@ def settings_reset():
     return jsonify({"ok": True})
 
 
+# Self-update: the web page can run the project's own update.sh. Only the two
+# fixed modes below are accepted, so no user input reaches the command line.
+UPDATE_SCRIPT = PROJECT_ROOT / "update.sh"
+UPDATE_LOG_FILE = Path(os.getenv("AI_WEB_UPDATE_LOG_FILE", "logs/update.log"))
+UPDATE_LOG_TAIL_LINES = 160
+UPDATE_MODES = {"check", "apply"}
+UPDATE_JOB_LOCK = threading.Lock()
+UPDATE_JOB: dict[str, Any] = {}
+
+
+def update_build_info() -> dict[str, Any]:
+    """Describe the app files on disk; the updater keeps no version number."""
+    try:
+        stat = (PROJECT_ROOT / "app.py").stat()
+    except OSError:
+        return {"app_updated_at": "", "app_size": 0}
+    return {
+        "app_updated_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        "app_size": stat.st_size,
+    }
+
+
+def update_script_ready() -> bool:
+    """Return whether update.sh exists and can be executed."""
+    return UPDATE_SCRIPT.is_file() and os.access(UPDATE_SCRIPT, os.X_OK)
+
+
+def update_log_tail() -> tuple[str, bool]:
+    """Return the end of the update log and whether older lines were dropped."""
+    try:
+        text = UPDATE_LOG_FILE.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return "", False
+    lines = text.splitlines()
+    return "\n".join(lines[-UPDATE_LOG_TAIL_LINES:]), len(lines) > UPDATE_LOG_TAIL_LINES
+
+
+def update_job_snapshot() -> dict[str, Any]:
+    """Copy the current update job state without holding the lock."""
+    with UPDATE_JOB_LOCK:
+        process = UPDATE_JOB.get("process")
+        running = bool(process and process.poll() is None)
+        return {
+            "running": running,
+            "job": {
+                "mode": UPDATE_JOB.get("mode", ""),
+                "started_at": UPDATE_JOB.get("started_at", ""),
+                "finished_at": UPDATE_JOB.get("finished_at", ""),
+                "ok": UPDATE_JOB.get("ok"),
+                "exit_code": UPDATE_JOB.get("exit_code"),
+            },
+        }
+
+
+def watch_update_job(process: "subprocess.Popen[bytes]") -> None:
+    """Record the updater's exit status after the detached process finishes."""
+    code = process.wait()
+    with UPDATE_JOB_LOCK:
+        UPDATE_JOB["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        UPDATE_JOB["exit_code"] = code
+        UPDATE_JOB["ok"] = code == 0
+
+
+@app.get("/api/update")
+def update_state():
+    """Report the installed build, the last update run, and its log tail."""
+    log_tail, log_truncated = update_log_tail()
+    snapshot = update_job_snapshot()
+    return jsonify({
+        **update_build_info(),
+        "script_available": update_script_ready(),
+        **snapshot,
+        "log": log_tail,
+        "log_truncated": log_truncated,
+    })
+
+
+@app.post("/api/update/run")
+def update_run():
+    """Run update.sh for a dry-run check or a real update, detached from Flask."""
+    body = request.get_json(silent=True) or {}
+    mode = str(body.get("mode") or "apply").strip().lower()
+    if mode not in UPDATE_MODES:
+        return jsonify({"ok": False, "error": "โหมดอัปเดตไม่ถูกต้อง"}), 400
+    if not update_script_ready():
+        return jsonify({"ok": False, "error": "ไม่พบสคริปต์ update.sh ที่รันได้ในโฟลเดอร์โปรเจกต์"}), 400
+    with UPDATE_JOB_LOCK:
+        process = UPDATE_JOB.get("process")
+        if process and process.poll() is None:
+            return jsonify({"ok": False, "error": "มีการอัปเดตกำลังทำงานอยู่"}), 409
+        args = [str(UPDATE_SCRIPT)]
+        if mode == "check":
+            # A dry run only compares files, so it must not write or restart.
+            args += ["--dry-run", "--no-restart"]
+        try:
+            UPDATE_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(UPDATE_LOG_FILE, "wb") as handle:
+                new_process = subprocess.Popen(
+                    args,
+                    cwd=str(PROJECT_ROOT),
+                    stdin=subprocess.DEVNULL,
+                    stdout=handle,
+                    stderr=subprocess.STDOUT,
+                    # A real update restarts the server; a separate session keeps
+                    # this updater alive while the web process is replaced.
+                    start_new_session=True,
+                    env={**os.environ, "AI_WEB_UPDATE_FROM_WEB": "1"},
+                )
+        except OSError as exc:
+            return jsonify({"ok": False, "error": f"เริ่มอัปเดตไม่สำเร็จ: {exc}"}), 500
+        UPDATE_JOB.clear()
+        UPDATE_JOB.update({
+            "process": new_process,
+            "pid": new_process.pid,
+            "mode": mode,
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": "",
+            "ok": None,
+            "exit_code": None,
+        })
+    threading.Thread(target=watch_update_job, args=(new_process,), daemon=True).start()
+    log_event("system.update_started", "เริ่มอัปเดตระบบจากหน้าเว็บ", mode=mode)
+    return jsonify({"ok": True, "mode": mode, "pid": new_process.pid}), 202
+
+
 @app.post("/api/chat")
 def chat():
     """Answer one chat turn, retrying once with the configured fallback."""

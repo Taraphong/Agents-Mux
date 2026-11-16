@@ -109,6 +109,36 @@ const I18N = {
     "settings.group.integrationsDesc": "Discord bot และแท็บ Terminal",
     "settings.group.security": "ความปลอดภัย",
     "settings.group.securityDesc": "Pairing Key และอุปกรณ์ที่เชื่อมต่อ",
+    "settings.group.update": "อัปเดต",
+    "settings.group.updateDesc":
+      "ดึงไฟล์เวอร์ชันใหม่จาก GitHub และรีสตาร์ตเซิร์ฟเวอร์",
+    "settings.updateBuildTitle": "เวอร์ชันที่ติดตั้ง",
+    "settings.updateBuildHint":
+      "เวลาที่ไฟล์แอปถูกแก้ไขล่าสุดบนเครื่องนี้ และสถานะสคริปต์ updater",
+    "settings.updateAppUpdated": "ไฟล์แอปอัปเดตล่าสุด",
+    "settings.updateScript": "สคริปต์ update.sh",
+    "settings.updateScriptReady": "พร้อมใช้งาน",
+    "settings.updateScriptMissing": "ไม่พบสคริปต์",
+    "settings.updateUnknown": "ไม่ทราบ",
+    "settings.updateCheck": "ตรวจสอบการอัปเดต",
+    "settings.updateRun": "อัปเดตเลย",
+    "settings.updateLogTitle": "ผลการทำงาน",
+    "settings.updateNote":
+      "การอัปเดตจะดาวน์โหลดจาก GitHub แล้วรีสตาร์ตเซิร์ฟเวอร์ โดยไม่แตะ .env การตั้งค่า ประวัติ หรือใบรับรอง ระหว่างรีสตาร์ตหน้าเว็บอาจขาดการเชื่อมต่อชั่วครู่",
+    "settings.updateConfirm": "อัปเดตไฟล์แอปและรีสตาร์ตเซิร์ฟเวอร์หรือไม่?",
+    "settings.updateIdle": "ยังไม่ได้ตรวจสอบในรอบนี้",
+    "settings.updateLoading": "กำลังโหลดสถานะ...",
+    "settings.updateRunning": "กำลังทำงาน: {mode}",
+    "settings.updateCheckDone": "ตรวจสอบเสร็จแล้วเมื่อ {time}",
+    "settings.updateDone": "อัปเดตเสร็จแล้วเมื่อ {time}",
+    "settings.updateError": "ไม่สำเร็จ (exit {code}) — ดู log ด้านล่าง",
+    "settings.updateCheckStarted": "เริ่มตรวจสอบการอัปเดตแล้ว",
+    "settings.updateRunStarted": "เริ่มอัปเดตแล้ว — เซิร์ฟเวอร์อาจรีสตาร์ต",
+    "settings.updateFailed": "เริ่มการอัปเดตไม่สำเร็จ",
+    "settings.updateLoadFailed": "โหลดสถานะการอัปเดตไม่สำเร็จ",
+    "settings.updateRestarting": "เซิร์ฟเวอร์กำลังรีสตาร์ต รอสักครู่...",
+    "settings.updateLogEmpty": "ยังไม่มีผลการทำงาน",
+    "settings.updateLogTruncated": "…แสดงเฉพาะท้าย log",
     "settings.saveScopeHint": "การบันทึกมีผลกับการตั้งค่าทุกหมวด",
     "settings.agentInstructionsTitle": "คำสั่งประจำ Agent",
     "settings.agentInstructionsHint":
@@ -493,6 +523,37 @@ const I18N = {
     "settings.group.integrationsDesc": "Discord bot and the Terminal tab",
     "settings.group.security": "Security",
     "settings.group.securityDesc": "Pairing key and paired devices",
+    "settings.group.update": "Update",
+    "settings.group.updateDesc":
+      "Fetch the newest files from GitHub and restart the server",
+    "settings.updateBuildTitle": "Installed build",
+    "settings.updateBuildHint":
+      "When the app files were last changed on this machine, and whether the updater is available",
+    "settings.updateAppUpdated": "App files last updated",
+    "settings.updateScript": "update.sh script",
+    "settings.updateScriptReady": "Ready",
+    "settings.updateScriptMissing": "Script not found",
+    "settings.updateUnknown": "Unknown",
+    "settings.updateCheck": "Check for updates",
+    "settings.updateRun": "Update now",
+    "settings.updateLogTitle": "Output",
+    "settings.updateNote":
+      "Updating downloads from GitHub and restarts the server without touching .env, settings, history or certificates. The page may disconnect briefly during the restart.",
+    "settings.updateConfirm":
+      "Update the app files and restart the server now?",
+    "settings.updateIdle": "Not checked yet",
+    "settings.updateLoading": "Loading status...",
+    "settings.updateRunning": "Running: {mode}",
+    "settings.updateCheckDone": "Check finished at {time}",
+    "settings.updateDone": "Update finished at {time}",
+    "settings.updateError": "Failed (exit {code}) — see the output below",
+    "settings.updateCheckStarted": "Update check started",
+    "settings.updateRunStarted": "Update started — the server may restart",
+    "settings.updateFailed": "Could not start the update",
+    "settings.updateLoadFailed": "Could not load the update status",
+    "settings.updateRestarting": "The server is restarting, waiting...",
+    "settings.updateLogEmpty": "No output yet",
+    "settings.updateLogTruncated": "…showing only the end of the output",
     "settings.saveScopeHint": "Saving applies to every section",
     "settings.agentInstructionsTitle": "Agent instructions",
     "settings.agentInstructionsHint":
@@ -1546,6 +1607,7 @@ const SETTINGS_SECTIONS = [
   "response",
   "integrations",
   "security",
+  "update",
 ];
 let activeSettingsSection = SETTINGS_SECTIONS[0];
 function activateSettingsSection(section) {
@@ -3284,6 +3346,161 @@ $("save").addEventListener("click", async () => {
     restoreSaveButton();
   }
 });
+// Update section: runs the project's update.sh through the server API.
+const UPDATE_POLL_MS = 2000;
+const UPDATE_POLL_ATTEMPTS = 90;
+const updateState = {
+  loaded: false,
+  running: false,
+  error: "",
+  job: { mode: "", started_at: "", finished_at: "", ok: null, exit_code: null },
+  log: "",
+  logTruncated: false,
+  appUpdatedAt: "",
+  scriptAvailable: false,
+};
+let updatePollTimer = null;
+function updateJobFinished() {
+  return Boolean(updateState.job && updateState.job.finished_at);
+}
+function updateStatusText() {
+  if (updateState.error) return updateState.error;
+  if (!updateState.loaded) return t("settings.updateLoading");
+  if (updateState.running) {
+    return t("settings.updateRunning", {
+      mode: t(
+        updateState.job.mode === "check"
+          ? "settings.updateCheck"
+          : "settings.updateRun",
+      ),
+    });
+  }
+  if (updateJobFinished()) {
+    const key =
+      updateState.job.mode === "check"
+        ? "settings.updateCheckDone"
+        : "settings.updateDone";
+    return updateState.job.ok
+      ? t(key, { time: updateState.job.finished_at })
+      : t("settings.updateError", {
+          code: updateState.job.exit_code ?? "?",
+        });
+  }
+  return t("settings.updateIdle");
+}
+function renderUpdatePanel() {
+  if (!$("update-log")) return;
+  $("update-app-updated").textContent =
+    updateState.appUpdatedAt || t("settings.updateUnknown");
+  $("update-script-state").textContent = updateState.scriptAvailable
+    ? t("settings.updateScriptReady")
+    : t("settings.updateScriptMissing");
+  $("update-script-state").classList.toggle(
+    "is-missing",
+    updateState.loaded && !updateState.scriptAvailable,
+  );
+  const status = $("update-status");
+  status.textContent = updateStatusText();
+  status.classList.toggle(
+    "error",
+    Boolean(updateState.error) ||
+      (updateJobFinished() && updateState.job.ok === false),
+  );
+  $("update-check").disabled = updateState.running;
+  $("update-run").disabled =
+    updateState.running || (updateState.loaded && !updateState.scriptAvailable);
+  const log = $("update-log");
+  log.classList.toggle("is-empty", !updateState.log);
+  log.textContent = updateState.log
+    ? updateState.logTruncated
+      ? `${t("settings.updateLogTruncated")}\n\n${updateState.log}`
+      : updateState.log
+    : t("settings.updateLogEmpty");
+}
+async function loadUpdateState() {
+  try {
+    const response = await fetch("/api/update");
+    if (!response.ok) throw new Error(t("settings.updateLoadFailed"));
+    const data = await response.json();
+    updateState.loaded = true;
+    updateState.error = "";
+    updateState.running = Boolean(data.running);
+    updateState.job = data.job || updateState.job;
+    updateState.log = data.log || "";
+    updateState.logTruncated = Boolean(data.log_truncated);
+    updateState.appUpdatedAt = data.app_updated_at || "";
+    updateState.scriptAvailable = Boolean(data.script_available);
+  } catch (error) {
+    updateState.error = error.message || t("settings.updateLoadFailed");
+  }
+  renderUpdatePanel();
+}
+function pollUpdateState(attempt = 0) {
+  clearTimeout(updatePollTimer);
+  updatePollTimer = setTimeout(async () => {
+    await loadUpdateState();
+    if (updateState.error) {
+      // A real update restarts the server, so keep retrying for a while.
+      if (attempt < UPDATE_POLL_ATTEMPTS) pollUpdateState(attempt + 1);
+      return;
+    }
+    if (updateState.running) {
+      pollUpdateState(attempt);
+      return;
+    }
+    if (updateJobFinished()) {
+      showNotice(
+        updateState.job.ok
+          ? t("settings.updateDone", { time: updateState.job.finished_at })
+          : t("settings.updateError", {
+              code: updateState.job.exit_code ?? "?",
+            }),
+        !updateState.job.ok,
+      );
+      return;
+    }
+    if (attempt < 3) pollUpdateState(attempt + 1);
+  }, UPDATE_POLL_MS);
+}
+async function startUpdate(mode) {
+  if (
+    mode === "apply" &&
+    !(await confirmDialog({
+      title: t("common.confirmTitle"),
+      text: t("settings.updateConfirm"),
+      confirmLabel: t("common.confirm"),
+    }))
+  )
+    return;
+  updateState.error = "";
+  updateState.running = true;
+  updateState.job = { mode, started_at: "", finished_at: "", ok: null, exit_code: null };
+  renderUpdatePanel();
+  try {
+    const response = await fetch("/api/update/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok)
+      throw new Error(data.error || t("settings.updateFailed"));
+    showNotice(
+      mode === "check"
+        ? t("settings.updateCheckStarted")
+        : t("settings.updateRunStarted"),
+    );
+    pollUpdateState();
+  } catch (error) {
+    updateState.running = false;
+    updateState.error = error.message || t("settings.updateFailed");
+    renderUpdatePanel();
+    showNotice(updateState.error, true);
+  }
+}
+$("update-check").addEventListener("click", () => startUpdate("check"));
+$("update-run").addEventListener("click", () => startUpdate("apply"));
+loadUpdateState();
 $("create-skill").addEventListener("click", async () => {
   const name = $("new-skill-name").value.trim();
   const content = $("new-skill-content").value.trim();
@@ -3731,6 +3948,7 @@ function applyTranslations() {
   renderSchedules(currentSchedules);
   updateScheduleFormMode();
   renderAuthSessions();
+  renderUpdatePanel();
   renderLogs();
   updateTerminalUi();
   $("schedule-timezone").textContent =
