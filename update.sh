@@ -176,7 +176,7 @@ for file in $APP_FILES; do
   fi
   say "   → $file"
   if [ "$DRY_RUN" -eq 0 ]; then
-    cp -f "$SOURCE_DIR/$file" "$APP_DIR/$file" || die "คัดลอก $file ไม่สำเร็จ"
+    cp -f "$SOURCE_DIR/$file" "$APP_DIR/$file.new" && mv -f "$APP_DIR/$file.new" "$APP_DIR/$file" || die "คัดลอก $file ไม่สำเร็จ"
   fi
 done
 
