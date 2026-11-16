@@ -2957,10 +2957,17 @@ body.light-theme .update-status.error {
   }
 }
 @media (max-width: 420px) {
-  /* One category per row: the wrapped two-column rail squeezed long Thai
-     labels on small phones. */
+  /* Small phones: keep the rail compact (two short columns) so the panel is
+     reachable without scrolling past six full-width category buttons. */
   .settings-rail {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 4px;
+    padding: 5px;
+  }
+  .settings-rail button {
+    padding: 7px 9px;
+    font-size: 0.78rem;
+    line-height: 1.25;
   }
   .update-metric {
     padding: 8px 10px;
