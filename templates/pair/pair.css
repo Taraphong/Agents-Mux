@@ -1,80 +1,132 @@
+/* Pairing page — Liquid Glass UI, dark and light. */
 :root {
   color-scheme: dark;
-  --page-bg: radial-gradient(circle at 20% 0%, #16203a 0%, #0b1020 55%);
-  --panel: #10172a;
-  --panel-border: #24304a;
-  --text: #e5e7eb;
-  --muted: #94a3b8;
-  --input-bg: #0b1020;
-  --input-border: #2b3a5e;
-  --accent: #4f46e5;
-  --accent-text: #ffffff;
-  --error: #f87171;
-  --ok: #34d399;
-  --code-bg: #0b1020;
-  --code-border: #24304a;
-  --shadow: 0 24px 60px rgba(2, 6, 23, 0.55);
-  font-family: system-ui, -apple-system, sans-serif;
+  --void: #070b16;
+  --panel: rgba(18, 26, 48, 0.6);
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --glass-edge:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  --text: #f2f5ff;
+  --muted: #a8b5cd;
+  --dim: #8896ae;
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --input-border: rgba(255, 255, 255, 0.14);
+  --accent-grad: linear-gradient(135deg, #94a6ff, #63e6d2);
+  --accent-text: #08101f;
+  --accent-glow: rgba(99, 102, 241, 0.3);
+  --error: #fda4af;
+  --ok: #6ee7b7;
+  --code-bg: rgba(7, 12, 25, 0.55);
+  --code-border: rgba(255, 255, 255, 0.12);
+  --shadow:
+    0 30px 80px rgba(2, 6, 23, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  font-family:
+    "Inter",
+    "SF Pro Display",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
 }
 html.light-theme {
   color-scheme: light;
-  --page-bg: radial-gradient(circle at 20% 0%, #eef2ff 0%, #f8fafc 55%);
-  --panel: #ffffff;
-  --panel-border: #e2e8f0;
-  --text: #1e293b;
-  --muted: #64748b;
-  --input-bg: #f8fafc;
-  --input-border: #cbd5e1;
-  --error: #dc2626;
-  --ok: #059669;
-  --code-bg: #f1f5f9;
-  --code-border: #e2e8f0;
-  --shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+  --void: #e9eefb;
+  --panel: rgba(255, 255, 255, 0.74);
+  --panel-border: rgba(255, 255, 255, 0.92);
+  --glass-edge:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+  --text: #111a2e;
+  --muted: #4d5c75;
+  --dim: #64728b;
+  --input-bg: rgba(255, 255, 255, 0.8);
+  --input-border: rgba(15, 23, 42, 0.12);
+  --accent-grad: linear-gradient(135deg, #6d7cf5, #4338ca);
+  --accent-text: #ffffff;
+  --accent-glow: rgba(79, 70, 229, 0.26);
+  --error: #b4233d;
+  --ok: #0f766e;
+  --code-bg: rgba(255, 255, 255, 0.72);
+  --code-border: rgba(15, 23, 42, 0.1);
+  --shadow:
+    0 28px 70px rgba(30, 41, 59, 0.16), 0 0 0 1px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98);
 }
 * {
   box-sizing: border-box;
 }
 body {
+  position: relative;
+  isolation: isolate;
   margin: 0;
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 24px 16px;
-  background: var(--page-bg);
+  background: var(--void);
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
   transition:
-    background 0.2s ease,
-    color 0.2s ease;
+    background 0.35s ease,
+    color 0.35s ease;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: -22%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 38% at 12% 8%, rgba(99, 102, 241, 0.5), transparent 62%),
+    radial-gradient(36% 34% at 88% 4%, rgba(34, 211, 238, 0.32), transparent 60%),
+    radial-gradient(46% 40% at 74% 92%, rgba(168, 85, 247, 0.34), transparent 62%),
+    radial-gradient(40% 36% at 22% 96%, rgba(45, 212, 191, 0.24), transparent 60%);
+  filter: blur(10px);
+}
+html.light-theme body::before {
+  background:
+    radial-gradient(42% 38% at 12% 8%, rgba(129, 140, 248, 0.4), transparent 62%),
+    radial-gradient(36% 34% at 88% 4%, rgba(103, 232, 249, 0.42), transparent 60%),
+    radial-gradient(46% 40% at 74% 92%, rgba(196, 181, 253, 0.42), transparent 62%),
+    radial-gradient(40% 36% at 22% 96%, rgba(167, 243, 208, 0.4), transparent 60%);
 }
 .card {
   width: min(460px, 100%);
   background: var(--panel);
   border: 1px solid var(--panel-border);
-  border-radius: 16px;
-  padding: 22px 24px 26px;
+  border-radius: 24px;
+  padding: 24px 26px 28px;
   box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(26px) saturate(165%);
+  backdrop-filter: blur(26px) saturate(165%);
 }
 .topbar {
   display: flex;
   gap: 10px;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 .brand {
   display: flex;
-  gap: 10px;
+  gap: 11px;
   align-items: center;
   font-weight: 800;
+  letter-spacing: -0.01em;
 }
 .brand-mark {
-  background: linear-gradient(135deg, #4f46e5, #06b6d4);
-  width: 34px;
-  height: 34px;
+  background: var(--accent-grad);
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
-  color: #ffffff;
+  border-radius: 13px;
+  color: var(--accent-text);
+  box-shadow:
+    0 8px 22px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 .controls {
   display: flex;
@@ -83,26 +135,46 @@ body {
 }
 .icon-button,
 .controls select {
-  height: 32px;
-  border-radius: 8px;
+  height: 34px;
+  border-radius: 11px;
   border: 1px solid var(--input-border);
   background: var(--input-bg);
   color: var(--text);
   font: inherit;
   font-size: 0.8rem;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .icon-button {
-  width: 32px;
+  width: 34px;
   display: grid;
   place-items: center;
   padding: 0;
   font-size: 0.95rem;
 }
+.icon-button:hover {
+  background: rgba(147, 163, 255, 0.16);
+  border-color: rgba(147, 163, 255, 0.34);
+}
+html.light-theme .icon-button:hover {
+  background: rgba(79, 95, 224, 0.1);
+  border-color: rgba(79, 95, 224, 0.28);
+}
+#theme-toggle {
+  font-size: 0;
+}
+#theme-toggle::before {
+  content: "☾";
+  font-size: 1rem;
+  line-height: 1;
+}
+html.light-theme #theme-toggle::before {
+  content: "☀";
+}
 /* The language control is a toggle button like the one on the main screen. */
 .language-toggle {
   width: auto;
-  min-width: 44px;
+  min-width: 46px;
   padding: 0 8px;
 }
 .language-display {
@@ -115,14 +187,15 @@ body {
   padding: 0 6px;
 }
 h1 {
-  font-size: 1.25rem;
-  margin: 0 0 6px;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
 }
 p {
   margin: 0 0 18px;
   color: var(--muted);
   font-size: 0.9rem;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 label {
   display: block;
@@ -138,8 +211,26 @@ input {
   background: var(--input-bg);
   color: var(--text);
   border: 1px solid var(--input-border);
-  border-radius: 10px;
+  border-radius: 13px;
   font: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+input::placeholder {
+  color: var(--dim);
+  opacity: 1;
+}
+input:focus {
+  outline: none;
+  border-color: rgba(147, 163, 255, 0.6);
+  box-shadow:
+    0 0 0 3px rgba(147, 163, 255, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+html.light-theme input:focus {
+  border-color: rgba(79, 95, 224, 0.55);
+  box-shadow:
+    0 0 0 3px rgba(79, 95, 224, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 input.key {
   font-size: 1.15rem;
@@ -147,24 +238,32 @@ input.key {
   text-align: center;
   text-transform: uppercase;
 }
-input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
 button[type="submit"] {
   width: 100%;
-  padding: 12px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--accent);
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 13px;
+  background: var(--accent-grad);
   color: var(--accent-text);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+  box-shadow:
+    0 12px 28px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transition:
+    filter 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+button[type="submit"]:hover:not(:disabled) {
+  filter: brightness(1.07);
+  transform: translateY(-1px);
 }
 button[type="submit"]:disabled {
-  opacity: 0.6;
+  opacity: 0.65;
   cursor: progress;
+  transform: none;
 }
 .error {
   min-height: 20px;
@@ -178,16 +277,16 @@ button[type="submit"]:disabled {
 code {
   background: var(--code-bg);
   border: 1px solid var(--code-border);
-  border-radius: 6px;
-  padding: 1px 5px;
+  border-radius: 7px;
+  padding: 1px 6px;
   font-size: 0.82rem;
   color: var(--text);
 }
 .foot {
-  margin-top: 18px;
-  padding-top: 14px;
+  margin-top: 20px;
+  padding-top: 15px;
   border-top: 1px solid var(--panel-border);
   font-size: 0.78rem;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.7;
 }
