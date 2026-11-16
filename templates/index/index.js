@@ -3466,7 +3466,12 @@ function pollUpdateState(attempt = 0) {
       // The server is restarting; keep retrying for a while.
       if (attempt < UPDATE_POLL_ATTEMPTS) pollUpdateState(attempt + 1);
       else {
+        // Out of retries: drop the stale busy/restarting state so the section
+        // shows an error and its buttons (the retry action) stay usable.
         updateState.pending = false;
+        updateState.running = false;
+        updateState.restarting = false;
+        updateState.error = t("settings.updateLoadFailed");
         renderUpdatePanel();
       }
       return;
@@ -3544,7 +3549,10 @@ async function startUpdate(mode) {
 }
 $("update-check").addEventListener("click", () => startUpdate("check"));
 $("update-run").addEventListener("click", () => startUpdate("apply"));
-loadUpdateState();
+// Keep the panel live if the page opened while an update (or its restart) runs.
+loadUpdateState().then(() => {
+  if (updateState.running) pollUpdateState();
+});
 $("create-skill").addEventListener("click", async () => {
   const name = $("new-skill-name").value.trim();
   const content = $("new-skill-content").value.trim();

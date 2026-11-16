@@ -2278,10 +2278,13 @@ def start_discord_bot() -> None:
                     f"API ของ {PROVIDER_LABELS[selected_provider]} ใช้งานไม่ได้: {str(exc)[:220]}\nรายการสำรอง:\n{listing}"
                 )
             return
-        current = load_settings()
-        current["provider"] = selected_provider
-        current["model"] = model.strip()[:200]
-        save_settings(current)
+        # Read-modify-write under the same lock as /api/settings and /fallback,
+        # so a concurrent settings change is not overwritten.
+        with SETTINGS_LOCK:
+            current = load_settings()
+            current["provider"] = selected_provider
+            current["model"] = model.strip()[:200]
+            save_settings(current)
         STATUS_CACHE.clear()
         availability = await check_model_availability(selected_provider, current["model"], current)
         state = "พร้อมใช้งาน" if availability.get("ready") else f"ยังใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
@@ -3552,6 +3555,10 @@ def update_run():
         return jsonify({"ok": False, "error": "โหมดอัปเดตไม่ถูกต้อง"}), 400
     if not update_script_ready():
         return jsonify({"ok": False, "error": "ไม่พบสคริปต์ update.sh ที่รันได้ในโฟลเดอร์โปรเจกต์"}), 400
+    # Check the same view GET /api/update reports, so a job that is still running
+    # after a server restart is not truncated and replaced by a second updater.
+    if update_job_snapshot()["running"]:
+        return jsonify({"ok": False, "error": "มีการอัปเดตกำลังทำงานอยู่"}), 409
     with UPDATE_JOB_LOCK:
         process = UPDATE_JOB.get("process")
         if process and process.poll() is None:
