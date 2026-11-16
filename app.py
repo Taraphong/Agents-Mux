@@ -3011,20 +3011,69 @@ def gzip_body(data: bytes, cache_key: tuple[str, int, int] | None = None) -> byt
     return compressed
 
 
+def representation_etag(base_etag: str, gzipped: bool) -> str:
+    """Return an ETag that identifies one representation of the same resource.
+
+    Caches match entries by ETag, so the gzip and identity bodies must not share
+    one: a client that did not ask for gzip could be handed a gzip body, or a
+    revalidation could accept a body in the wrong encoding.
+    """
+    token = base_etag.strip()
+    if token.startswith("W/"):
+        token = token[2:].strip()
+    token = token.strip('"')
+    return f'"{token}-gzip"' if gzipped else f'"{token}"'
+
+
+def etag_matches(etag: str) -> bool:
+    """Report whether the request's If-None-Match selects this representation."""
+    header = request.headers.get("If-None-Match", "").strip()
+    if not header:
+        return False
+    if header == "*":
+        return True
+    for candidate in header.split(","):
+        candidate = candidate.strip()
+        if candidate.startswith("W/"):
+            candidate = candidate[2:].strip()
+        if candidate == etag:
+            return True
+    return False
+
+
 def compress_response(response, cache_key: tuple[str, int, int] | None = None):
-    """Replace a text response body with its gzip form when the client accepts it."""
+    """Gzip a text response, keeping the ETag specific to that representation.
+
+    A gzip and an identity body of the same file are different representations:
+    they get different ETags, and a conditional request is answered with 304
+    only when it names the representation this request would receive.
+    """
     if response.status_code != 200 or response.headers.get("Content-Encoding"):
         return response
     if (response.mimetype or "").lower() not in GZIP_MIMETYPES:
         return response
+    body = response.get_data()
+    size = len(body)
+    if not size:
+        # A HEAD response has no body; judge the size from the declared length.
+        try:
+            size = int(response.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            size = 0
+    gzipped = accepts_gzip() and size >= GZIP_MIN_BYTES
+    base_etag = response.get_etag()[0] or hashlib.sha1(body).hexdigest()
+    etag = representation_etag(base_etag, gzipped)
     response.headers.add("Vary", "Accept-Encoding")
-    if not accepts_gzip():
+    if etag_matches(etag):
+        response.status_code = 304
+        response.set_data(b"")
+        response.headers["ETag"] = etag
         return response
-    data = response.get_data()
-    if len(data) < GZIP_MIN_BYTES:
-        return response
-    response.set_data(gzip_body(data, cache_key))
-    response.headers["Content-Encoding"] = "gzip"
+    # The value is already quoted; set_etag() would reject it as invalid.
+    response.headers["ETag"] = etag
+    if gzipped and body:
+        response.set_data(gzip_body(body, cache_key))
+        response.headers["Content-Encoding"] = "gzip"
     return response
 
 
