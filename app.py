@@ -247,6 +247,12 @@ DEFAULT_SETTINGS = {
     "fallback_model": os.getenv("AI_FALLBACK_MODEL", ""),
     "discord_enabled": bool(os.getenv("DISCORD_BOT_TOKEN", "").strip()),
     "discord_prefix": os.getenv("DISCORD_BOT_PREFIX", "!ai"),
+    "discord_allowed_users": [
+        item.strip() for item in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if item.strip()
+    ],
+    "discord_allowed_channels": [
+        item.strip() for item in os.getenv("DISCORD_ALLOWED_CHANNEL_IDS", "").split(",") if item.strip()
+    ],
     "terminal_enabled": True,
     "machine_access": True,
 }
@@ -289,12 +295,60 @@ DISCORD_BOT: Any = None
 DISCORD_THREAD: threading.Thread | None = None
 DISCORD_LOOP: Any = None
 DISCORD_TOKEN_FINGERPRINT = ""
+SETTINGS_LOCK = threading.Lock()
 
 
 def normalize_provider(value: Any) -> str:
     """Clamp an unknown provider name to a supported provider id."""
     provider = str(value or "openai").strip().lower()
     return provider if provider in PROVIDERS else "openai"
+
+
+def parse_discord_ids(value: Any, limit: int = 100) -> tuple[list[str], list[str]]:
+    """Split a Discord allowlist input into unique numeric IDs and bad entries.
+
+    Accepts a comma/space separated string or a list, because the settings API
+    accepts both the web form input and a JSON array. Invalid entries are
+    reported instead of dropped so a typo cannot silently empty the allowlist.
+    """
+    if isinstance(value, str):
+        raw_items: list[Any] = re.split(r"[\s,;]+", value)
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        raw_items = []
+    ids: list[str] = []
+    invalid: list[str] = []
+    for item in raw_items:
+        item = str(item).strip()
+        if not item:
+            continue
+        if not item.isdigit():
+            invalid.append(item[:40])
+            continue
+        if item not in ids and len(ids) < limit:
+            ids.append(item)
+    return ids, invalid
+
+
+def normalize_discord_ids(value: Any, limit: int = 100) -> list[str]:
+    """Normalize a stored Discord allowlist into unique numeric IDs."""
+    return parse_discord_ids(value, limit)[0]
+
+
+def discord_access_allowed(settings: dict[str, Any], channel_id: Any, user_id: Any) -> bool:
+    """Return whether a Discord channel/user pair passes the allowlists.
+
+    An empty allowlist means "no restriction", so existing installs keep
+    working after the upgrade.
+    """
+    allowed_channels = normalize_discord_ids(settings.get("discord_allowed_channels"))
+    allowed_users = normalize_discord_ids(settings.get("discord_allowed_users"))
+    if allowed_channels and str(channel_id) not in allowed_channels:
+        return False
+    if allowed_users and str(user_id) not in allowed_users:
+        return False
+    return True
 
 
 def stored_api_keys(settings: dict[str, Any]) -> dict[str, str]:
@@ -1935,6 +1989,22 @@ def start_discord_bot() -> None:
     prefix = str(settings.get("discord_prefix") or "!ai").strip() or "!ai"
     commands_synced = False
 
+    class AccessControlledCommandTree(discord.app_commands.CommandTree):
+        """Reject slash commands from channels or users outside the allowlists."""
+
+        async def interaction_check(self, interaction: Any) -> bool:
+            if discord_access_allowed(
+                load_settings(),
+                getattr(interaction, "channel_id", ""),
+                getattr(getattr(interaction, "user", None), "id", ""),
+            ):
+                return True
+            await interaction.response.send_message(
+                "บอทนี้ถูกจำกัดสิทธิ์ให้ใช้ได้เฉพาะบางผู้ใช้หรือบางช่องเท่านั้นครับ",
+                ephemeral=True,
+            )
+            return False
+
     class AIClient(discord.Client):
         async def on_ready(self) -> None:
             """Sync slash commands once and log the successful connection."""
@@ -1950,7 +2020,19 @@ def start_discord_bot() -> None:
 
         async def on_message(self, message: Any) -> None:
             """Reply to mentions, prefixed messages, and DMs through the agent."""
-            if message.author == self.user:
+            if message.author == self.user or getattr(message.author, "bot", False):
+                return
+            if not discord_access_allowed(
+                load_settings(),
+                getattr(message.channel, "id", ""),
+                getattr(message.author, "id", ""),
+            ):
+                log_event(
+                    "discord.ignored",
+                    "ไม่ตอบข้อความ Discord ที่อยู่นอกรายการผู้ใช้หรือช่องที่อนุญาต",
+                    channel=str(getattr(message.channel, "id", "")),
+                    user=str(getattr(message.author, "id", "")),
+                )
                 return
             content = str(message.content or "").strip()
             mentioned = self.user and self.user in message.mentions
@@ -1974,7 +2056,7 @@ def start_discord_bot() -> None:
                 await message.reply(chunk, mention_author=False)
 
     client = AIClient(intents=intents)
-    command_tree = discord.app_commands.CommandTree(client)
+    command_tree = AccessControlledCommandTree(client)
 
     def member_is_admin(member: Any) -> bool:
         """Return whether a guild member has server administrator rights."""
@@ -2196,10 +2278,13 @@ def start_discord_bot() -> None:
                     f"API ของ {PROVIDER_LABELS[selected_provider]} ใช้งานไม่ได้: {str(exc)[:220]}\nรายการสำรอง:\n{listing}"
                 )
             return
-        current = load_settings()
-        current["provider"] = selected_provider
-        current["model"] = model.strip()[:200]
-        save_settings(current)
+        # Read-modify-write under the same lock as /api/settings and /fallback,
+        # so a concurrent settings change is not overwritten.
+        with SETTINGS_LOCK:
+            current = load_settings()
+            current["provider"] = selected_provider
+            current["model"] = model.strip()[:200]
+            save_settings(current)
         STATUS_CACHE.clear()
         availability = await check_model_availability(selected_provider, current["model"], current)
         state = "พร้อมใช้งาน" if availability.get("ready") else f"ยังใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
@@ -2235,16 +2320,24 @@ def start_discord_bot() -> None:
         if not await require_server_admin(interaction):
             return
         await interaction.response.defer()
-        if model.strip().lower() in {"off", "none", "ปิด"}:
-            channel_fallbacks.pop(channel_key, None)
-            message = "ปิด fallback เฉพาะห้องแล้วครับ (จะใช้ค่า fallback หลักถ้ามี)"
-        else:
-            channel_fallbacks[channel_key] = model.strip()[:200]
-            message = f"ตั้ง fallback model ของห้องนี้เป็น `{channel_fallbacks[channel_key]}` แล้วครับ"
-        current["discord_fallback_models"] = channel_fallbacks
-        save_settings(current)
-        if channel_key in channel_fallbacks:
-            availability = await check_model_availability(current.get("provider", "openai"), channel_fallbacks[channel_key], current)
+        # Reload after the defer and change only this key, so a concurrent
+        # /api/settings save (allowlists etc.) is not overwritten by the stale
+        # snapshot captured before the awaits.
+        with SETTINGS_LOCK:
+            latest = load_settings()
+            latest_fallbacks = latest.get("discord_fallback_models")
+            if not isinstance(latest_fallbacks, dict):
+                latest_fallbacks = {}
+            if model.strip().lower() in {"off", "none", "ปิด"}:
+                latest_fallbacks.pop(channel_key, None)
+                message = "ปิด fallback เฉพาะห้องแล้วครับ (จะใช้ค่า fallback หลักถ้ามี)"
+            else:
+                latest_fallbacks[channel_key] = model.strip()[:200]
+                message = f"ตั้ง fallback model ของห้องนี้เป็น `{latest_fallbacks[channel_key]}` แล้วครับ"
+            latest["discord_fallback_models"] = latest_fallbacks
+            save_settings(latest)
+        if channel_key in latest_fallbacks:
+            availability = await check_model_availability(latest.get("provider", "openai"), latest_fallbacks[channel_key], latest)
             state = "พร้อมใช้งาน" if availability.get("ready") else f"ยังใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
             message += f" · {state}"
         await interaction.followup.send(message)
@@ -3180,10 +3273,16 @@ def models_post():
 @app.put("/api/settings")
 def settings_put():
     """Persist editable settings, including the configured fallback provider."""
+    with SETTINGS_LOCK:
+        return apply_settings_update()
+
+
+def apply_settings_update():
+    """Apply a settings PUT body; call with SETTINGS_LOCK held."""
     body = request.get_json(silent=True) or {}
     current = load_settings()
     previous_provider = normalize_provider(current.get("provider"))
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled", "machine_access"}
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "terminal_enabled", "machine_access"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -3206,6 +3305,16 @@ def settings_put():
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
     current["discord_enabled"] = bool(current.get("discord_enabled"))
     current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
+    # Invalid allowlist entries reject the save instead of being skipped: a
+    # dropped typo would empty the list and silently lift the restriction.
+    allowed_users, invalid_users = parse_discord_ids(current.get("discord_allowed_users"))
+    allowed_channels, invalid_channels = parse_discord_ids(current.get("discord_allowed_channels"))
+    if invalid_users or invalid_channels:
+        return jsonify({
+            "error": "Discord ID ต้องเป็นตัวเลขเท่านั้น: " + ", ".join((invalid_users + invalid_channels)[:5]),
+        }), 400
+    current["discord_allowed_users"] = allowed_users
+    current["discord_allowed_channels"] = allowed_channels
     current["terminal_enabled"] = bool(current.get("terminal_enabled", True))
     current["machine_access"] = bool(current.get("machine_access", True))
     raw_skills = current.get("skills")
@@ -3288,6 +3397,207 @@ def settings_reset():
         SETTINGS_FILE.unlink()
     STATUS_CACHE.clear()
     return jsonify({"ok": True})
+
+
+# Self-update: the web page can run the project's own update.sh. Only the two
+# fixed modes below are accepted, so no user input reaches the command line.
+UPDATE_SCRIPT = PROJECT_ROOT / "update.sh"
+UPDATE_LOG_FILE = Path(os.getenv("AI_WEB_UPDATE_LOG_FILE", "logs/update.log"))
+UPDATE_LOG_TAIL_LINES = 160
+UPDATE_MODES = {"check", "apply"}
+UPDATE_JOB_LOCK = threading.Lock()
+UPDATE_JOB: dict[str, Any] = {}
+# A real update restarts this process, so the job is also persisted: the new
+# server reads it back to report what happened before the restart.
+UPDATE_STATUS_FILE = Path(os.getenv("AI_WEB_UPDATE_STATUS_FILE", "logs/update-status.json"))
+
+
+def update_build_info() -> dict[str, Any]:
+    """Describe the app files on disk; the updater keeps no version number."""
+    try:
+        stat = (PROJECT_ROOT / "app.py").stat()
+    except OSError:
+        return {"app_updated_at": "", "app_size": 0}
+    return {
+        "app_updated_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        "app_size": stat.st_size,
+    }
+
+
+def update_script_ready() -> bool:
+    """Return whether update.sh exists and can be executed."""
+    return UPDATE_SCRIPT.is_file() and os.access(UPDATE_SCRIPT, os.X_OK)
+
+
+def update_log_tail() -> tuple[str, bool]:
+    """Return the end of the update log and whether older lines were dropped."""
+    try:
+        text = UPDATE_LOG_FILE.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return "", False
+    lines = text.splitlines()
+    return "\n".join(lines[-UPDATE_LOG_TAIL_LINES:]), len(lines) > UPDATE_LOG_TAIL_LINES
+
+
+def save_update_status(payload: dict[str, Any]) -> None:
+    """Persist the running update so the next server process can report it."""
+    try:
+        UPDATE_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = UPDATE_STATUS_FILE.with_name(f".{UPDATE_STATUS_FILE.name}.{uuid.uuid4().hex}.tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        os.replace(temp_path, UPDATE_STATUS_FILE)
+    except OSError:
+        return
+
+
+def load_update_status() -> dict[str, Any]:
+    """Read the persisted update record, tolerating a missing or broken file."""
+    try:
+        data = json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def process_is_alive(pid: Any) -> bool:
+    """Return whether the PID recorded for an update is still running."""
+    try:
+        os.kill(int(pid), 0)
+    except (TypeError, ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def update_log_finished_at() -> str:
+    """Use the log's timestamp as the finish time after a server restart."""
+    try:
+        return datetime.fromtimestamp(UPDATE_LOG_FILE.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+    except OSError:
+        return ""
+
+
+def update_log_succeeded() -> bool | None:
+    """Read the updater's own success/failure verdict from its log tail."""
+    tail, _ = update_log_tail()
+    if "✅" in tail:
+        return True
+    if "❌" in tail:
+        return False
+    return None
+
+
+def update_job_snapshot() -> dict[str, Any]:
+    """Report the current update job, falling back to the persisted record."""
+    with UPDATE_JOB_LOCK:
+        process = UPDATE_JOB.get("process")
+        if process is not None:
+            return {
+                "running": process.poll() is None,
+                "job": {
+                    "mode": UPDATE_JOB.get("mode", ""),
+                    "started_at": UPDATE_JOB.get("started_at", ""),
+                    "finished_at": UPDATE_JOB.get("finished_at", ""),
+                    "ok": UPDATE_JOB.get("ok"),
+                    "exit_code": UPDATE_JOB.get("exit_code"),
+                },
+            }
+    persisted = load_update_status()
+    if not persisted:
+        return {
+            "running": False,
+            "job": {"mode": "", "started_at": "", "finished_at": "", "ok": None, "exit_code": None},
+        }
+    # The updater runs in its own session, so it outlives the restart we just did.
+    running = process_is_alive(persisted.get("pid"))
+    return {
+        "running": running,
+        "job": {
+            "mode": persisted.get("mode", ""),
+            "started_at": persisted.get("started_at", ""),
+            "finished_at": "" if running else update_log_finished_at(),
+            "ok": None if running else update_log_succeeded(),
+            "exit_code": None,
+        },
+    }
+
+
+def watch_update_job(process: "subprocess.Popen[bytes]") -> None:
+    """Record the updater's exit status after the detached process finishes."""
+    code = process.wait()
+    with UPDATE_JOB_LOCK:
+        UPDATE_JOB["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        UPDATE_JOB["exit_code"] = code
+        UPDATE_JOB["ok"] = code == 0
+
+
+@app.get("/api/update")
+def update_state():
+    """Report the installed build, the last update run, and its log tail."""
+    log_tail, log_truncated = update_log_tail()
+    snapshot = update_job_snapshot()
+    return jsonify({
+        **update_build_info(),
+        "script_available": update_script_ready(),
+        **snapshot,
+        "log": log_tail,
+        "log_truncated": log_truncated,
+    })
+
+
+@app.post("/api/update/run")
+def update_run():
+    """Run update.sh for a dry-run check or a real update, detached from Flask."""
+    body = request.get_json(silent=True) or {}
+    mode = str(body.get("mode") or "apply").strip().lower()
+    if mode not in UPDATE_MODES:
+        return jsonify({"ok": False, "error": "โหมดอัปเดตไม่ถูกต้อง"}), 400
+    if not update_script_ready():
+        return jsonify({"ok": False, "error": "ไม่พบสคริปต์ update.sh ที่รันได้ในโฟลเดอร์โปรเจกต์"}), 400
+    # Check the same view GET /api/update reports, so a job that is still running
+    # after a server restart is not truncated and replaced by a second updater.
+    if update_job_snapshot()["running"]:
+        return jsonify({"ok": False, "error": "มีการอัปเดตกำลังทำงานอยู่"}), 409
+    with UPDATE_JOB_LOCK:
+        process = UPDATE_JOB.get("process")
+        if process and process.poll() is None:
+            return jsonify({"ok": False, "error": "มีการอัปเดตกำลังทำงานอยู่"}), 409
+        args = [str(UPDATE_SCRIPT)]
+        if mode == "check":
+            # A dry run only compares files, so it must not write or restart.
+            args += ["--dry-run", "--no-restart"]
+        try:
+            UPDATE_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(UPDATE_LOG_FILE, "wb") as handle:
+                new_process = subprocess.Popen(
+                    args,
+                    cwd=str(PROJECT_ROOT),
+                    stdin=subprocess.DEVNULL,
+                    stdout=handle,
+                    stderr=subprocess.STDOUT,
+                    # A real update restarts the server; a separate session keeps
+                    # this updater alive while the web process is replaced.
+                    start_new_session=True,
+                    env={**os.environ, "AI_WEB_UPDATE_FROM_WEB": "1"},
+                )
+        except OSError as exc:
+            return jsonify({"ok": False, "error": f"เริ่มอัปเดตไม่สำเร็จ: {exc}"}), 500
+        started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        UPDATE_JOB.clear()
+        UPDATE_JOB.update({
+            "process": new_process,
+            "pid": new_process.pid,
+            "mode": mode,
+            "started_at": started_at,
+            "finished_at": "",
+            "ok": None,
+            "exit_code": None,
+        })
+        save_update_status({"mode": mode, "started_at": started_at, "pid": new_process.pid})
+    threading.Thread(target=watch_update_job, args=(new_process,), daemon=True).start()
+    log_event("system.update_started", "เริ่มอัปเดตระบบจากหน้าเว็บ", mode=mode)
+    return jsonify({"ok": True, "mode": mode, "pid": new_process.pid}), 202
 
 
 @app.post("/api/chat")

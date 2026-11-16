@@ -140,7 +140,7 @@
             <div class="messages">
               <div id="messages">
                 <div class="session-divider">
-                  <span>2026-11-03 · SESSION READY #T-098</span>
+                  <span data-i18n="history.startedNew">เริ่มบทสนทนาใหม่</span>
                 </div>
               </div>
               <form class="chat-form" id="chat-form">
@@ -315,6 +315,17 @@
                   data-i18n="settings.group.security"
                 >
                   ความปลอดภัย
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="settings-tab-update"
+                  aria-controls="settings-panel-update"
+                  aria-selected="false"
+                  data-settings-section="update"
+                  data-i18n="settings.group.update"
+                >
+                  อัปเดต
                 </button>
               </div>
               <div class="settings-panels">
@@ -766,6 +777,35 @@
                           value="!ai"
                           maxlength="30"
                       /></label>
+                      <label class="full"
+                        ><span data-i18n="settings.discordAllowedChannels"
+                          >จำกัดเฉพาะช่อง (Channel ID)</span
+                        ><input
+                          id="discord_allowed_channels"
+                          placeholder="เช่น 123456789012345678, 987654321098765432"
+                          data-i18n-placeholder="settings.discordAllowedChannelsPlaceholder"
+                        /><small
+                          class="hint"
+                          data-i18n="settings.discordAllowedChannelsHint"
+                          >เว้นว่างเพื่อให้ bot ตอบได้ทุกช่อง ใส่ Channel ID
+                          คั่นด้วยจุลภาค (DM ใช้ Channel ID ของ DM)</small
+                        ></label
+                      >
+                      <label class="full"
+                        ><span data-i18n="settings.discordAllowedUsers"
+                          >จำกัดเฉพาะผู้ใช้ (User ID)</span
+                        ><input
+                          id="discord_allowed_users"
+                          placeholder="เช่น 123456789012345678, 987654321098765432"
+                          data-i18n-placeholder="settings.discordAllowedUsersPlaceholder"
+                        /><small
+                          class="hint"
+                          data-i18n="settings.discordAllowedUsersHint"
+                          >เว้นว่างเพื่อให้ทุกคนในช่องที่อนุญาตใช้งานได้
+                          ใส่ User ID คั่นด้วยจุลภาค (เปิด Developer Mode
+                          แล้วคลิกขวาที่ผู้ใช้ &gt; Copy ID)</small
+                        ></label
+                      >
                     </div>
                   </div>
                   <div class="card">
@@ -832,6 +872,76 @@
                       อุปกรณ์ที่เชื่อมต่อ
                     </h3>
                     <div id="auth-sessions"></div>
+                  </div>
+                </div>
+                <div
+                  class="settings-panel"
+                  id="settings-panel-update"
+                  role="tabpanel"
+                  aria-labelledby="settings-tab-update"
+                  data-settings-panel="update"
+                >
+                  <div class="settings-panel-head">
+                    <h2 data-i18n="settings.group.update">อัปเดต</h2>
+                    <p class="hint" data-i18n="settings.group.updateDesc">
+                      ดึงไฟล์เวอร์ชันใหม่จาก GitHub และรีสตาร์ตเซิร์ฟเวอร์
+                    </p>
+                  </div>
+                  <div class="card">
+                    <h2 data-i18n="settings.updateBuildTitle">
+                      เวอร์ชันที่ติดตั้ง
+                    </h2>
+                    <p class="hint" data-i18n="settings.updateBuildHint">
+                      เวลาที่ไฟล์แอปถูกแก้ไขล่าสุดบนเครื่องนี้ และสถานะสคริปต์
+                      updater
+                    </p>
+                    <div class="update-metrics">
+                      <div class="update-metric">
+                        <span data-i18n="settings.updateAppUpdated"
+                          >ไฟล์แอปอัปเดตล่าสุด</span
+                        >
+                        <strong id="update-app-updated">—</strong>
+                      </div>
+                      <div class="update-metric">
+                        <span data-i18n="settings.updateScript"
+                          >สคริปต์ update.sh</span
+                        >
+                        <strong id="update-script-state">—</strong>
+                      </div>
+                    </div>
+                    <div class="update-actions">
+                      <button
+                        class="secondary"
+                        id="update-check"
+                        type="button"
+                        data-i18n="settings.updateCheck"
+                      >
+                        ตรวจสอบการอัปเดต
+                      </button>
+                      <button
+                        id="update-run"
+                        type="button"
+                        data-i18n="settings.updateRun"
+                      >
+                        อัปเดตเลย
+                      </button>
+                    </div>
+                    <p class="hint update-status" id="update-status">
+                      ยังไม่ได้ตรวจสอบในรอบนี้
+                    </p>
+                    <p class="hint update-note" data-i18n="settings.updateNote">
+                      การอัปเดตจะดาวน์โหลดจาก GitHub แล้วรีสตาร์ตเซิร์ฟเวอร์
+                      โดยไม่แตะ .env การตั้งค่า ประวัติ หรือใบรับรอง
+                      ระหว่างรีสตาร์ตหน้าเว็บอาจขาดการเชื่อมต่อชั่วครู่
+                    </p>
+                  </div>
+                  <div class="card">
+                    <div class="card-head">
+                      <h2 data-i18n="settings.updateLogTitle">
+                        ผลการทำงาน
+                      </h2>
+                    </div>
+                    <pre class="update-log is-empty" id="update-log"></pre>
                   </div>
                 </div>
               </div>

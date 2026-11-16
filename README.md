@@ -128,6 +128,8 @@ Changing the provider/model and setting a fallback require server administrator 
 
 The token is stored server-side in `.app-settings.json`, which is ignored by Git. Alternatively, set `DISCORD_BOT_TOKEN` and `DISCORD_BOT_PREFIX` in `.env`.
 
+**Limit who can use the bot.** The Settings page has two allowlists: *Allowed channels* (Channel IDs) and *Allowed users* (User IDs). Leave a list blank for no limit. When a list is filled in, messages and slash commands from any other channel or user are ignored, so only the people and rooms you list can spend your API credit. A DM is allowed by its own DM Channel ID; enable Discord **Developer Mode** and use *Copy ID* on a channel or user to get the number. The `.env` equivalents are `DISCORD_ALLOWED_CHANNEL_IDS` and `DISCORD_ALLOWED_USER_IDS` (comma-separated). Administrator rights are still required for `/models`, `/fallback`, `/invite`, and schedule tools.
+
 ### Scheduler
 
 Scheduled jobs run while the server is running. Set `AI_WEB_ENABLE_SCHEDULER=1` to enable the scheduler for WSGI deployments.

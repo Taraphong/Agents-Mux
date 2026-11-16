@@ -234,6 +234,34 @@ You must use `--restart` (or `--stop` and then `--start`) because `--start` does
 
 ## Update the project
 
+If the project folder has this script, run it on the machine that serves the app:
+
+```bash
+cd ~/ai-web
+./update.sh
+```
+
+`update.sh` downloads the newest app files from GitHub (default `main`), installs
+dependencies only when `requirements.txt` changed, restarts the server, and
+checks that it answers. It never touches `.env`, `.app-settings.json`,
+`.app-auth.json`, `certs/`, `history/`, `logs/`, or `.venv`. Use
+`./update.sh --branch <name>` for another branch and `--dry-run` to preview the
+change.
+
+If the GitHub repository is private, give the updater a read-only token:
+
+```bash
+# Ask for the token without echoing it, then export it for this shell only.
+read -rsp "GitHub token: " AI_WEB_UPDATE_TOKEN; echo
+export AI_WEB_UPDATE_TOKEN
+./update.sh
+# or export GITHUB_TOKEN instead (same read prompt)
+```
+
+The token is used only for the download and is never written to disk.
+
+With a Git checkout you can still update manually:
+
 ```bash
 cd ~/ai-web
 git pull
