@@ -3025,28 +3025,18 @@ def representation_etag(base_etag: str, gzipped: bool) -> str:
     return f'"{token}-gzip"' if gzipped else f'"{token}"'
 
 
-def etag_matches(etag: str) -> bool:
-    """Report whether the request's If-None-Match selects this representation."""
-    header = request.headers.get("If-None-Match", "").strip()
-    if not header:
-        return False
-    if header == "*":
-        return True
-    for candidate in header.split(","):
-        candidate = candidate.strip()
-        if candidate.startswith("W/"):
-            candidate = candidate[2:].strip()
-        if candidate == etag:
-            return True
-    return False
-
-
-def compress_response(response, cache_key: tuple[str, int, int] | None = None):
-    """Gzip a text response, keeping the ETag specific to that representation.
+def compress_response(
+    response,
+    cache_key: tuple[str, int, int] | None = None,
+    accept_ranges: bool = False,
+):
+    """Gzip a text response and answer preconditions for the chosen representation.
 
     A gzip and an identity body of the same file are different representations:
-    they get different ETags, and a conditional request is answered with 304
-    only when it names the representation this request would receive.
+    they get different ETags, and validators, date preconditions, and byte ranges
+    are judged only once the representation is known.  A conditional request is
+    answered with 304 only when it names the representation this request would
+    receive, so the identity ETag can never confirm a gzip body.
     """
     if response.status_code != 200 or response.headers.get("Content-Encoding"):
         return response
@@ -3062,18 +3052,19 @@ def compress_response(response, cache_key: tuple[str, int, int] | None = None):
             size = 0
     gzipped = accepts_gzip() and size >= GZIP_MIN_BYTES
     base_etag = response.get_etag()[0] or hashlib.sha1(body).hexdigest()
-    etag = representation_etag(base_etag, gzipped)
     response.headers.add("Vary", "Accept-Encoding")
-    if etag_matches(etag):
-        response.status_code = 304
-        response.set_data(b"")
-        response.headers["ETag"] = etag
-        return response
     # The value is already quoted; set_etag() would reject it as invalid.
-    response.headers["ETag"] = etag
+    response.headers["ETag"] = representation_etag(base_etag, gzipped)
     if gzipped and body:
         response.set_data(gzip_body(body, cache_key))
         response.headers["Content-Encoding"] = "gzip"
+    # Preconditions and ranges belong to the representation chosen above; letting
+    # them run earlier would let the file's identity validators answer for gzip.
+    response.make_conditional(
+        request,
+        accept_ranges=accept_ranges,
+        complete_length=len(response.get_data()),
+    )
     return response
 
 
@@ -3086,7 +3077,9 @@ def page_asset(page: str, filename: str):
     """
     if page not in PAGE_ASSETS or Path(filename).suffix.lower() not in {".css", ".js"}:
         abort(404)
-    response = send_from_directory(TEMPLATES_ROOT / page, filename)
+    # Conditional evaluation is deferred to compress_response: the file's identity
+    # validators must not decide the response before the encoding is chosen.
+    response = send_from_directory(TEMPLATES_ROOT / page, filename, conditional=False)
     # send_from_directory streams the file; the body must be readable here so it
     # can be gzipped before it travels over the slow link.
     response.direct_passthrough = False
@@ -3097,7 +3090,7 @@ def page_asset(page: str, filename: str):
         cache_key = (str(TEMPLATES_ROOT / page / filename), stat.st_mtime_ns, stat.st_size)
     except OSError:
         cache_key = None
-    return compress_response(response, cache_key)
+    return compress_response(response, cache_key, accept_ranges=True)
 
 
 @app.after_request
