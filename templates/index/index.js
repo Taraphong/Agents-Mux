@@ -3240,6 +3240,20 @@ function renderCustomApiKeys() {
     container.appendChild(row);
   });
 }
+async function refreshCustomApiKeys() {
+  try {
+    const response = await fetch("/api/settings");
+    if (!response.ok) return;
+    const settings = await response.json();
+    customApiKeys = Array.isArray(settings.custom_api_keys)
+      ? settings.custom_api_keys
+      : [];
+    renderCustomApiKeys();
+  } catch (error) {
+    // Keep the list that is already shown when the refresh fails.
+    console.warn(t("settings.customKeyAddFailed"), error);
+  }
+}
 async function saveCustomApiKey() {
   const name = $("custom-key-name").value.trim();
   const value = $("custom-key-value").value.trim();
@@ -3259,7 +3273,7 @@ async function saveCustomApiKey() {
     }
     $("custom-key-name").value = "";
     $("custom-key-value").value = "";
-    await loadSettings();
+    await refreshCustomApiKeys();
     showNotice(t("settings.customKeyAdded"));
   } catch (error) {
     showNotice(error.message || t("settings.customKeyAddFailed"), true);
@@ -3276,7 +3290,7 @@ async function deleteCustomApiKey(name) {
     if (!response.ok) {
       throw new Error(data.error || t("settings.customKeyAddFailed"));
     }
-    await loadSettings();
+    await refreshCustomApiKeys();
     showNotice(t("settings.customKeyDeleted"));
   } catch (error) {
     showNotice(error.message || t("settings.customKeyAddFailed"), true);
