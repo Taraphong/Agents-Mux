@@ -66,7 +66,7 @@ This is a volunteer-maintained personal project, so response is **best effort** 
 | Web terminal | Real shell, project-root confined (best-effort path guard), 60-second timeout, 100 KB output cap, and sensitive environment variables (names containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL`) are stripped before the process starts. |
 | Uploads | Requests are capped by `MAX_CONTENT_LENGTH` (default 8 MB, `AI_WEB_MAX_CONTENT_BYTES`). |
 | TLS | The app can terminate HTTPS itself with certificate files or an ad-hoc certificate, or sit behind a TLS-terminating reverse proxy. `ProxyFix` is enabled only when `AI_WEB_TRUST_PROXY=1`, and that must be set only when the proxy overwrites `X-Forwarded-Proto` / `X-Forwarded-Host` on every request. |
-| Discord bot | Optional and off by default. It never exposes filesystem or command tools; only `create_schedule` / `update_schedule` are auto-approved, and only for guild members with the Discord **Administrator** permission. Any Discord user who can DM the bot or mention it in a guild can chat with the configured model and spend API credit. |
+| Discord bot | Optional and off by default. It never exposes filesystem or command tools; only `create_schedule` / `update_schedule` are auto-approved, and only for guild members with the Discord **Administrator** permission. By default any Discord user who can DM the bot or mention it in a guild can chat with the configured model and spend API credit; set **Allowed channels** / **Allowed users** in Settings (or `DISCORD_ALLOWED_CHANNEL_IDS` / `DISCORD_ALLOWED_USER_IDS`) to ignore everyone else. |
 
 ## Hardening checklist
 
@@ -79,7 +79,7 @@ This is a volunteer-maintained personal project, so response is **best effort** 
 - Review **Settings → Security and device pairing** regularly, revoke devices you no longer use, and rotate provider keys if one was ever pasted into a chat, a log, or a commit.
 - Treat `history/` and `logs/` as sensitive: conversations can contain personal data and text from files the agent read.
 - Keep dependencies current. Dependabot proposes updates; review and merge them, then restart the server.
-- Restrict the Discord bot (private guild, limited DMs) if you enable it, and remember its answers are billed to your provider key.
+- Restrict the Discord bot (private guild, limited DMs) if you enable it, and remember its answers are billed to your provider key. The **Allowed channels** / **Allowed users** lists are the supported way to enforce that inside the app.
 - Back up `.env` and `.app-auth.json` securely if you want pairing to survive a rebuild, and never copy them between machines.
 
 ## Protecting secrets when contributing
@@ -97,6 +97,6 @@ This is a volunteer-maintained personal project, so response is **best effort** 
 - **The operator can redirect keys.** `Base URL` is configurable, so whoever can edit Settings can send the stored provider key to another endpoint. Paired devices are fully trusted.
 - **Prompt injection is possible.** Model output is not trusted input. Tool use requires approval, but an approved command runs as-is.
 - **No chat rate limit.** Pairing attempts are limited, but a paired device can send as many prompts as it likes, at your API cost.
-- **The Discord bot trusts DMs.** Anyone who can message the bot gets model access (but not filesystem or command tools), unless you restrict who can reach it.
+- **The Discord bot trusts DMs unless restricted.** Anyone who can message the bot gets model access (but not filesystem or command tools). Set **Allowed users** and/or **Allowed channels** so the bot ignores everyone else.
 - **Self-signed TLS warns.** Browsers warn on first visit; accepting the warning on an untrusted network exposes the session cookie to interception.
 - **No security audit.** This project has not been pen-tested or audited. Review the code before exposing it to anyone else.

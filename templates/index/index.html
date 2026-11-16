@@ -140,7 +140,7 @@
             <div class="messages">
               <div id="messages">
                 <div class="session-divider">
-                  <span>2026-11-03 · SESSION READY #T-098</span>
+                  <span data-i18n="history.startedNew">เริ่มบทสนทนาใหม่</span>
                 </div>
               </div>
               <form class="chat-form" id="chat-form">
@@ -766,6 +766,35 @@
                           value="!ai"
                           maxlength="30"
                       /></label>
+                      <label class="full"
+                        ><span data-i18n="settings.discordAllowedChannels"
+                          >จำกัดเฉพาะช่อง (Channel ID)</span
+                        ><input
+                          id="discord_allowed_channels"
+                          placeholder="เช่น 123456789012345678, 987654321098765432"
+                          data-i18n-placeholder="settings.discordAllowedChannelsPlaceholder"
+                        /><small
+                          class="hint"
+                          data-i18n="settings.discordAllowedChannelsHint"
+                          >เว้นว่างเพื่อให้ bot ตอบได้ทุกช่อง ใส่ Channel ID
+                          คั่นด้วยจุลภาค (DM ใช้ Channel ID ของ DM)</small
+                        ></label
+                      >
+                      <label class="full"
+                        ><span data-i18n="settings.discordAllowedUsers"
+                          >จำกัดเฉพาะผู้ใช้ (User ID)</span
+                        ><input
+                          id="discord_allowed_users"
+                          placeholder="เช่น 123456789012345678, 987654321098765432"
+                          data-i18n-placeholder="settings.discordAllowedUsersPlaceholder"
+                        /><small
+                          class="hint"
+                          data-i18n="settings.discordAllowedUsersHint"
+                          >เว้นว่างเพื่อให้ทุกคนในช่องที่อนุญาตใช้งานได้
+                          ใส่ User ID คั่นด้วยจุลภาค (เปิด Developer Mode
+                          แล้วคลิกขวาที่ผู้ใช้ &gt; Copy ID)</small
+                        ></label
+                      >
                     </div>
                   </div>
                   <div class="card">

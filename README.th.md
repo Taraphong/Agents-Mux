@@ -128,6 +128,8 @@ Skill ที่เรียกผ่านคำสั่ง `/` จะมีผ
 
 Token จะถูกเก็บไว้ฝั่งเซิร์ฟเวอร์ใน `.app-settings.json` ซึ่งไม่ถูก commit เข้า Git หรือจะตั้ง `DISCORD_BOT_TOKEN` และ `DISCORD_BOT_PREFIX` ใน `.env` ก็ได้
 
+**จำกัดผู้ที่ใช้งาน bot ได้** ในหน้า Settings มีรายการอนุญาตสองช่อง: *จำกัดเฉพาะช่อง (Channel ID)* และ *จำกัดเฉพาะผู้ใช้ (User ID)* ถ้าเว้นว่างจะไม่จำกัด เมื่อใส่รายการแล้ว ข้อความและ slash command จากช่องหรือผู้ใช้ที่ไม่อยู่ในรายการจะถูกเพิกเฉย ทำให้เฉพาะคนและห้องที่ระบุเท่านั้นใช้เครดิต API ได้ DM จะได้รับอนุญาตตาม Channel ID ของ DM เอง เปิด **Developer Mode** ใน Discord แล้วใช้ *Copy ID* ที่ช่องหรือผู้ใช้เพื่อดูตัวเลข ค่าใน `.env` ที่เทียบเท่าคือ `DISCORD_ALLOWED_CHANNEL_IDS` และ `DISCORD_ALLOWED_USER_IDS` (คั่นด้วยจุลภาค) ส่วนคำสั่ง `/models`, `/fallback`, `/invite` และเครื่องมือสร้างงานตามเวลายังต้องมีสิทธิ์ Administrator เช่นเดิม
+
 ### Scheduler
 
 งานตามเวลาจะทำงานเมื่อเซิร์ฟเวอร์เปิดอยู่ ใช้ `AI_WEB_ENABLE_SCHEDULER=1` เพื่อเปิดใช้งาน scheduler สำหรับการ deploy แบบ WSGI

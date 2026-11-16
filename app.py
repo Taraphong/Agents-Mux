@@ -247,6 +247,12 @@ DEFAULT_SETTINGS = {
     "fallback_model": os.getenv("AI_FALLBACK_MODEL", ""),
     "discord_enabled": bool(os.getenv("DISCORD_BOT_TOKEN", "").strip()),
     "discord_prefix": os.getenv("DISCORD_BOT_PREFIX", "!ai"),
+    "discord_allowed_users": [
+        item.strip() for item in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if item.strip()
+    ],
+    "discord_allowed_channels": [
+        item.strip() for item in os.getenv("DISCORD_ALLOWED_CHANNEL_IDS", "").split(",") if item.strip()
+    ],
     "terminal_enabled": True,
     "machine_access": True,
 }
@@ -295,6 +301,44 @@ def normalize_provider(value: Any) -> str:
     """Clamp an unknown provider name to a supported provider id."""
     provider = str(value or "openai").strip().lower()
     return provider if provider in PROVIDERS else "openai"
+
+
+def normalize_discord_ids(value: Any, limit: int = 100) -> list[str]:
+    """Normalize a Discord allowlist into unique numeric IDs.
+
+    Accepts a comma/space separated string or a list, because the settings API
+    accepts both the web form input and a JSON array.
+    """
+    if isinstance(value, str):
+        raw_items: list[Any] = re.split(r"[\s,;]+", value)
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        raw_items = []
+    ids: list[str] = []
+    for item in raw_items:
+        item = str(item).strip()
+        if not item or not item.isdigit() or item in ids:
+            continue
+        ids.append(item)
+        if len(ids) >= limit:
+            break
+    return ids
+
+
+def discord_access_allowed(settings: dict[str, Any], channel_id: Any, user_id: Any) -> bool:
+    """Return whether a Discord channel/user pair passes the allowlists.
+
+    An empty allowlist means "no restriction", so existing installs keep
+    working after the upgrade.
+    """
+    allowed_channels = normalize_discord_ids(settings.get("discord_allowed_channels"))
+    allowed_users = normalize_discord_ids(settings.get("discord_allowed_users"))
+    if allowed_channels and str(channel_id) not in allowed_channels:
+        return False
+    if allowed_users and str(user_id) not in allowed_users:
+        return False
+    return True
 
 
 def stored_api_keys(settings: dict[str, Any]) -> dict[str, str]:
@@ -1935,6 +1979,22 @@ def start_discord_bot() -> None:
     prefix = str(settings.get("discord_prefix") or "!ai").strip() or "!ai"
     commands_synced = False
 
+    class AccessControlledCommandTree(discord.app_commands.CommandTree):
+        """Reject slash commands from channels or users outside the allowlists."""
+
+        async def interaction_check(self, interaction: Any) -> bool:
+            if discord_access_allowed(
+                load_settings(),
+                getattr(interaction, "channel_id", ""),
+                getattr(getattr(interaction, "user", None), "id", ""),
+            ):
+                return True
+            await interaction.response.send_message(
+                "บอทนี้ถูกจำกัดสิทธิ์ให้ใช้ได้เฉพาะบางผู้ใช้หรือบางช่องเท่านั้นครับ",
+                ephemeral=True,
+            )
+            return False
+
     class AIClient(discord.Client):
         async def on_ready(self) -> None:
             """Sync slash commands once and log the successful connection."""
@@ -1950,7 +2010,19 @@ def start_discord_bot() -> None:
 
         async def on_message(self, message: Any) -> None:
             """Reply to mentions, prefixed messages, and DMs through the agent."""
-            if message.author == self.user:
+            if message.author == self.user or getattr(message.author, "bot", False):
+                return
+            if not discord_access_allowed(
+                load_settings(),
+                getattr(message.channel, "id", ""),
+                getattr(message.author, "id", ""),
+            ):
+                log_event(
+                    "discord.ignored",
+                    "ไม่ตอบข้อความ Discord ที่อยู่นอกรายการผู้ใช้หรือช่องที่อนุญาต",
+                    channel=str(getattr(message.channel, "id", "")),
+                    user=str(getattr(message.author, "id", "")),
+                )
                 return
             content = str(message.content or "").strip()
             mentioned = self.user and self.user in message.mentions
@@ -1974,7 +2046,7 @@ def start_discord_bot() -> None:
                 await message.reply(chunk, mention_author=False)
 
     client = AIClient(intents=intents)
-    command_tree = discord.app_commands.CommandTree(client)
+    command_tree = AccessControlledCommandTree(client)
 
     def member_is_admin(member: Any) -> bool:
         """Return whether a guild member has server administrator rights."""
@@ -3183,7 +3255,7 @@ def settings_put():
     body = request.get_json(silent=True) or {}
     current = load_settings()
     previous_provider = normalize_provider(current.get("provider"))
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "terminal_enabled", "machine_access"}
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "terminal_enabled", "machine_access"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -3206,6 +3278,8 @@ def settings_put():
     current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
     current["discord_enabled"] = bool(current.get("discord_enabled"))
     current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
+    current["discord_allowed_users"] = normalize_discord_ids(current.get("discord_allowed_users"))
+    current["discord_allowed_channels"] = normalize_discord_ids(current.get("discord_allowed_channels"))
     current["terminal_enabled"] = bool(current.get("terminal_enabled", True))
     current["machine_access"] = bool(current.get("machine_access", True))
     raw_skills = current.get("skills")

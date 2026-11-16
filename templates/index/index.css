@@ -346,16 +346,26 @@ header h1 {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 10px 0 25px;
 }
 .message {
   width: fit-content;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   padding: 14px 17px;
   border-radius: 15px;
   margin: 11px 0;
   max-width: 82%;
   line-height: 1.6;
+}
+.message-text {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .message-meta {
   display: block;
@@ -1270,6 +1280,7 @@ header h1 {
   width: min(1120px, 100%);
   padding: 26px 30px 30px;
   height: calc(100vh - 58px);
+  height: calc(100dvh - 58px);
 }
 #chat-view {
   max-width: 900px;

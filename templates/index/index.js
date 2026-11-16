@@ -184,6 +184,12 @@ const I18N = {
     "settings.discordTokenHintHas": "มี token แล้ว — เว้นว่างเพื่อคงค่าเดิม",
     "settings.discordTokenHintMissing": "ยังไม่มี token — ใส่ token จาก Discord Developer Portal",
     "settings.discordPrefix": "Prefix",
+    "settings.discordAllowedChannels": "จำกัดเฉพาะช่อง (Channel ID)",
+    "settings.discordAllowedChannelsPlaceholder": "เช่น 123456789012345678, 987654321098765432",
+    "settings.discordAllowedChannelsHint": "เว้นว่างเพื่อให้ bot ตอบได้ทุกช่อง ใส่ Channel ID คั่นด้วยจุลภาค (DM ใช้ Channel ID ของ DM)",
+    "settings.discordAllowedUsers": "จำกัดเฉพาะผู้ใช้ (User ID)",
+    "settings.discordAllowedUsersPlaceholder": "เช่น 123456789012345678, 987654321098765432",
+    "settings.discordAllowedUsersHint": "เว้นว่างเพื่อให้ทุกคนในช่องที่อนุญาตใช้งานได้ ใส่ User ID คั่นด้วยจุลภาค (เปิด Developer Mode แล้วคลิกขวาที่ผู้ใช้ > Copy ID)",
     "settings.terminalTitle": "Terminal",
     "settings.terminalHint":
       "เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง (เริ่มต้นในโฟลเดอร์โปรเจกต์)",
@@ -383,7 +389,6 @@ const I18N = {
     "history.deleteFailed": "ลบประวัติไม่สำเร็จ",
     "history.startedNew": "เริ่มบทสนทนาใหม่",
     "history.emptyHint": "เริ่มบทสนทนาใหม่ได้เลยครับ",
-    "session.ready": "2026-11-03 · SESSION READY #T-098",
   },
   en: {
     "app.title": "AI Control Center",
@@ -563,6 +568,12 @@ const I18N = {
     "settings.discordTokenHintHas": "A token is saved — leave blank to keep it",
     "settings.discordTokenHintMissing": "No token yet — enter a token from the Discord Developer Portal",
     "settings.discordPrefix": "Prefix",
+    "settings.discordAllowedChannels": "Allowed channels (Channel ID)",
+    "settings.discordAllowedChannelsPlaceholder": "e.g. 123456789012345678, 987654321098765432",
+    "settings.discordAllowedChannelsHint": "Leave blank to reply in every channel. Separate Channel IDs with commas (a DM uses the DM's Channel ID).",
+    "settings.discordAllowedUsers": "Allowed users (User ID)",
+    "settings.discordAllowedUsersPlaceholder": "e.g. 123456789012345678, 987654321098765432",
+    "settings.discordAllowedUsersHint": "Leave blank to allow everyone in the allowed channels. Separate User IDs with commas (enable Developer Mode, then right-click a user > Copy ID).",
     "settings.terminalTitle": "Terminal",
     "settings.terminalHint":
       "Show or hide the Terminal tab in the sidebar. It starts in the project folder.",
@@ -761,7 +772,6 @@ const I18N = {
     "history.deleteFailed": "Could not delete the conversation",
     "history.startedNew": "Started a new conversation",
     "history.emptyHint": "You can start a new conversation.",
-    "session.ready": "2026-11-03 · SESSION READY #T-098",
   },
 };
 function getSavedLanguage() {
@@ -3161,6 +3171,14 @@ async function loadSettings() {
   $("machine_access").checked = s.machine_access !== false;
   applyTerminalEnabled(s.terminal_enabled !== false);
   $("discord_prefix").value = s.discord_prefix ?? "!ai";
+  $("discord_allowed_channels").value = Array.isArray(
+    s.discord_allowed_channels,
+  )
+    ? s.discord_allowed_channels.join(", ")
+    : s.discord_allowed_channels || "";
+  $("discord_allowed_users").value = Array.isArray(s.discord_allowed_users)
+    ? s.discord_allowed_users.join(", ")
+    : s.discord_allowed_users || "";
   $("discord_token").value = "";
   hasDiscordToken = !!s.has_discord_token;
   updateDiscordTokenHint();
@@ -3208,6 +3226,8 @@ function collectSettingsBody() {
     discord_enabled: $("discord_enabled").checked,
     discord_token: $("discord_token").value,
     discord_prefix: $("discord_prefix").value,
+    discord_allowed_channels: $("discord_allowed_channels").value,
+    discord_allowed_users: $("discord_allowed_users").value,
     terminal_enabled: $("terminal_enabled").checked,
     machine_access: $("machine_access").checked,
   };
@@ -3645,10 +3665,7 @@ function renderMessages(keepTyping = false) {
       const divider = document.createElement("div");
       divider.className = "session-divider";
       const span = document.createElement("span");
-      span.textContent =
-        emptyConversationMode === "new"
-          ? t("history.startedNew")
-          : t("session.ready");
+      span.textContent = t("history.startedNew");
       divider.appendChild(span);
       container.appendChild(divider);
     }
