@@ -957,10 +957,10 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             # A real shell with the app user's privileges: any binary, pipes,
             # sudo (when the user may run it without a password prompt), and
             # any path on the machine. The approval click is the boundary.
-            returncode, stdout, stderr, timed_out, truncated, duration_ms = run_terminal_process(command, PROJECT_ROOT)
+            returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_terminal_process(command, PROJECT_ROOT)
             if timed_out:
                 returncode = 124
-            secrets_found = terminal_secret_values()
+            secrets_found = terminal_secret_values(launch_secrets)
             result = {
                 "tool": name,
                 "command": redact_terminal_output(command, secrets_found),
@@ -1008,8 +1008,13 @@ def terminal_shell() -> str:
     return "sh"
 
 
-def terminal_environment() -> dict[str, str]:
-    """Inherit the server environment without exposing credentials to commands."""
+def terminal_environment() -> tuple[dict[str, str], list[str]]:
+    """Inherit the server environment without exposing credentials to commands.
+
+    Returns the child environment plus the custom key values injected into it,
+    so a command's output can still be redacted when a key is deleted or
+    replaced while that command is still running.
+    """
     env = {
         name: value
         for name, value in os.environ.items()
@@ -1017,22 +1022,28 @@ def terminal_environment() -> dict[str, str]:
     }
     # Extra keys saved in Settings are exposed by name so a skill or command
     # can use e.g. "$WEATHER_API_KEY" without the value ever reaching the chat.
+    injected: list[str] = []
     try:
         for name, value in stored_custom_api_keys(load_settings()).items():
-            env.setdefault(name, value)
+            if name in env:
+                continue
+            env[name] = value
+            injected.append(value)
     except (OSError, ValueError):
         pass
     env.setdefault("TERM", "xterm-256color")
     env.setdefault("LANG", "C.UTF-8")
     env["PYTHONUNBUFFERED"] = "1"
-    return env
+    return env, injected
 
 
-def terminal_secret_values() -> list[str]:
+def terminal_secret_values(extra: list[str] | None = None) -> list[str]:
     """Collect secret values that terminal output must never expose."""
     settings = terminal_settings()
     values = {value for value in stored_api_keys(settings).values() if value}
     values.update(stored_custom_api_keys(settings).values())
+    if extra:
+        values.update(value for value in extra if value)
     discord_token = get_discord_token(settings)
     if discord_token:
         values.add(discord_token)
@@ -1199,10 +1210,11 @@ def terminal_identity() -> tuple[str, str]:
     return user, host
 
 
-def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int]:
+def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
     """Run a shell command with capped output and a hard timeout for the whole process group."""
     started_at = time.perf_counter()
     timed_out = False
+    env, injected_secrets = terminal_environment()
     with tempfile.TemporaryFile() as out_file, tempfile.TemporaryFile() as err_file:
         process = subprocess.Popen(
             command,
@@ -1212,7 +1224,7 @@ def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, 
             stdin=subprocess.DEVNULL,
             stdout=out_file,
             stderr=err_file,
-            env=terminal_environment(),
+            env=env,
             start_new_session=True,
         )
         try:
@@ -1227,7 +1239,7 @@ def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, 
         stdout, stdout_cut = read_terminal_capture(out_file)
         stderr, stderr_cut = read_terminal_capture(err_file)
     duration_ms = round((time.perf_counter() - started_at) * 1000)
-    return process.returncode, stdout, stderr, timed_out, stdout_cut or stderr_cut, duration_ms
+    return process.returncode, stdout, stderr, timed_out, stdout_cut or stderr_cut, duration_ms, injected_secrets
 
 
 def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
@@ -1270,10 +1282,10 @@ def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
             "duration_ms": 0,
         }
     else:
-        returncode, stdout, stderr, timed_out, truncated, duration_ms = run_terminal_process(stripped, cwd)
+        returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_terminal_process(stripped, cwd)
         if timed_out:
             returncode = 124
-        secrets_found = terminal_secret_values()
+        secrets_found = terminal_secret_values(launch_secrets)
         result = {
             "command": stripped,
             "cwd": relative_terminal_cwd(cwd),
