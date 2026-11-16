@@ -30,6 +30,27 @@ APP_FILE="$APP_DIR/app.py"
 # Keep the default log inside logs/, which is ignored by Git and excluded
 # from the rsync deploy, so diagnostic output never ends up in the repo.
 LOG_FILE="${AI_WEB_LOG:-$APP_DIR/logs/ai-web.log}"
+# Read one KEY=value entry from .env the way python-dotenv does for the common
+# cases: the last entry wins, surrounding quotes are removed, and an unquoted
+# value stops at a " #" comment. Defined before the PORT lookup below because
+# that lookup calls it; a definition further down would run too late and leave
+# PORT at its default.
+dotenv_value() {
+  local key="$1" line value
+  [ -f "$APP_DIR/.env" ] || return 0
+  line="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=" "$APP_DIR/.env" 2>/dev/null | tail -n 1)"
+  [ -n "$line" ] || return 0
+  value="${line#*=}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  case "$value" in
+    \"*\") value="${value#\"}"; value="${value%%\"*}" ;;
+    \'*\') value="${value#\'}"; value="${value%%\'*}" ;;
+    *) value="${value%%[[:space:]]#*}" ;;
+  esac
+  printf '%s' "${value%"${value##*[![:space:]]}"}"
+}
+
 # Resolve PORT: exported env var first, then .env, then default 5000
 if [ -z "${PORT:-}" ]; then
   PORT="$(dotenv_value PORT)"
@@ -117,25 +138,6 @@ warn_if_stale() {
       return 0
     fi
   done
-}
-
-# Read one KEY=value entry from .env the way python-dotenv does for the common
-# cases: the last entry wins, surrounding quotes are removed, and an unquoted
-# value stops at a " #" comment.
-dotenv_value() {
-  local key="$1" line value
-  [ -f "$APP_DIR/.env" ] || return 0
-  line="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=" "$APP_DIR/.env" 2>/dev/null | tail -n 1)"
-  [ -n "$line" ] || return 0
-  value="${line#*=}"
-  value="${value#"${value%%[![:space:]]*}"}"
-  value="${value%"${value##*[![:space:]]}"}"
-  case "$value" in
-    \"*\") value="${value#\"}"; value="${value%%\"*}" ;;
-    \'*\') value="${value#\'}"; value="${value%%\'*}" ;;
-    *) value="${value%%[[:space:]]#*}" ;;
-  esac
-  printf '%s' "${value%"${value##*[![:space:]]}"}"
 }
 
 # Effective value app.py sees: an exported variable wins over .env because

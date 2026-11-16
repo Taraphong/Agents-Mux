@@ -56,7 +56,8 @@ const keyInput = document.getElementById("pairing-key");
 const labelInput = document.getElementById("pairing-label");
 const submit = document.getElementById("pair-submit");
 const errorBox = document.getElementById("pair-error");
-const languageSelect = document.getElementById("language-select");
+const languageToggle = document.getElementById("language-toggle");
+const languageDisplay = document.getElementById("language-display");
 const themeToggle = document.getElementById("theme-toggle");
 
 function readPreference(key) {
@@ -117,7 +118,9 @@ function applyLanguage() {
         t(element.dataset.i18nAriaLabel),
       );
     });
-  languageSelect.value = language;
+  languageDisplay.textContent = language === "th" ? "TH" : "EN";
+  // Update language toggle accessible name to include active language
+  document.getElementById("language-toggle").setAttribute("aria-label", t("control.language") + ": " + (language === "th" ? "TH" : "EN"))
   document.getElementById("pair-foot-note").textContent = t(
     "pair.footNote",
     { days: CONFIG.days },
@@ -135,10 +138,8 @@ function applyTheme(theme) {
   themeToggle.textContent = light ? "☾" : "☼";
 }
 
-languageSelect.addEventListener("change", (event) => {
-  language = SUPPORTED_LANGUAGES.includes(event.target.value)
-    ? event.target.value
-    : "en";
+languageToggle.addEventListener("click", () => {
+  language = language === "th" ? "en" : "th";
   writePreference(LANGUAGE_KEY, language);
   applyLanguage();
 });
