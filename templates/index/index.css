@@ -3008,101 +3008,117 @@ body.light-theme .update-status.restarting {
 }
 
 /* ============================================================
-   Liquid Glass UI
-   Frosted, layered surfaces floating over a slow aurora backdrop.
-   Dark is the default; the light theme only swaps the tokens, so
-   every surface, field and control follows automatically.
+/* ============================================================
+   Liquid Glass UI — monochrome
+   Frosted, layered surfaces floating over a soft black-and-white
+   backdrop. No accent hues: every colour is black, white or a
+   neutral grey. Dark is the default; the light theme only swaps
+   the tokens, so every surface follows automatically.
    ============================================================ */
 :root {
   color-scheme: dark;
-  --void: #070b16;
+  --void: #050505;
   --surface: transparent;
   --panel: rgba(255, 255, 255, 0.06);
   --panel-hi: rgba(255, 255, 255, 0.1);
-  --line: rgba(255, 255, 255, 0.14);
-  --line-soft: rgba(255, 255, 255, 0.09);
-  --indigo: #93a3ff;
-  --cyan: #6ee7f9;
-  --mint: #6ee7b7;
-  --text: #f2f5ff;
-  --muted: #a8b5cd;
-  --dim: #8896ae;
-  --glass-1: rgba(18, 26, 48, 0.55);
-  --glass-2: rgba(12, 19, 36, 0.72);
-  --glass-3: rgba(7, 12, 25, 0.6);
+  --line: rgba(255, 255, 255, 0.16);
+  --line-soft: rgba(255, 255, 255, 0.1);
+  --indigo: #ededed;
+  --cyan: #d4d4d4;
+  --mint: #e2e2e2;
+  --text: #f6f6f6;
+  --muted: #b6b6b6;
+  --dim: #8d8d8d;
+  --glass-1: rgba(20, 20, 20, 0.55);
+  --glass-2: rgba(12, 12, 12, 0.74);
+  --glass-3: rgba(8, 8, 8, 0.62);
   --glass-4: rgba(255, 255, 255, 0.075);
   --glass-bg: linear-gradient(
     155deg,
     rgba(255, 255, 255, 0.1),
-    rgba(255, 255, 255, 0.035)
+    rgba(255, 255, 255, 0.03)
   );
   --glass-bg-soft: linear-gradient(
     155deg,
     rgba(255, 255, 255, 0.08),
-    rgba(255, 255, 255, 0.025)
+    rgba(255, 255, 255, 0.02)
   );
-  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border: rgba(255, 255, 255, 0.16);
   --glass-edge:
-    inset 0 1px 0 rgba(255, 255, 255, 0.17),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
     inset 0 -1px 0 rgba(255, 255, 255, 0.04);
-  --glass-shadow: 0 26px 70px rgba(2, 6, 23, 0.5);
-  --glass-shadow-soft: 0 14px 38px rgba(2, 6, 23, 0.36);
-  --glass-blur: blur(26px) saturate(165%);
-  --field-bg: rgba(255, 255, 255, 0.045);
-  --field-border: rgba(255, 255, 255, 0.13);
-  --hover-bg: rgba(255, 255, 255, 0.085);
-  --active-bg: rgba(147, 163, 255, 0.16);
-  --accent-grad: linear-gradient(135deg, #94a6ff, #63e6d2);
-  --accent-ink: #08101f;
-  --accent-glow: rgba(99, 102, 241, 0.3);
-  --ring: 0 0 0 3px rgba(147, 163, 255, 0.26);
+  --glass-shadow: 0 26px 70px rgba(0, 0, 0, 0.6);
+  --glass-shadow-soft: 0 14px 38px rgba(0, 0, 0, 0.42);
+  --glass-blur: blur(26px) saturate(100%);
+  --field-bg: rgba(255, 255, 255, 0.05);
+  --field-border: rgba(255, 255, 255, 0.15);
+  --hover-bg: rgba(255, 255, 255, 0.09);
+  --active-bg: rgba(255, 255, 255, 0.14);
+  --accent-grad: linear-gradient(135deg, #ffffff, #c4c4c4);
+  --accent-ink: #090909;
+  --accent-glow: rgba(255, 255, 255, 0.14);
+  --ring: 0 0 0 3px rgba(255, 255, 255, 0.22);
+  --danger-bg: rgba(255, 255, 255, 0.06);
+  --danger-border: rgba(255, 255, 255, 0.36);
+  --danger-text: #ffffff;
+  --chip-bg: rgba(255, 255, 255, 0.09);
+  --user-grad: linear-gradient(135deg, #f7f7f7, #d7d7d7);
+  --user-ink: #0a0a0a;
+  --user-border: rgba(255, 255, 255, 0.55);
   --radius-lg: 22px;
   --radius-md: 14px;
 }
 body.light-theme {
   color-scheme: light;
-  --void: #e9eefb;
+  --void: #f2f2f2;
   --surface: transparent;
   --panel: rgba(255, 255, 255, 0.66);
-  --panel-hi: rgba(255, 255, 255, 0.85);
-  --line: rgba(15, 23, 42, 0.12);
-  --line-soft: rgba(15, 23, 42, 0.08);
-  --indigo: #4b5ada;
-  --cyan: #0b7f9c;
-  --mint: #0f766e;
-  --text: #111a2e;
-  --muted: #4d5c75;
-  --dim: #64728b;
-  --glass-1: rgba(255, 255, 255, 0.72);
-  --glass-2: rgba(255, 255, 255, 0.95);
-  --glass-3: rgba(255, 255, 255, 0.66);
+  --panel-hi: rgba(255, 255, 255, 0.86);
+  --line: rgba(0, 0, 0, 0.14);
+  --line-soft: rgba(0, 0, 0, 0.09);
+  --indigo: #1c1c1c;
+  --cyan: #303030;
+  --mint: #101010;
+  --text: #0e0e0e;
+  --muted: #4b4b4b;
+  --dim: #6b6b6b;
+  --glass-1: rgba(255, 255, 255, 0.7);
+  --glass-2: rgba(255, 255, 255, 0.94);
+  --glass-3: rgba(255, 255, 255, 0.62);
   --glass-4: rgba(255, 255, 255, 0.9);
   --glass-bg: linear-gradient(
     155deg,
-    rgba(255, 255, 255, 0.9),
-    rgba(255, 255, 255, 0.6)
+    rgba(255, 255, 255, 0.92),
+    rgba(255, 255, 255, 0.62)
   );
   --glass-bg-soft: linear-gradient(
     155deg,
-    rgba(255, 255, 255, 0.82),
-    rgba(255, 255, 255, 0.52)
+    rgba(255, 255, 255, 0.84),
+    rgba(255, 255, 255, 0.5)
   );
-  --glass-border: rgba(255, 255, 255, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.95);
   --glass-edge:
-    inset 0 1px 0 rgba(255, 255, 255, 0.98),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.05);
   --glass-shadow:
-    0 26px 60px rgba(30, 41, 59, 0.14), 0 0 0 1px rgba(15, 23, 42, 0.04);
+    0 26px 60px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.05);
   --glass-shadow-soft:
-    0 14px 34px rgba(30, 41, 59, 0.1), 0 0 0 1px rgba(15, 23, 42, 0.03);
-  --field-bg: rgba(255, 255, 255, 0.78);
-  --field-border: rgba(15, 23, 42, 0.12);
-  --hover-bg: rgba(79, 95, 224, 0.08);
-  --active-bg: rgba(79, 95, 224, 0.13);
-  --accent-grad: linear-gradient(135deg, #6d7cf5, #4338ca);
+    0 14px 34px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  --field-bg: rgba(255, 255, 255, 0.85);
+  --field-border: rgba(0, 0, 0, 0.14);
+  --hover-bg: rgba(0, 0, 0, 0.05);
+  --active-bg: rgba(0, 0, 0, 0.09);
+  --accent-grad: linear-gradient(135deg, #2b2b2b, #000000);
   --accent-ink: #ffffff;
-  --accent-glow: rgba(79, 70, 229, 0.26);
-  --ring: 0 0 0 3px rgba(79, 95, 224, 0.2);
+  --accent-glow: rgba(0, 0, 0, 0.2);
+  --ring: 0 0 0 3px rgba(0, 0, 0, 0.2);
+  --danger-bg: rgba(0, 0, 0, 0.05);
+  --danger-border: rgba(0, 0, 0, 0.32);
+  --danger-text: #000000;
+  --chip-bg: rgba(0, 0, 0, 0.05);
+  --user-grad: linear-gradient(135deg, #232323, #000000);
+  --user-ink: #ffffff;
+  --user-border: rgba(0, 0, 0, 0.5);
 }
 body {
   position: relative;
@@ -3122,7 +3138,7 @@ body {
     background 0.35s ease,
     color 0.35s ease;
 }
-/* Aurora backdrop: blurred colour fields that the glass surfaces refract. */
+/* Backdrop: soft monochrome light fields that the glass refracts. */
 body::before {
   content: "";
   position: fixed;
@@ -3130,19 +3146,19 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(42% 38% at 12% 8%, rgba(99, 102, 241, 0.5), transparent 62%),
-    radial-gradient(36% 34% at 88% 4%, rgba(34, 211, 238, 0.32), transparent 60%),
-    radial-gradient(46% 40% at 74% 92%, rgba(168, 85, 247, 0.34), transparent 62%),
-    radial-gradient(40% 36% at 22% 96%, rgba(45, 212, 191, 0.24), transparent 60%);
+    radial-gradient(45% 40% at 14% 6%, rgba(255, 255, 255, 0.13), transparent 62%),
+    radial-gradient(38% 34% at 86% 0%, rgba(255, 255, 255, 0.07), transparent 60%),
+    radial-gradient(46% 42% at 76% 94%, rgba(255, 255, 255, 0.06), transparent 62%),
+    radial-gradient(40% 36% at 18% 98%, rgba(255, 255, 255, 0.05), transparent 60%);
   filter: blur(10px);
   animation: liquid-drift 28s ease-in-out infinite alternate;
 }
 body.light-theme::before {
   background:
-    radial-gradient(42% 38% at 12% 8%, rgba(129, 140, 248, 0.4), transparent 62%),
-    radial-gradient(36% 34% at 88% 4%, rgba(103, 232, 249, 0.42), transparent 60%),
-    radial-gradient(46% 40% at 74% 92%, rgba(196, 181, 253, 0.42), transparent 62%),
-    radial-gradient(40% 36% at 22% 96%, rgba(167, 243, 208, 0.4), transparent 60%);
+    radial-gradient(45% 40% at 14% 6%, rgba(0, 0, 0, 0.1), transparent 62%),
+    radial-gradient(38% 34% at 86% 0%, rgba(0, 0, 0, 0.06), transparent 60%),
+    radial-gradient(46% 42% at 76% 94%, rgba(0, 0, 0, 0.05), transparent 62%),
+    radial-gradient(40% 36% at 18% 98%, rgba(0, 0, 0, 0.04), transparent 60%);
 }
 @keyframes liquid-drift {
   from {
@@ -3162,7 +3178,7 @@ aside {
   border-right: 1px solid var(--glass-border);
   box-shadow:
     inset -1px 0 0 rgba(255, 255, 255, 0.05),
-    18px 0 50px rgba(2, 6, 23, 0.22);
+    18px 0 50px rgba(0, 0, 0, 0.28);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
@@ -3224,16 +3240,59 @@ body.light-theme nav button.active,
 body:not(.light-theme) nav button.active {
   color: var(--text);
   background: var(--active-bg);
-  border-color: rgba(147, 163, 255, 0.34);
+  border-color: rgba(255, 255, 255, 0.34);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 8px 22px rgba(2, 6, 23, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 8px 22px rgba(0, 0, 0, 0.22);
 }
 body.light-theme nav button.active {
-  border-color: rgba(79, 95, 224, 0.34);
+  border-color: rgba(0, 0, 0, 0.34);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 8px 20px rgba(79, 95, 224, 0.12);
+    0 8px 20px rgba(0, 0, 0, 0.1);
+}
+/* The light theme sets the nav colours with !important in an earlier layer;
+   restate them here so no indigo tint survives in the monochrome palette. */
+body.light-theme nav button {
+  background: transparent !important;
+  color: var(--muted) !important;
+  border-color: transparent !important;
+}
+body.light-theme nav button:hover {
+  background: var(--hover-bg) !important;
+  color: var(--text) !important;
+}
+body.light-theme nav button.active {
+  background: var(--active-bg) !important;
+  color: #000000 !important;
+  border-color: rgba(0, 0, 0, 0.34) !important;
+}
+/* Neutralise the cool grey borders and text an earlier light theme used. */
+body.light-theme aside,
+body.light-theme header {
+  border-color: var(--glass-border);
+}
+body.light-theme header {
+  border-bottom-color: var(--line-soft);
+}
+body.light-theme .history-title,
+body.light-theme .history-day {
+  color: var(--dim);
+}
+body.light-theme .history-item,
+body.light-theme .history-action {
+  color: var(--muted);
+}
+body.light-theme .history-row:hover .history-item,
+body.light-theme .history-action:hover {
+  color: var(--text);
+}
+body.light-theme input,
+body.light-theme textarea,
+body.light-theme select,
+body.light-theme .chat-tools select,
+body.light-theme .chat-form textarea {
+  color: var(--text);
 }
 .history-title,
 .history-day {
@@ -3267,12 +3326,12 @@ body.light-theme .header-model {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 .header-model i {
-  background: var(--mint);
-  box-shadow: 0 0 10px rgba(110, 231, 183, 0.6);
+  background: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
 }
 body.light-theme .header-model i {
-  background: #0f9d78;
-  box-shadow: 0 0 8px rgba(15, 157, 120, 0.4);
+  background: #000000;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
 }
 .header-icon,
 body.light-theme .header-icon {
@@ -3344,6 +3403,35 @@ body.light-theme .status.offline {
 .card {
   padding: 22px 24px;
 }
+/* form.chat-form is declared in an earlier layer with an element+class
+   selector, so restate the composer at the same specificity. */
+form.chat-form {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+body.light-theme form.chat-form {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow-soft), var(--glass-edge);
+}
+form.chat-form:focus-within {
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-edge),
+    0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+body.light-theme form.chat-form:focus-within {
+  border-color: rgba(0, 0, 0, 0.45);
+  box-shadow:
+    var(--glass-shadow-soft),
+    var(--glass-edge),
+    0 0 0 4px rgba(0, 0, 0, 0.06);
+}
 .modal,
 body.light-theme .modal {
   background: var(--glass-bg);
@@ -3363,13 +3451,13 @@ body.light-theme .new-chat {
 }
 .modal-backdrop,
 .sidebar-backdrop.open {
-  background: rgba(3, 6, 15, 0.55);
-  -webkit-backdrop-filter: blur(10px) saturate(120%);
-  backdrop-filter: blur(10px) saturate(120%);
+  background: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 body.light-theme .modal-backdrop,
 body.light-theme .sidebar-backdrop.open {
-  background: rgba(148, 163, 184, 0.28);
+  background: rgba(120, 120, 120, 0.28);
 }
 .modal p,
 body.light-theme .modal p {
@@ -3407,13 +3495,13 @@ body.light-theme .settings-rail button:not(.active):hover:not(:disabled) {
 .settings-rail button.active,
 body.light-theme .settings-rail button.active {
   background: var(--active-bg);
-  border-color: rgba(147, 163, 255, 0.36);
+  border-color: rgba(255, 255, 255, 0.36);
   color: var(--text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 body.light-theme .settings-rail button.active {
-  border-color: rgba(79, 95, 224, 0.32);
-  color: #2a3480;
+  border-color: rgba(0, 0, 0, 0.32);
+  color: #000000;
 }
 
 /* --- Fields and controls ------------------------------------------ */
@@ -3434,13 +3522,13 @@ input:focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: rgba(147, 163, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.6);
   box-shadow: var(--ring), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 body.light-theme input:focus,
 body.light-theme textarea:focus,
 body.light-theme select:focus {
-  border-color: rgba(79, 95, 224, 0.55);
+  border-color: rgba(0, 0, 0, 0.55);
 }
 input::placeholder,
 textarea::placeholder,
@@ -3449,9 +3537,8 @@ body.light-theme textarea::placeholder {
   color: var(--dim);
   opacity: 1;
 }
-select option,
-body.light-theme select option {
-  background: #0b1222;
+select option {
+  background: #0b0b0b;
   color: var(--text);
 }
 body.light-theme select option {
@@ -3495,11 +3582,18 @@ body.light-theme .chat-form {
 }
 .chat-form:focus-within,
 body.light-theme .chat-form:focus-within {
-  border-color: rgba(147, 163, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
   box-shadow:
     var(--glass-shadow),
     var(--glass-edge),
-    0 0 0 4px rgba(147, 163, 255, 0.1);
+    0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+body.light-theme .chat-form:focus-within {
+  border-color: rgba(0, 0, 0, 0.45);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-edge),
+    0 0 0 4px rgba(0, 0, 0, 0.06);
 }
 .attach-button,
 body.light-theme .attach-button {
@@ -3514,20 +3608,15 @@ body.light-theme .attach-button:hover {
 }
 .attachment-chip,
 body.light-theme .attachment-chip {
-  background: rgba(110, 231, 249, 0.14);
-  color: #a5f3fc;
-  border: 1px solid rgba(110, 231, 249, 0.24);
-}
-body.light-theme .attachment-chip {
-  background: rgba(14, 116, 144, 0.1);
-  color: #0e6f88;
-  border-color: rgba(14, 116, 144, 0.2);
+  background: var(--chip-bg);
+  color: var(--text);
+  border: 1px solid var(--line);
 }
 .skill-chip,
 body.light-theme .skill-chip {
-  background: var(--active-bg);
+  background: var(--chip-bg);
   color: var(--text);
-  border: 1px solid rgba(147, 163, 255, 0.3);
+  border: 1px solid var(--line);
 }
 .slash-menu {
   background: var(--glass-2);
@@ -3548,17 +3637,23 @@ body.light-theme .slash-item:hover,
 body.light-theme .slash-item.active {
   background: var(--active-bg);
 }
+.slash-item code {
+  color: var(--text);
+}
 .slash-item small {
   color: var(--dim);
 }
 .command-result,
 body.light-theme .command-result {
   background: var(--glass-3);
-  border-left: 3px solid var(--indigo);
+  border-left: 3px solid var(--text);
   color: var(--text);
 }
+.command-result.error {
+  border-left-color: var(--text);
+}
 
-/* Buttons: primary keeps the aurora accent, everything else is glass. */
+/* Buttons: selected actions are white in dark mode and black in light. */
 button {
   border-radius: 12px;
   background: var(--accent-grad);
@@ -3575,7 +3670,7 @@ button {
 }
 button:hover:not(:disabled) {
   background: var(--accent-grad);
-  filter: brightness(1.07);
+  filter: brightness(1.06);
   box-shadow:
     0 14px 34px var(--accent-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
@@ -3597,13 +3692,13 @@ nav button,
 }
 nav button.active {
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 8px 22px rgba(2, 6, 23, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 8px 22px rgba(0, 0, 0, 0.22);
 }
 body.light-theme nav button.active {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 8px 20px rgba(79, 95, 224, 0.12);
+    0 8px 20px rgba(0, 0, 0, 0.1);
 }
 .secondary,
 body.light-theme .secondary,
@@ -3623,22 +3718,16 @@ body.light-theme .secondary:hover {
 .modal-danger,
 body.light-theme .danger,
 body.light-theme .modal-danger {
-  background: rgba(244, 63, 94, 0.16);
-  border: 1px solid rgba(244, 63, 94, 0.32);
-  color: #ffd0d9;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 body:not(.light-theme) button.danger:hover,
 body:not(.light-theme) button.modal-danger:hover,
 body.light-theme .danger:hover {
-  background: rgba(244, 63, 94, 0.24);
-  color: #ffe4e9;
-}
-body.light-theme .danger,
-body.light-theme .modal-danger {
-  background: rgba(225, 29, 72, 0.09);
-  color: #a3173e;
-  border-color: rgba(225, 29, 72, 0.24);
+  background: var(--active-bg);
+  color: var(--danger-text);
 }
 .send-round,
 .chat-form .send-round,
@@ -3652,7 +3741,7 @@ body.light-theme .send-round {
 }
 .chat-form .send-round:hover:not(:disabled) {
   background: var(--accent-grad);
-  filter: brightness(1.07);
+  filter: brightness(1.06);
   box-shadow:
     0 10px 26px var(--accent-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.45);
@@ -3680,28 +3769,17 @@ body.light-theme .assistant-shell .assistant {
 }
 .user,
 body.light-theme .user {
-  background: linear-gradient(
-    135deg,
-    rgba(129, 140, 248, 0.42),
-    rgba(56, 189, 248, 0.26)
-  );
-  border: 1px solid rgba(165, 180, 252, 0.42);
-  color: #f6f8ff;
+  background: var(--user-grad);
+  border: 1px solid var(--user-border);
+  color: var(--user-ink);
   box-shadow:
-    0 16px 40px rgba(79, 70, 229, 0.26),
-    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+    0 16px 40px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
 body.light-theme .user {
-  background: linear-gradient(
-    135deg,
-    rgba(129, 140, 248, 0.24),
-    rgba(56, 189, 248, 0.18)
-  );
-  border-color: rgba(99, 102, 241, 0.28);
-  color: #1d2a5c;
-  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.12);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
 }
 .message-meta,
 body.light-theme .message-meta,
@@ -3714,7 +3792,7 @@ body.light-theme .assistant-mark {
   background: var(--glass-4);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
-  color: var(--indigo);
+  color: var(--text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 .session-divider,
@@ -3737,26 +3815,27 @@ body.light-theme .typing-indicator {
 .typing-avatar,
 body.light-theme .typing-avatar {
   background: var(--active-bg);
-  color: var(--indigo);
+  color: var(--text);
+}
+.typing-dots span {
+  background: var(--text);
 }
 .quick-actions span,
-body.light-theme .quick-actions span {
+body.light-theme .quick-actions span,
+.quick-actions span:first-child,
+body.light-theme .quick-actions span:first-child {
   background: var(--glass-4);
   border: 1px solid var(--glass-border);
   color: var(--muted);
 }
 .tool-approval,
 body.light-theme .tool-approval {
-  background: rgba(251, 191, 36, 0.16);
-  border: 1px solid rgba(251, 191, 36, 0.38);
-  color: #fde68a;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--text);
   border-radius: 12px;
   padding: 9px 12px;
-}
-body.light-theme .tool-approval {
-  background: #fff8e6;
-  color: #7a5200;
-  border-color: #e9c26f;
+  font-weight: 600;
 }
 .tool-approval-detail,
 body.light-theme .tool-approval-detail,
@@ -3773,12 +3852,12 @@ body.light-theme .cron-help code {
 }
 .cron-help summary,
 body.light-theme .cron-help summary {
-  color: var(--indigo);
+  color: var(--text);
 }
 .cron-help code,
 body.light-theme .cron-help code {
-  background: var(--glass-4);
-  border: 1px solid var(--glass-border);
+  background: var(--chip-bg);
+  border: 1px solid var(--line);
   border-radius: 7px;
   padding: 1px 6px;
 }
@@ -3813,7 +3892,7 @@ body.light-theme .logs-list {
   --log-bg: transparent;
   --log-border: var(--glass-border);
   --log-text: var(--text);
-  --log-accent: var(--indigo);
+  --log-accent: var(--text);
   --log-muted: var(--dim);
   --log-number: var(--dim);
   --log-message: var(--text);
@@ -3825,7 +3904,17 @@ body.light-theme .logs-list {
 }
 .log-row strong,
 body.light-theme .log-row strong {
-  color: var(--indigo);
+  color: var(--text);
+}
+.log-prompt,
+body.light-theme .log-prompt {
+  color: var(--dim);
+}
+.log-row.error,
+.log-row.failed,
+.log-row.parse_failed {
+  color: var(--text);
+  font-weight: 600;
 }
 .logs-filter button,
 body.light-theme .logs-filter button {
@@ -3837,8 +3926,12 @@ body.light-theme .logs-filter button {
 .logs-filter button.active,
 body.light-theme .logs-filter button.active {
   background: var(--active-bg);
-  border-color: rgba(147, 163, 255, 0.36);
+  border-color: rgba(255, 255, 255, 0.36);
   color: var(--text);
+}
+body.light-theme .logs-filter button.active {
+  border-color: rgba(0, 0, 0, 0.32);
+  color: #000000;
 }
 #terminal-view,
 body.light-theme #terminal-view {
@@ -3847,16 +3940,12 @@ body.light-theme #terminal-view {
   --terminal-border: var(--glass-border);
   --terminal-text: var(--text);
   --terminal-dim: var(--muted);
-  --terminal-accent: var(--mint);
-  --terminal-danger: #fda4af;
-  --terminal-notice: var(--cyan);
-  --terminal-warning-bg: rgba(251, 191, 36, 0.1);
-  --terminal-warning-border: rgba(251, 191, 36, 0.32);
-  --terminal-warning-text: #fcd34d;
-}
-body.light-theme #terminal-view {
-  --terminal-danger: #b4233d;
-  --terminal-warning-text: #7a5200;
+  --terminal-accent: var(--text);
+  --terminal-danger: var(--text);
+  --terminal-notice: var(--text);
+  --terminal-warning-bg: var(--chip-bg);
+  --terminal-warning-border: var(--line);
+  --terminal-warning-text: var(--muted);
 }
 .terminal-window,
 .terminal-window:focus-within {
@@ -3868,7 +3957,10 @@ body.light-theme #terminal-view {
   background: var(--glass-3);
 }
 .terminal-window:focus-within {
-  border-color: rgba(147, 163, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+body.light-theme .terminal-window:focus-within {
+  border-color: rgba(0, 0, 0, 0.45);
 }
 .terminal-warning,
 body.light-theme .terminal-warning {
@@ -3882,7 +3974,7 @@ body.light-theme .auth-key-output {
 }
 .auth-key-output code,
 body.light-theme .auth-key-output code {
-  color: var(--cyan);
+  color: var(--text);
 }
 .auth-session-row,
 body.light-theme .auth-session-row,
@@ -3917,11 +4009,13 @@ body.light-theme .update-log {
 body.light-theme .update-status.error,
 .update-metric strong.is-missing,
 body.light-theme .update-metric strong.is-missing {
-  color: #fca5a5;
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: underline;
 }
-body.light-theme .update-status.error,
-body.light-theme .update-metric strong.is-missing {
-  color: #b91c1c;
+.update-status.restarting,
+body.light-theme .update-status.restarting {
+  color: var(--muted);
 }
 .hint,
 body.light-theme .hint,
@@ -3934,11 +4028,15 @@ body.light-theme label {
 }
 .range-value,
 body.light-theme .range-value {
-  color: var(--indigo);
+  color: var(--text);
 }
 input[type="range"],
 .toggle input {
-  accent-color: var(--indigo);
+  accent-color: var(--text);
+}
+body.light-theme input[type="range"],
+body.light-theme .toggle input {
+  accent-color: #101010;
 }
 .model-status {
   color: var(--dim);
@@ -3946,7 +4044,7 @@ input[type="range"],
 .notice,
 body.light-theme .notice {
   background: var(--glass-2);
-  border: 1px solid rgba(110, 231, 183, 0.32);
+  border: 1px solid var(--glass-border);
   color: var(--text);
   border-radius: var(--radius-md);
   box-shadow: var(--glass-shadow), var(--glass-edge);
@@ -3954,11 +4052,8 @@ body.light-theme .notice {
 .notice.error,
 body.light-theme .notice.error {
   background: var(--glass-2);
-  border-color: rgba(244, 63, 94, 0.36);
-  color: #ffd6de;
-}
-body.light-theme .notice.error {
-  color: #a3173e;
+  border-color: var(--danger-border);
+  color: var(--text);
 }
 
 @media (max-width: 700px) {

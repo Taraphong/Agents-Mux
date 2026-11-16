@@ -1,27 +1,27 @@
-/* Pairing page — Liquid Glass UI, dark and light. */
+/* Pairing page — Liquid Glass UI, monochrome (black, white, neutral grey). */
 :root {
   color-scheme: dark;
-  --void: #070b16;
-  --panel: rgba(18, 26, 48, 0.6);
-  --panel-border: rgba(255, 255, 255, 0.14);
+  --void: #050505;
+  --panel: rgba(20, 20, 20, 0.6);
+  --panel-border: rgba(255, 255, 255, 0.16);
   --glass-edge:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
     inset 0 -1px 0 rgba(255, 255, 255, 0.04);
-  --text: #f2f5ff;
-  --muted: #a8b5cd;
-  --dim: #8896ae;
+  --text: #f6f6f6;
+  --muted: #b6b6b6;
+  --dim: #8d8d8d;
   --input-bg: rgba(255, 255, 255, 0.05);
-  --input-border: rgba(255, 255, 255, 0.14);
-  --accent-grad: linear-gradient(135deg, #94a6ff, #63e6d2);
-  --accent-text: #08101f;
-  --accent-glow: rgba(99, 102, 241, 0.3);
-  --error: #fda4af;
-  --ok: #6ee7b7;
-  --code-bg: rgba(7, 12, 25, 0.55);
-  --code-border: rgba(255, 255, 255, 0.12);
+  --input-border: rgba(255, 255, 255, 0.15);
+  --accent-grad: linear-gradient(135deg, #ffffff, #c4c4c4);
+  --accent-text: #090909;
+  --accent-glow: rgba(255, 255, 255, 0.14);
+  --error: #ffffff;
+  --ok: #efefef;
+  --code-bg: rgba(8, 8, 8, 0.6);
+  --code-border: rgba(255, 255, 255, 0.14);
   --shadow:
-    0 30px 80px rgba(2, 6, 23, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    0 30px 80px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   font-family:
     "Inter",
     "SF Pro Display",
@@ -32,27 +32,27 @@
 }
 html.light-theme {
   color-scheme: light;
-  --void: #e9eefb;
+  --void: #f2f2f2;
   --panel: rgba(255, 255, 255, 0.74);
-  --panel-border: rgba(255, 255, 255, 0.92);
+  --panel-border: rgba(255, 255, 255, 0.95);
   --glass-edge:
-    inset 0 1px 0 rgba(255, 255, 255, 0.98),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
-  --text: #111a2e;
-  --muted: #4d5c75;
-  --dim: #64728b;
-  --input-bg: rgba(255, 255, 255, 0.8);
-  --input-border: rgba(15, 23, 42, 0.12);
-  --accent-grad: linear-gradient(135deg, #6d7cf5, #4338ca);
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.05);
+  --text: #0e0e0e;
+  --muted: #4b4b4b;
+  --dim: #6b6b6b;
+  --input-bg: rgba(255, 255, 255, 0.85);
+  --input-border: rgba(0, 0, 0, 0.14);
+  --accent-grad: linear-gradient(135deg, #2b2b2b, #000000);
   --accent-text: #ffffff;
-  --accent-glow: rgba(79, 70, 229, 0.26);
-  --error: #b4233d;
-  --ok: #0f766e;
-  --code-bg: rgba(255, 255, 255, 0.72);
-  --code-border: rgba(15, 23, 42, 0.1);
+  --accent-glow: rgba(0, 0, 0, 0.2);
+  --error: #000000;
+  --ok: #1a1a1a;
+  --code-bg: rgba(255, 255, 255, 0.75);
+  --code-border: rgba(0, 0, 0, 0.1);
   --shadow:
-    0 28px 70px rgba(30, 41, 59, 0.16), 0 0 0 1px rgba(15, 23, 42, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.98);
+    0 28px 70px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 * {
   box-sizing: border-box;
@@ -79,18 +79,18 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(42% 38% at 12% 8%, rgba(99, 102, 241, 0.5), transparent 62%),
-    radial-gradient(36% 34% at 88% 4%, rgba(34, 211, 238, 0.32), transparent 60%),
-    radial-gradient(46% 40% at 74% 92%, rgba(168, 85, 247, 0.34), transparent 62%),
-    radial-gradient(40% 36% at 22% 96%, rgba(45, 212, 191, 0.24), transparent 60%);
+    radial-gradient(45% 40% at 14% 6%, rgba(255, 255, 255, 0.13), transparent 62%),
+    radial-gradient(38% 34% at 86% 0%, rgba(255, 255, 255, 0.07), transparent 60%),
+    radial-gradient(46% 42% at 76% 94%, rgba(255, 255, 255, 0.06), transparent 62%),
+    radial-gradient(40% 36% at 18% 98%, rgba(255, 255, 255, 0.05), transparent 60%);
   filter: blur(10px);
 }
 html.light-theme body::before {
   background:
-    radial-gradient(42% 38% at 12% 8%, rgba(129, 140, 248, 0.4), transparent 62%),
-    radial-gradient(36% 34% at 88% 4%, rgba(103, 232, 249, 0.42), transparent 60%),
-    radial-gradient(46% 40% at 74% 92%, rgba(196, 181, 253, 0.42), transparent 62%),
-    radial-gradient(40% 36% at 22% 96%, rgba(167, 243, 208, 0.4), transparent 60%);
+    radial-gradient(45% 40% at 14% 6%, rgba(0, 0, 0, 0.1), transparent 62%),
+    radial-gradient(38% 34% at 86% 0%, rgba(0, 0, 0, 0.06), transparent 60%),
+    radial-gradient(46% 42% at 76% 94%, rgba(0, 0, 0, 0.05), transparent 62%),
+    radial-gradient(40% 36% at 18% 98%, rgba(0, 0, 0, 0.04), transparent 60%);
 }
 .card {
   width: min(460px, 100%);
@@ -99,8 +99,8 @@ html.light-theme body::before {
   border-radius: 24px;
   padding: 24px 26px 28px;
   box-shadow: var(--shadow);
-  -webkit-backdrop-filter: blur(26px) saturate(165%);
-  backdrop-filter: blur(26px) saturate(165%);
+  -webkit-backdrop-filter: blur(26px) saturate(100%);
+  backdrop-filter: blur(26px) saturate(100%);
 }
 .topbar {
   display: flex;
@@ -153,12 +153,12 @@ html.light-theme body::before {
   font-size: 0.95rem;
 }
 .icon-button:hover {
-  background: rgba(147, 163, 255, 0.16);
-  border-color: rgba(147, 163, 255, 0.34);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.34);
 }
 html.light-theme .icon-button:hover {
-  background: rgba(79, 95, 224, 0.1);
-  border-color: rgba(79, 95, 224, 0.28);
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.28);
 }
 #theme-toggle {
   font-size: 0;
@@ -221,15 +221,15 @@ input::placeholder {
 }
 input:focus {
   outline: none;
-  border-color: rgba(147, 163, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.6);
   box-shadow:
-    0 0 0 3px rgba(147, 163, 255, 0.24),
+    0 0 0 3px rgba(255, 255, 255, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 html.light-theme input:focus {
-  border-color: rgba(79, 95, 224, 0.55);
+  border-color: rgba(0, 0, 0, 0.55);
   box-shadow:
-    0 0 0 3px rgba(79, 95, 224, 0.18),
+    0 0 0 3px rgba(0, 0, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 input.key {
@@ -257,7 +257,7 @@ button[type="submit"] {
     box-shadow 0.18s ease;
 }
 button[type="submit"]:hover:not(:disabled) {
-  filter: brightness(1.07);
+  filter: brightness(1.06);
   transform: translateY(-1px);
 }
 button[type="submit"]:disabled {
@@ -270,6 +270,7 @@ button[type="submit"]:disabled {
   margin: 12px 0 0;
   color: var(--error);
   font-size: 0.85rem;
+  font-weight: 600;
 }
 .error.ok {
   color: var(--ok);
