@@ -2310,6 +2310,30 @@ body.light-theme .auth-subtitle {
 body.light-theme .auth-session-row {
   border-color: #e2e8f0;
 }
+.custom-key-list {
+  margin-top: 12px;
+}
+.custom-key-list .custom-key-empty {
+  margin: 0;
+}
+.custom-key-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-top: 1px solid #24304a;
+}
+.custom-key-row strong {
+  word-break: break-all;
+}
+.custom-key-row button {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+body.light-theme .custom-key-row {
+  border-color: #e2e8f0;
+}
 
 /* Chat composer: grouped tool row (attach + skills / model + effort) */
 form.chat-form {

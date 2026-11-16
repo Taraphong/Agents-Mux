@@ -448,6 +448,46 @@
                       ></label>
                     </div>
                   </div>
+                  <div class="card">
+                    <h2 data-i18n="settings.customKeysTitle">
+                      คีย์ API อื่น ๆ
+                    </h2>
+                    <p class="hint" data-i18n="settings.customKeysHint">
+                      เก็บคีย์ของบริการอื่น เช่น สภาพอากาศ ไว้ในเครื่องนี้
+                      คำสั่งใน Terminal และ tool ของ Agent
+                      จะเห็นคีย์เป็นตัวแปรสภาพแวดล้อมตามชื่อที่ตั้งไว้
+                    </p>
+                    <div class="grid">
+                      <label
+                        ><span data-i18n="settings.customKeyName"
+                          >ชื่อคีย์</span
+                        ><input
+                          id="custom-key-name"
+                          maxlength="64"
+                          placeholder="WEATHER_API_KEY"
+                          data-i18n-placeholder="settings.customKeyNamePlaceholder"
+                      /></label>
+                      <label
+                        ><span data-i18n="settings.customKeyValue"
+                          >ค่า API key</span
+                        ><input
+                          id="custom-key-value"
+                          type="password"
+                          placeholder="วางคีย์ที่นี่"
+                          data-i18n-placeholder="settings.customKeyValuePlaceholder"
+                      /></label>
+                    </div>
+                    <div class="actions">
+                      <button
+                        id="add-custom-key"
+                        type="button"
+                        data-i18n="settings.customKeyAdd"
+                      >
+                        เพิ่มคีย์
+                      </button>
+                    </div>
+                    <div id="custom-keys" class="custom-key-list"></div>
+                  </div>
                 </div>
                 <div
                   class="settings-panel"
