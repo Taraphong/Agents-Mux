@@ -162,10 +162,14 @@ def load_persisted_logs() -> None:
 def skill_dir(name: str) -> Path:
     """Resolve a skill name to its directory inside the skills root."""
     safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(name).strip().lower()).strip("-")
-    if not safe_name:
+    if not safe_name or safe_name in {".", ".."}:
         raise ValueError("ชื่อสกิลไม่ถูกต้อง")
     root = (PROJECT_ROOT / SKILLS_ROOT).resolve()
     directory = (root / safe_name).resolve()
+    try:
+        directory.relative_to(root)
+    except ValueError:
+        raise ValueError("ชื่อสกิลอยู่นอกโฟลเดอร์ที่อนุญาต")
     if directory.parent != root:
         raise ValueError("ชื่อสกิลอยู่นอกโฟลเดอร์ที่อนุญาต")
     return directory
