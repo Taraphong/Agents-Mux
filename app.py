@@ -3404,6 +3404,9 @@ UPDATE_LOG_TAIL_LINES = 160
 UPDATE_MODES = {"check", "apply"}
 UPDATE_JOB_LOCK = threading.Lock()
 UPDATE_JOB: dict[str, Any] = {}
+# A real update restarts this process, so the job is also persisted: the new
+# server reads it back to report what happened before the restart.
+UPDATE_STATUS_FILE = Path(os.getenv("AI_WEB_UPDATE_STATUS_FILE", "logs/update-status.json"))
 
 
 def update_build_info() -> dict[str, Any]:
@@ -3433,21 +3436,88 @@ def update_log_tail() -> tuple[str, bool]:
     return "\n".join(lines[-UPDATE_LOG_TAIL_LINES:]), len(lines) > UPDATE_LOG_TAIL_LINES
 
 
+def save_update_status(payload: dict[str, Any]) -> None:
+    """Persist the running update so the next server process can report it."""
+    try:
+        UPDATE_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = UPDATE_STATUS_FILE.with_name(f".{UPDATE_STATUS_FILE.name}.{uuid.uuid4().hex}.tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        os.replace(temp_path, UPDATE_STATUS_FILE)
+    except OSError:
+        return
+
+
+def load_update_status() -> dict[str, Any]:
+    """Read the persisted update record, tolerating a missing or broken file."""
+    try:
+        data = json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def process_is_alive(pid: Any) -> bool:
+    """Return whether the PID recorded for an update is still running."""
+    try:
+        os.kill(int(pid), 0)
+    except (TypeError, ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def update_log_finished_at() -> str:
+    """Use the log's timestamp as the finish time after a server restart."""
+    try:
+        return datetime.fromtimestamp(UPDATE_LOG_FILE.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+    except OSError:
+        return ""
+
+
+def update_log_succeeded() -> bool | None:
+    """Read the updater's own success/failure verdict from its log tail."""
+    tail, _ = update_log_tail()
+    if "✅" in tail:
+        return True
+    if "❌" in tail:
+        return False
+    return None
+
+
 def update_job_snapshot() -> dict[str, Any]:
-    """Copy the current update job state without holding the lock."""
+    """Report the current update job, falling back to the persisted record."""
     with UPDATE_JOB_LOCK:
         process = UPDATE_JOB.get("process")
-        running = bool(process and process.poll() is None)
+        if process is not None:
+            return {
+                "running": process.poll() is None,
+                "job": {
+                    "mode": UPDATE_JOB.get("mode", ""),
+                    "started_at": UPDATE_JOB.get("started_at", ""),
+                    "finished_at": UPDATE_JOB.get("finished_at", ""),
+                    "ok": UPDATE_JOB.get("ok"),
+                    "exit_code": UPDATE_JOB.get("exit_code"),
+                },
+            }
+    persisted = load_update_status()
+    if not persisted:
         return {
-            "running": running,
-            "job": {
-                "mode": UPDATE_JOB.get("mode", ""),
-                "started_at": UPDATE_JOB.get("started_at", ""),
-                "finished_at": UPDATE_JOB.get("finished_at", ""),
-                "ok": UPDATE_JOB.get("ok"),
-                "exit_code": UPDATE_JOB.get("exit_code"),
-            },
+            "running": False,
+            "job": {"mode": "", "started_at": "", "finished_at": "", "ok": None, "exit_code": None},
         }
+    # The updater runs in its own session, so it outlives the restart we just did.
+    running = process_is_alive(persisted.get("pid"))
+    return {
+        "running": running,
+        "job": {
+            "mode": persisted.get("mode", ""),
+            "started_at": persisted.get("started_at", ""),
+            "finished_at": "" if running else update_log_finished_at(),
+            "ok": None if running else update_log_succeeded(),
+            "exit_code": None,
+        },
+    }
 
 
 def watch_update_job(process: "subprocess.Popen[bytes]") -> None:
@@ -3506,16 +3576,18 @@ def update_run():
                 )
         except OSError as exc:
             return jsonify({"ok": False, "error": f"เริ่มอัปเดตไม่สำเร็จ: {exc}"}), 500
+        started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         UPDATE_JOB.clear()
         UPDATE_JOB.update({
             "process": new_process,
             "pid": new_process.pid,
             "mode": mode,
-            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "started_at": started_at,
             "finished_at": "",
             "ok": None,
             "exit_code": None,
         })
+        save_update_status({"mode": mode, "started_at": started_at, "pid": new_process.pid})
     threading.Thread(target=watch_update_job, args=(new_process,), daemon=True).start()
     log_event("system.update_started", "เริ่มอัปเดตระบบจากหน้าเว็บ", mode=mode)
     return jsonify({"ok": True, "mode": mode, "pid": new_process.pid}), 202

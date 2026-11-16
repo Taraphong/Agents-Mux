@@ -129,6 +129,8 @@ const I18N = {
     "settings.updateIdle": "ยังไม่ได้ตรวจสอบในรอบนี้",
     "settings.updateLoading": "กำลังโหลดสถานะ...",
     "settings.updateRunning": "กำลังทำงาน: {mode}",
+    "settings.updateModeCheck": "กำลังตรวจสอบ",
+    "settings.updateModeApply": "กำลังติดตั้งไฟล์ใหม่",
     "settings.updateCheckDone": "ตรวจสอบเสร็จแล้วเมื่อ {time}",
     "settings.updateDone": "อัปเดตเสร็จแล้วเมื่อ {time}",
     "settings.updateError": "ไม่สำเร็จ (exit {code}) — ดู log ด้านล่าง",
@@ -137,6 +139,8 @@ const I18N = {
     "settings.updateFailed": "เริ่มการอัปเดตไม่สำเร็จ",
     "settings.updateLoadFailed": "โหลดสถานะการอัปเดตไม่สำเร็จ",
     "settings.updateRestarting": "เซิร์ฟเวอร์กำลังรีสตาร์ต รอสักครู่...",
+    "settings.updateFinishedUnknown":
+      "อัปเดตจบแล้วแต่ไม่ทราบผล — ดู log ด้านล่าง",
     "settings.updateLogEmpty": "ยังไม่มีผลการทำงาน",
     "settings.updateLogTruncated": "…แสดงเฉพาะท้าย log",
     "settings.saveScopeHint": "การบันทึกมีผลกับการตั้งค่าทุกหมวด",
@@ -544,6 +548,8 @@ const I18N = {
     "settings.updateIdle": "Not checked yet",
     "settings.updateLoading": "Loading status...",
     "settings.updateRunning": "Running: {mode}",
+    "settings.updateModeCheck": "checking",
+    "settings.updateModeApply": "installing files",
     "settings.updateCheckDone": "Check finished at {time}",
     "settings.updateDone": "Update finished at {time}",
     "settings.updateError": "Failed (exit {code}) — see the output below",
@@ -552,6 +558,8 @@ const I18N = {
     "settings.updateFailed": "Could not start the update",
     "settings.updateLoadFailed": "Could not load the update status",
     "settings.updateRestarting": "The server is restarting, waiting...",
+    "settings.updateFinishedUnknown":
+      "Update finished but the result is unknown — see the output below",
     "settings.updateLogEmpty": "No output yet",
     "settings.updateLogTruncated": "…showing only the end of the output",
     "settings.saveScopeHint": "Saving applies to every section",
@@ -3352,6 +3360,8 @@ const UPDATE_POLL_ATTEMPTS = 90;
 const updateState = {
   loaded: false,
   running: false,
+  pending: false,
+  restarting: false,
   error: "",
   job: { mode: "", started_at: "", finished_at: "", ok: null, exit_code: null },
   log: "",
@@ -3364,14 +3374,15 @@ function updateJobFinished() {
   return Boolean(updateState.job && updateState.job.finished_at);
 }
 function updateStatusText() {
+  if (updateState.restarting) return t("settings.updateRestarting");
   if (updateState.error) return updateState.error;
   if (!updateState.loaded) return t("settings.updateLoading");
   if (updateState.running) {
     return t("settings.updateRunning", {
       mode: t(
         updateState.job.mode === "check"
-          ? "settings.updateCheck"
-          : "settings.updateRun",
+          ? "settings.updateModeCheck"
+          : "settings.updateModeApply",
       ),
     });
   }
@@ -3380,11 +3391,13 @@ function updateStatusText() {
       updateState.job.mode === "check"
         ? "settings.updateCheckDone"
         : "settings.updateDone";
-    return updateState.job.ok
-      ? t(key, { time: updateState.job.finished_at })
-      : t("settings.updateError", {
-          code: updateState.job.exit_code ?? "?",
-        });
+    if (updateState.job.ok === true)
+      return t(key, { time: updateState.job.finished_at });
+    if (updateState.job.ok === false)
+      return t("settings.updateError", {
+        code: updateState.job.exit_code ?? "?",
+      });
+    return t("settings.updateFinishedUnknown");
   }
   return t("settings.updateIdle");
 }
@@ -3401,14 +3414,17 @@ function renderUpdatePanel() {
   );
   const status = $("update-status");
   status.textContent = updateStatusText();
+  status.classList.toggle("restarting", updateState.restarting);
   status.classList.toggle(
     "error",
-    Boolean(updateState.error) ||
-      (updateJobFinished() && updateState.job.ok === false),
+    !updateState.restarting &&
+      (Boolean(updateState.error) ||
+        (updateJobFinished() && updateState.job.ok === false)),
   );
-  $("update-check").disabled = updateState.running;
+  const busy = updateState.running || updateState.pending;
+  $("update-check").disabled = busy;
   $("update-run").disabled =
-    updateState.running || (updateState.loaded && !updateState.scriptAvailable);
+    busy || (updateState.loaded && !updateState.scriptAvailable);
   const log = $("update-log");
   log.classList.toggle("is-empty", !updateState.log);
   log.textContent = updateState.log
@@ -3424,6 +3440,7 @@ async function loadUpdateState() {
     const data = await response.json();
     updateState.loaded = true;
     updateState.error = "";
+    updateState.restarting = false;
     updateState.running = Boolean(data.running);
     updateState.job = data.job || updateState.job;
     updateState.log = data.log || "";
@@ -3431,7 +3448,13 @@ async function loadUpdateState() {
     updateState.appUpdatedAt = data.app_updated_at || "";
     updateState.scriptAvailable = Boolean(data.script_available);
   } catch (error) {
-    updateState.error = error.message || t("settings.updateLoadFailed");
+    if (updateState.pending) {
+      // The updater restarts the server, so a failed request is expected here.
+      updateState.restarting = true;
+      updateState.error = "";
+    } else {
+      updateState.error = error.message || t("settings.updateLoadFailed");
+    }
   }
   renderUpdatePanel();
 }
@@ -3439,9 +3462,13 @@ function pollUpdateState(attempt = 0) {
   clearTimeout(updatePollTimer);
   updatePollTimer = setTimeout(async () => {
     await loadUpdateState();
-    if (updateState.error) {
-      // A real update restarts the server, so keep retrying for a while.
+    if (updateState.restarting || updateState.error) {
+      // The server is restarting; keep retrying for a while.
       if (attempt < UPDATE_POLL_ATTEMPTS) pollUpdateState(attempt + 1);
+      else {
+        updateState.pending = false;
+        renderUpdatePanel();
+      }
       return;
     }
     if (updateState.running) {
@@ -3449,17 +3476,31 @@ function pollUpdateState(attempt = 0) {
       return;
     }
     if (updateJobFinished()) {
+      // The updater may still be writing its final line after the restart.
+      if (updateState.job.ok === null && attempt < 5) {
+        pollUpdateState(attempt + 1);
+        return;
+      }
+      updateState.pending = false;
+      renderUpdatePanel();
+      const ok = updateState.job.ok;
       showNotice(
-        updateState.job.ok
+        ok === true
           ? t("settings.updateDone", { time: updateState.job.finished_at })
-          : t("settings.updateError", {
-              code: updateState.job.exit_code ?? "?",
-            }),
-        !updateState.job.ok,
+          : ok === false
+            ? t("settings.updateError", {
+                code: updateState.job.exit_code ?? "?",
+              })
+            : t("settings.updateFinishedUnknown"),
+        ok === false,
       );
       return;
     }
     if (attempt < 3) pollUpdateState(attempt + 1);
+    else {
+      updateState.pending = false;
+      renderUpdatePanel();
+    }
   }, UPDATE_POLL_MS);
 }
 async function startUpdate(mode) {
@@ -3473,7 +3514,9 @@ async function startUpdate(mode) {
   )
     return;
   updateState.error = "";
+  updateState.restarting = false;
   updateState.running = true;
+  updateState.pending = true;
   updateState.job = { mode, started_at: "", finished_at: "", ok: null, exit_code: null };
   renderUpdatePanel();
   try {
@@ -3493,6 +3536,7 @@ async function startUpdate(mode) {
     pollUpdateState();
   } catch (error) {
     updateState.running = false;
+    updateState.pending = false;
     updateState.error = error.message || t("settings.updateFailed");
     renderUpdatePanel();
     showNotice(updateState.error, true);
