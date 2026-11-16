@@ -1463,6 +1463,13 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
         # the old record still validate against it.
         record_generation = existing_record.get("generation")
     path = existing or HISTORY_ROOT / now.strftime("%Y-%m-%d") / f"{now.strftime('%H-%M-%S')}_{conversation_id}.json"
+    history_root_resolved = HISTORY_ROOT.resolve()
+    path_resolved = path.resolve(strict=False)
+    try:
+        path_resolved.relative_to(history_root_resolved)
+    except ValueError as exc:
+        raise ValueError("Invalid history path") from exc
+    path = path_resolved
     raw_title = payload.get("title")
     existing_title = (
         existing_record.get("title") if isinstance(existing_record.get("title"), str) else ""
