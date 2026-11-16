@@ -2,6 +2,7 @@ import os
 import asyncio
 import fcntl
 import getpass
+import gzip
 import hashlib
 import hmac
 import json
@@ -69,6 +70,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # Each page keeps its template and its CSS/JS together in templates/<page>/.
 TEMPLATES_ROOT = PROJECT_ROOT / "templates"
 PAGE_ASSETS = {"index", "pair"}
+# Text responses are gzipped when the client asks for it: the phone serves this
+# page over a slow Wi-Fi link, so 291 KB of HTML/CSS/JS must not go out raw.
+GZIP_MIMETYPES = {"text/html", "text/css", "application/javascript", "text/javascript"}
+GZIP_MIN_BYTES = 1024
+# Page assets change rarely and their URLs carry the file mtime (?v=...), so the
+# browser may keep them for a year and skip the revalidation round trip.
+ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+ASSET_GZIP_CACHE: dict[tuple[str, int, int], bytes] = {}
+ASSET_GZIP_LOCK = threading.Lock()
+ASSET_GZIP_CACHE_LIMIT = 8
 SKILLS_ROOT = Path(os.getenv("AI_WEB_SKILLS_DIR", "skills"))
 TOOL_MAX_READ_BYTES = 200_000
 TOOL_MAX_WRITE_BYTES = 200_000
@@ -2963,6 +2974,60 @@ def require_web_auth():
     return redirect("/pair", code=302)
 
 
+def asset_url(page: str, filename: str) -> str:
+    """Return a cache-busting URL for a page asset.
+
+    The mtime in the query lets the asset be cached for a year: editing the
+    file changes the URL, so the browser fetches the new version on reload.
+    """
+    try:
+        version = (TEMPLATES_ROOT / page / filename).stat().st_mtime_ns
+    except OSError:
+        version = 0
+    return f"/templates/{page}/{filename}?v={version}"
+
+
+app.jinja_env.globals["asset_url"] = asset_url
+
+
+def accepts_gzip() -> bool:
+    """Report whether the client advertised gzip support."""
+    return "gzip" in (request.headers.get("Accept-Encoding") or "").lower()
+
+
+def gzip_body(data: bytes, cache_key: tuple[str, int, int] | None = None) -> bytes:
+    """Gzip a text body, reusing the result while the source file is unchanged."""
+    if cache_key is not None:
+        with ASSET_GZIP_LOCK:
+            cached = ASSET_GZIP_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+    compressed = gzip.compress(data, 6, mtime=0)
+    if cache_key is not None:
+        with ASSET_GZIP_LOCK:
+            if len(ASSET_GZIP_CACHE) >= ASSET_GZIP_CACHE_LIMIT:
+                ASSET_GZIP_CACHE.clear()
+            ASSET_GZIP_CACHE[cache_key] = compressed
+    return compressed
+
+
+def compress_response(response, cache_key: tuple[str, int, int] | None = None):
+    """Replace a text response body with its gzip form when the client accepts it."""
+    if response.status_code != 200 or response.headers.get("Content-Encoding"):
+        return response
+    if (response.mimetype or "").lower() not in GZIP_MIMETYPES:
+        return response
+    response.headers.add("Vary", "Accept-Encoding")
+    if not accepts_gzip():
+        return response
+    data = response.get_data()
+    if len(data) < GZIP_MIN_BYTES:
+        return response
+    response.set_data(gzip_body(data, cache_key))
+    response.headers["Content-Encoding"] = "gzip"
+    return response
+
+
 @app.get("/templates/<page>/<filename>")
 def page_asset(page: str, filename: str):
     """Serve the CSS/JS stored beside a page template.
@@ -2972,7 +3037,26 @@ def page_asset(page: str, filename: str):
     """
     if page not in PAGE_ASSETS or Path(filename).suffix.lower() not in {".css", ".js"}:
         abort(404)
-    return send_from_directory(TEMPLATES_ROOT / page, filename)
+    response = send_from_directory(TEMPLATES_ROOT / page, filename)
+    # send_from_directory streams the file; the body must be readable here so it
+    # can be gzipped before it travels over the slow link.
+    response.direct_passthrough = False
+    response.headers["Cache-Control"] = ASSET_CACHE_CONTROL
+    cache_key = None
+    try:
+        stat = (TEMPLATES_ROOT / page / filename).stat()
+        cache_key = (str(TEMPLATES_ROOT / page / filename), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        cache_key = None
+    return compress_response(response, cache_key)
+
+
+@app.after_request
+def gzip_rendered_pages(response):
+    """Gzip rendered HTML so the chat page needs fewer round trips on a slow link."""
+    if (response.mimetype or "").lower() == "text/html":
+        return compress_response(response)
+    return response
 
 
 @app.get("/pair")
