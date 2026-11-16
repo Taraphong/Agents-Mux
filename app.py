@@ -255,6 +255,7 @@ DEFAULT_SETTINGS = {
     ],
     "terminal_enabled": True,
     "machine_access": True,
+    "custom_api_keys": {},
 }
 
 FALLBACK_MODELS = {
@@ -358,6 +359,34 @@ def stored_api_keys(settings: dict[str, Any]) -> dict[str, str]:
     return {provider: str(keys.get(provider) or "").strip() for provider in PROVIDERS}
 
 
+CUSTOM_KEY_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+
+
+def normalize_custom_key_name(value: Any) -> str:
+    """Validate a user-chosen name for an extra API key (used as an env var)."""
+    name = re.sub(r"[\s-]+", "_", str(value or "").strip()).upper()
+    if not CUSTOM_KEY_NAME_PATTERN.fullmatch(name):
+        raise ValueError("ชื่อคีย์ต้องเริ่มด้วยตัวอักษร A-Z และใช้ได้เฉพาะ A-Z, 0-9 และ _ (ไม่เกิน 64 ตัว)")
+    return name
+
+
+def stored_custom_api_keys(settings: dict[str, Any]) -> dict[str, str]:
+    """Return the extra named API keys, dropping invalid or empty entries."""
+    raw = settings.get("custom_api_keys")
+    if not isinstance(raw, dict):
+        return {}
+    keys: dict[str, str] = {}
+    for name, value in raw.items():
+        try:
+            valid_name = normalize_custom_key_name(name)
+        except ValueError:
+            continue
+        text = str(value or "").strip()
+        if text:
+            keys[valid_name] = text
+    return keys
+
+
 def migrate_legacy_api_key(settings: dict[str, Any]) -> dict[str, Any]:
     """Move the old single api_key slot into the per-provider map, once."""
     if "api_keys" in settings:
@@ -383,7 +412,9 @@ def load_settings() -> dict[str, Any]:
             settings.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError):
             pass
-    return migrate_legacy_api_key(settings)
+    settings = migrate_legacy_api_key(settings)
+    settings["custom_api_keys"] = stored_custom_api_keys(settings)
+    return settings
 
 
 def save_settings(settings: dict[str, Any]) -> None:
@@ -984,6 +1015,13 @@ def terminal_environment() -> dict[str, str]:
         for name, value in os.environ.items()
         if not any(part in name.upper() for part in TERMINAL_SENSITIVE_ENV_PARTS)
     }
+    # Extra keys saved in Settings are exposed by name so a skill or command
+    # can use e.g. "$WEATHER_API_KEY" without the value ever reaching the chat.
+    try:
+        for name, value in stored_custom_api_keys(load_settings()).items():
+            env.setdefault(name, value)
+    except (OSError, ValueError):
+        pass
     env.setdefault("TERM", "xterm-256color")
     env.setdefault("LANG", "C.UTF-8")
     env["PYTHONUNBUFFERED"] = "1"
@@ -994,6 +1032,7 @@ def terminal_secret_values() -> list[str]:
     """Collect secret values that terminal output must never expose."""
     settings = terminal_settings()
     values = {value for value in stored_api_keys(settings).values() if value}
+    values.update(stored_custom_api_keys(settings).values())
     discord_token = get_discord_token(settings)
     if discord_token:
         values.add(discord_token)
@@ -3053,11 +3092,13 @@ def settings_get():
     settings = load_settings()
     provider = normalize_provider(settings.get("provider"))
     key = get_api_key(provider, settings)
-    safe = {key_: value for key_, value in settings.items() if key_ not in {"api_keys", "api_key", "discord_token"}}
+    safe = {key_: value for key_, value in settings.items() if key_ not in {"api_keys", "api_key", "discord_token", "custom_api_keys"}}
     safe["provider"] = provider
     safe["api_key"] = "" if not key else "••••••••"
     safe["has_api_key"] = bool(key)
     safe["key_providers"] = [name for name in PROVIDERS if key_is_configured(name, settings)]
+    # Names are safe to show; the values must never leave the server.
+    safe["custom_api_keys"] = [{"name": name} for name in stored_custom_api_keys(settings)]
     discord_token = get_discord_token(settings)
     safe["discord_token"] = "••••••••" if discord_token else ""
     safe["has_discord_token"] = bool(discord_token)
@@ -3332,6 +3373,27 @@ def apply_settings_update():
         keys = stored_api_keys(current)
         keys[current["provider"]] = new_key.strip()
         current["api_keys"] = keys
+    custom_key = body.get("custom_api_key")
+    if isinstance(custom_key, dict):
+        try:
+            custom_name = normalize_custom_key_name(custom_key.get("name"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        custom_value = custom_key.get("value")
+        if isinstance(custom_value, str) and custom_value.strip() and custom_value.strip() != "••••••••":
+            keys = stored_custom_api_keys(current)
+            keys[custom_name] = custom_value.strip()
+            current["custom_api_keys"] = keys
+    delete_custom_name = body.get("delete_custom_api_key")
+    if isinstance(delete_custom_name, str) and delete_custom_name.strip():
+        try:
+            removed_name = normalize_custom_key_name(delete_custom_name)
+        except ValueError:
+            removed_name = ""
+        if removed_name:
+            keys = stored_custom_api_keys(current)
+            keys.pop(removed_name, None)
+            current["custom_api_keys"] = keys
     current.pop("api_key", None)
     save_settings(current)
     STATUS_CACHE.clear()

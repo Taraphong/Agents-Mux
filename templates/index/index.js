@@ -181,6 +181,22 @@ const I18N = {
     "settings.baseUrlLabel": "Base URL",
     "settings.apiKeyLabel": "คีย์ API",
     "settings.apiKeyPlaceholder": "เว้นว่างเพื่อใช้คีย์เดิม",
+    "settings.customKeysTitle": "คีย์ API อื่น ๆ",
+    "settings.customKeysHint":
+      "เก็บคีย์ของบริการอื่น เช่น สภาพอากาศ ไว้ในเครื่องนี้ คำสั่งใน Terminal และ tool ของ Agent จะเห็นคีย์เป็นตัวแปรสภาพแวดล้อมตามชื่อที่ตั้งไว้",
+    "settings.customKeyName": "ชื่อคีย์",
+    "settings.customKeyNamePlaceholder": "WEATHER_API_KEY",
+    "settings.customKeyValue": "ค่า API key",
+    "settings.customKeyValuePlaceholder": "วางคีย์ที่นี่",
+    "settings.customKeyAdd": "เพิ่มคีย์",
+    "settings.customKeyAdded": "บันทึกคีย์แล้ว",
+    "settings.customKeyAddFailed": "บันทึกคีย์ไม่สำเร็จ",
+    "settings.customKeyDelete": "ลบ",
+    "settings.customKeyDeleteAria": "ลบคีย์ {name}",
+    "settings.customKeyDeleted": "ลบคีย์แล้ว",
+    "settings.customKeySaved": "บันทึกไว้ในเครื่องนี้แล้ว",
+    "settings.customKeysEmpty": "ยังไม่มีคีย์อื่นที่บันทึกไว้",
+    "settings.customKeyNameRequired": "กรอกชื่อคีย์และค่า API key ก่อนบันทึก",
     "settings.memoryReview": "ทบทวนความจำ",
     "settings.memoryReviewPlaceholder": "กำหนดสิ่งที่ Agent ควรทบทวนก่อนตอบ",
     "settings.memoryReviewHint": "แนวทางนี้จะถูกส่งให้ Agent ทุกครั้งที่ตอบ เพื่อรักษาบริบทและลดความผิดพลาด",
@@ -600,6 +616,22 @@ const I18N = {
     "settings.baseUrlLabel": "Base URL",
     "settings.apiKeyLabel": "API key",
     "settings.apiKeyPlaceholder": "Leave blank to keep the current key",
+    "settings.customKeysTitle": "Other API keys",
+    "settings.customKeysHint":
+      "Store keys for other services, such as weather, on this machine. Terminal commands and Agent tools see each key as an environment variable named after it.",
+    "settings.customKeyName": "Key name",
+    "settings.customKeyNamePlaceholder": "WEATHER_API_KEY",
+    "settings.customKeyValue": "API key value",
+    "settings.customKeyValuePlaceholder": "Paste the key here",
+    "settings.customKeyAdd": "Add key",
+    "settings.customKeyAdded": "Key saved",
+    "settings.customKeyAddFailed": "Could not save the key",
+    "settings.customKeyDelete": "Delete",
+    "settings.customKeyDeleteAria": "Delete key {name}",
+    "settings.customKeyDeleted": "Key deleted",
+    "settings.customKeySaved": "Saved on this machine",
+    "settings.customKeysEmpty": "No other keys saved yet",
+    "settings.customKeyNameRequired": "Enter a key name and value before saving",
     "settings.memoryReview": "Memory review",
     "settings.memoryReviewPlaceholder": "Define what the agent should review before answering",
     "settings.memoryReviewHint": "This guidance is sent to the agent on every response to preserve context and reduce errors.",
@@ -3173,6 +3205,83 @@ async function authLogout() {
 }
 $("auth-generate-key").addEventListener("click", createPairingKey);
 $("auth-logout").addEventListener("click", authLogout);
+let customApiKeys = [];
+function renderCustomApiKeys() {
+  const container = $("custom-keys");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!customApiKeys.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint custom-key-empty";
+    empty.textContent = t("settings.customKeysEmpty");
+    container.appendChild(empty);
+    return;
+  }
+  customApiKeys.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "custom-key-row";
+    const info = document.createElement("div");
+    info.className = "auth-session-info";
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const meta = document.createElement("small");
+    meta.textContent = t("settings.customKeySaved");
+    info.append(name, meta);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "danger";
+    remove.textContent = t("settings.customKeyDelete");
+    remove.setAttribute(
+      "aria-label",
+      t("settings.customKeyDeleteAria", { name: item.name }),
+    );
+    remove.addEventListener("click", () => deleteCustomApiKey(item.name));
+    row.append(info, remove);
+    container.appendChild(row);
+  });
+}
+async function saveCustomApiKey() {
+  const name = $("custom-key-name").value.trim();
+  const value = $("custom-key-value").value.trim();
+  if (!name || !value) {
+    showNotice(t("settings.customKeyNameRequired"), true);
+    return;
+  }
+  try {
+    const response = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ custom_api_key: { name, value } }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || t("settings.customKeyAddFailed"));
+    }
+    $("custom-key-name").value = "";
+    $("custom-key-value").value = "";
+    await loadSettings();
+    showNotice(t("settings.customKeyAdded"));
+  } catch (error) {
+    showNotice(error.message || t("settings.customKeyAddFailed"), true);
+  }
+}
+async function deleteCustomApiKey(name) {
+  try {
+    const response = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ delete_custom_api_key: name }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || t("settings.customKeyAddFailed"));
+    }
+    await loadSettings();
+    showNotice(t("settings.customKeyDeleted"));
+  } catch (error) {
+    showNotice(error.message || t("settings.customKeyAddFailed"), true);
+  }
+}
 function updateApiKeyHint(provider) {
   const label =
     { openai: "OpenAI", gemini: "Gemini", anthropic: "Anthropic" }[
@@ -3207,6 +3316,8 @@ async function loadSettings() {
   $("use_markdown").checked = s.use_markdown !== false;
   $("ask_clarifying_questions").checked = s.ask_clarifying_questions !== false;
   keyProviders = Array.isArray(s.key_providers) ? s.key_providers : [];
+  customApiKeys = Array.isArray(s.custom_api_keys) ? s.custom_api_keys : [];
+  renderCustomApiKeys();
   $("provider").value = s.provider ?? "openai";
   $("base_url").value =
     s.base_url ||
@@ -3302,6 +3413,13 @@ function collectSettingsBody() {
     machine_access: $("machine_access").checked,
   };
 }
+$("add-custom-key").addEventListener("click", saveCustomApiKey);
+$("custom-key-value").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveCustomApiKey();
+  }
+});
 $("save").addEventListener("click", async () => {
   const body = collectSettingsBody();
   const apiKey = body.api_key.trim();
@@ -3994,6 +4112,7 @@ function applyTranslations() {
   );
   updateApiKeyHint($("provider").value);
   updateDiscordTokenHint();
+  renderCustomApiKeys();
   if (connectionState.known) updateConnectionUi();
   renderMessages(true);
   renderHistoryList(currentHistoryItems);
