@@ -3380,6 +3380,9 @@ def apply_settings_update():
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         custom_value = custom_key.get("value")
+        custom_value = custom_key.get("value")
+        if isinstance(custom_value, str) and "\x00" in custom_value:
+            return jsonify({"error": "Custom API key value must not contain NUL characters"}), 400
         if isinstance(custom_value, str) and custom_value.strip() and custom_value.strip() != "••••••••":
             keys = stored_custom_api_keys(current)
             keys[custom_name] = custom_value.strip()
