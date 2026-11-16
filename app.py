@@ -680,10 +680,13 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     """Resolve a user path inside the project while blocking protected files."""
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("ต้องระบุ path ภายในโปรเจกต์")
-    candidate = (PROJECT_ROOT / raw_path).resolve()
-    if candidate != PROJECT_ROOT and PROJECT_ROOT not in candidate.parents:
-        raise ValueError("อนุญาตเฉพาะ path ภายในโฟลเดอร์โปรเจกต์")
-    relative_parts = candidate.relative_to(PROJECT_ROOT).parts
+    project_root = PROJECT_ROOT.resolve()
+    candidate = (project_root / raw_path.strip()).resolve()
+    try:
+        relative_path = candidate.relative_to(project_root)
+    except ValueError as exc:
+        raise ValueError("อนุญาตเฉพาะ path ภายในโฟลเดอร์โปรเจกต์") from exc
+    relative_parts = relative_path.parts
     if any(part in PROTECTED_PARTS for part in relative_parts) or candidate.name in PROTECTED_NAMES:
         raise ValueError("ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
     if must_exist and not candidate.exists():
