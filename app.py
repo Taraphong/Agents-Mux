@@ -1211,15 +1211,19 @@ def terminal_identity() -> tuple[str, str]:
 
 
 def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
-    """Run a shell command with capped output and a hard timeout for the whole process group."""
+    """Run a command with capped output and a hard timeout for the whole process group."""
     started_at = time.perf_counter()
     timed_out = False
     env, injected_secrets = terminal_environment()
+    try:
+        argv = shlex.split(command, posix=True)
+    except ValueError as exc:
+        raise ValueError(f"รูปแบบคำสั่งไม่ถูกต้อง: {exc}") from exc
+    if not argv:
+        raise ValueError("กรุณาพิมพ์คำสั่ง")
     with tempfile.TemporaryFile() as out_file, tempfile.TemporaryFile() as err_file:
         process = subprocess.Popen(
-            command,
-            shell=True,
-            executable=terminal_shell(),
+            argv,
             cwd=str(cwd),
             stdin=subprocess.DEVNULL,
             stdout=out_file,
