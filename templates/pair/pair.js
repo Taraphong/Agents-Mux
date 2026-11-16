@@ -119,7 +119,7 @@ function applyLanguage() {
       );
     });
   languageDisplay.textContent = language === "th" ? "TH" : "EN";
-  # Update language toggle accessible name to include active language
+  // Update language toggle accessible name to include active language
   document.getElementById("language-toggle").setAttribute("aria-label", t("control.language") + ": " + (language === "th" ? "TH" : "EN"))
   document.getElementById("pair-foot-note").textContent = t(
     "pair.footNote",
