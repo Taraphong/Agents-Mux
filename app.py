@@ -3409,8 +3409,20 @@ def history_update(conversation_id: str):
                 return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
             if len(new_messages) > 5000:
                 return jsonify({"error": "จำนวนข้อความมากเกินไป"}), 400
-            # Editing a prompt replaces the stored list with the truncated one.
-            record["messages"] = [item for item in new_messages if isinstance(item, dict)]
+            safe_roles = {"user", "assistant"}
+            sanitized_messages = []
+            for item in new_messages:
+                if not isinstance(item, dict):
+                    return jsonify({"error": "รูปแบบข้อความไม่ถูกต้อง"}), 400
+                role = str(item.get("role", "")).strip().lower()
+                content = item.get("content")
+                if role not in safe_roles:
+                    return jsonify({"error": "พบ role ที่ไม่อนุญาตในประวัติ"}), 400
+                if not isinstance(content, str):
+                    return jsonify({"error": "รูปแบบข้อความไม่ถูกต้อง"}), 400
+                sanitized_messages.append({"role": role, "content": content[:20000]})
+            # Editing a prompt replaces the stored list with the sanitized one.
+            record["messages"] = sanitized_messages
             record["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
         _write_history_record(path, record)
         return jsonify(record)
