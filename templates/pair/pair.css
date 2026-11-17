@@ -2,26 +2,31 @@
 :root {
   color-scheme: dark;
   --void: #050505;
-  --panel: rgba(20, 20, 20, 0.6);
-  --panel-border: rgba(255, 255, 255, 0.16);
+  --panel: radial-gradient(
+      120% 110% at 0% 0%,
+      rgba(255, 255, 255, 0.13),
+      transparent 52%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  --panel-border: rgba(255, 255, 255, 0.2);
   --glass-edge:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
     inset 0 -1px 0 rgba(255, 255, 255, 0.04);
   --text: #f6f6f6;
   --muted: #b6b6b6;
   --dim: #8d8d8d;
-  --input-bg: rgba(255, 255, 255, 0.05);
-  --input-border: rgba(255, 255, 255, 0.15);
+  --input-bg: rgba(255, 255, 255, 0.04);
+  --input-border: rgba(255, 255, 255, 0.16);
   --accent-grad: linear-gradient(135deg, #ffffff, #c4c4c4);
   --accent-text: #090909;
   --accent-glow: rgba(255, 255, 255, 0.14);
   --error: #ffffff;
   --ok: #efefef;
-  --code-bg: rgba(8, 8, 8, 0.6);
+  --code-bg: rgba(8, 8, 8, 0.4);
   --code-border: rgba(255, 255, 255, 0.14);
   --shadow:
-    0 30px 80px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    0 28px 72px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
   font-family:
     "Inter",
     "SF Pro Display",
@@ -33,25 +38,30 @@
 html.light-theme {
   color-scheme: light;
   --void: #f2f2f2;
-  --panel: rgba(255, 255, 255, 0.74);
-  --panel-border: rgba(255, 255, 255, 0.95);
+  --panel: radial-gradient(
+      120% 110% at 0% 0%,
+      rgba(255, 255, 255, 0.85),
+      transparent 52%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.28));
+  --panel-border: rgba(0, 0, 0, 0.09);
   --glass-edge:
     inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.05);
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04);
   --text: #0e0e0e;
   --muted: #4b4b4b;
   --dim: #6b6b6b;
-  --input-bg: rgba(255, 255, 255, 0.85);
+  --input-bg: rgba(255, 255, 255, 0.6);
   --input-border: rgba(0, 0, 0, 0.14);
   --accent-grad: linear-gradient(135deg, #2b2b2b, #000000);
   --accent-text: #ffffff;
   --accent-glow: rgba(0, 0, 0, 0.2);
   --error: #000000;
   --ok: #1a1a1a;
-  --code-bg: rgba(255, 255, 255, 0.75);
+  --code-bg: rgba(255, 255, 255, 0.52);
   --code-border: rgba(0, 0, 0, 0.1);
   --shadow:
-    0 28px 70px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.05),
+    0 26px 64px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 * {
@@ -79,18 +89,18 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(45% 40% at 14% 6%, rgba(255, 255, 255, 0.13), transparent 62%),
-    radial-gradient(38% 34% at 86% 0%, rgba(255, 255, 255, 0.07), transparent 60%),
-    radial-gradient(46% 42% at 76% 94%, rgba(255, 255, 255, 0.06), transparent 62%),
-    radial-gradient(40% 36% at 18% 98%, rgba(255, 255, 255, 0.05), transparent 60%);
-  filter: blur(10px);
+    radial-gradient(56% 52% at 10% 2%, rgba(255, 255, 255, 0.26), transparent 68%),
+    radial-gradient(46% 44% at 90% -4%, rgba(255, 255, 255, 0.2), transparent 66%),
+    radial-gradient(58% 54% at 80% 98%, rgba(255, 255, 255, 0.17), transparent 68%),
+    radial-gradient(50% 48% at 14% 102%, rgba(255, 255, 255, 0.14), transparent 66%);
+  filter: blur(18px);
 }
 html.light-theme body::before {
   background:
-    radial-gradient(45% 40% at 14% 6%, rgba(0, 0, 0, 0.1), transparent 62%),
-    radial-gradient(38% 34% at 86% 0%, rgba(0, 0, 0, 0.06), transparent 60%),
-    radial-gradient(46% 42% at 76% 94%, rgba(0, 0, 0, 0.05), transparent 62%),
-    radial-gradient(40% 36% at 18% 98%, rgba(0, 0, 0, 0.04), transparent 60%);
+    radial-gradient(56% 52% at 10% 2%, rgba(0, 0, 0, 0.3), transparent 68%),
+    radial-gradient(46% 44% at 90% -4%, rgba(0, 0, 0, 0.22), transparent 66%),
+    radial-gradient(58% 54% at 80% 98%, rgba(0, 0, 0, 0.18), transparent 68%),
+    radial-gradient(50% 48% at 14% 102%, rgba(0, 0, 0, 0.14), transparent 66%);
 }
 .card {
   width: min(460px, 100%);
@@ -99,8 +109,8 @@ html.light-theme body::before {
   border-radius: 24px;
   padding: 24px 26px 28px;
   box-shadow: var(--shadow);
-  -webkit-backdrop-filter: blur(26px) saturate(100%);
-  backdrop-filter: blur(26px) saturate(100%);
+  -webkit-backdrop-filter: blur(30px);
+  backdrop-filter: blur(30px);
 }
 .topbar {
   display: flex;

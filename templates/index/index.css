@@ -3029,42 +3029,49 @@ body.light-theme .update-status.restarting {
   --text: #f6f6f6;
   --muted: #b6b6b6;
   --dim: #8d8d8d;
-  --glass-1: rgba(20, 20, 20, 0.55);
-  --glass-2: rgba(12, 12, 12, 0.74);
-  --glass-3: rgba(8, 8, 8, 0.62);
-  --glass-4: rgba(255, 255, 255, 0.075);
-  --glass-bg: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.1),
-    rgba(255, 255, 255, 0.03)
-  );
-  --glass-bg-soft: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.08),
-    rgba(255, 255, 255, 0.02)
-  );
-  --glass-border: rgba(255, 255, 255, 0.16);
+  --glass-1: rgba(20, 20, 20, 0.42);
+  --glass-2: rgba(12, 12, 12, 0.6);
+  --glass-3: rgba(8, 8, 8, 0.42);
+  --glass-4: rgba(255, 255, 255, 0.06);
+  --glass-bg: radial-gradient(
+      130% 120% at 0% 0%,
+      rgba(255, 255, 255, 0.11),
+      transparent 46%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.012));
+  --glass-bg-soft: radial-gradient(
+      130% 120% at 0% 0%,
+      rgba(255, 255, 255, 0.08),
+      transparent 48%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.008));
+  --glass-border: rgba(255, 255, 255, 0.2);
   --glass-edge:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
     inset 0 -1px 0 rgba(255, 255, 255, 0.04);
-  --glass-shadow: 0 26px 70px rgba(0, 0, 0, 0.6);
-  --glass-shadow-soft: 0 14px 38px rgba(0, 0, 0, 0.42);
-  --glass-blur: blur(26px) saturate(100%);
-  --field-bg: rgba(255, 255, 255, 0.05);
-  --field-border: rgba(255, 255, 255, 0.15);
-  --hover-bg: rgba(255, 255, 255, 0.09);
-  --active-bg: rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  --glass-shadow-soft: 0 14px 36px rgba(0, 0, 0, 0.3);
+  --glass-blur: blur(30px);
+  --field-bg: rgba(255, 255, 255, 0.035);
+  --field-border: rgba(255, 255, 255, 0.16);
+  --hover-bg: rgba(255, 255, 255, 0.07);
+  --active-bg: rgba(255, 255, 255, 0.12);
   --accent-grad: linear-gradient(135deg, #ffffff, #c4c4c4);
   --accent-ink: #090909;
   --accent-glow: rgba(255, 255, 255, 0.14);
   --ring: 0 0 0 3px rgba(255, 255, 255, 0.22);
-  --danger-bg: rgba(255, 255, 255, 0.06);
+  --danger-bg: rgba(255, 255, 255, 0.05);
   --danger-border: rgba(255, 255, 255, 0.36);
   --danger-text: #ffffff;
-  --chip-bg: rgba(255, 255, 255, 0.09);
-  --user-grad: linear-gradient(135deg, #f7f7f7, #d7d7d7);
-  --user-ink: #0a0a0a;
-  --user-border: rgba(255, 255, 255, 0.55);
+  --chip-bg: rgba(255, 255, 255, 0.07);
+  --user-grad: radial-gradient(
+      130% 130% at 0% 0%,
+      rgba(255, 255, 255, 0.18),
+      transparent 55%
+    ),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  --user-ink: #ffffff;
+  --user-border: rgba(255, 255, 255, 0.3);
   --radius-lg: 22px;
   --radius-md: 14px;
 }
@@ -3082,29 +3089,31 @@ body.light-theme {
   --text: #0e0e0e;
   --muted: #4b4b4b;
   --dim: #6b6b6b;
-  --glass-1: rgba(255, 255, 255, 0.7);
-  --glass-2: rgba(255, 255, 255, 0.94);
-  --glass-3: rgba(255, 255, 255, 0.62);
-  --glass-4: rgba(255, 255, 255, 0.9);
-  --glass-bg: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.92),
-    rgba(255, 255, 255, 0.62)
-  );
-  --glass-bg-soft: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.84),
-    rgba(255, 255, 255, 0.5)
-  );
-  --glass-border: rgba(255, 255, 255, 0.95);
+  --glass-1: rgba(255, 255, 255, 0.5);
+  --glass-2: rgba(255, 255, 255, 0.8);
+  --glass-3: rgba(255, 255, 255, 0.45);
+  --glass-4: rgba(255, 255, 255, 0.7);
+  --glass-bg: radial-gradient(
+      130% 120% at 0% 0%,
+      rgba(255, 255, 255, 0.8),
+      transparent 48%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.3));
+  --glass-bg-soft: radial-gradient(
+      130% 120% at 0% 0%,
+      rgba(255, 255, 255, 0.7),
+      transparent 50%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.25));
+  --glass-border: rgba(0, 0, 0, 0.09);
   --glass-edge:
     inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.05);
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04);
   --glass-shadow:
-    0 26px 60px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    0 24px 56px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.07);
   --glass-shadow-soft:
-    0 14px 34px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.04);
-  --field-bg: rgba(255, 255, 255, 0.85);
+    0 12px 28px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --field-bg: rgba(255, 255, 255, 0.62);
   --field-border: rgba(0, 0, 0, 0.14);
   --hover-bg: rgba(0, 0, 0, 0.05);
   --active-bg: rgba(0, 0, 0, 0.09);
@@ -3112,13 +3121,18 @@ body.light-theme {
   --accent-ink: #ffffff;
   --accent-glow: rgba(0, 0, 0, 0.2);
   --ring: 0 0 0 3px rgba(0, 0, 0, 0.2);
-  --danger-bg: rgba(0, 0, 0, 0.05);
+  --danger-bg: rgba(0, 0, 0, 0.04);
   --danger-border: rgba(0, 0, 0, 0.32);
   --danger-text: #000000;
   --chip-bg: rgba(0, 0, 0, 0.05);
-  --user-grad: linear-gradient(135deg, #232323, #000000);
-  --user-ink: #ffffff;
-  --user-border: rgba(0, 0, 0, 0.5);
+  --user-grad: radial-gradient(
+      130% 130% at 0% 0%,
+      rgba(255, 255, 255, 0.55),
+      transparent 55%
+    ),
+    linear-gradient(150deg, rgba(0, 0, 0, 0.09), rgba(0, 0, 0, 0.035));
+  --user-ink: #0e0e0e;
+  --user-border: rgba(0, 0, 0, 0.18);
 }
 body {
   position: relative;
@@ -3146,19 +3160,19 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(45% 40% at 14% 6%, rgba(255, 255, 255, 0.13), transparent 62%),
-    radial-gradient(38% 34% at 86% 0%, rgba(255, 255, 255, 0.07), transparent 60%),
-    radial-gradient(46% 42% at 76% 94%, rgba(255, 255, 255, 0.06), transparent 62%),
-    radial-gradient(40% 36% at 18% 98%, rgba(255, 255, 255, 0.05), transparent 60%);
-  filter: blur(10px);
+    radial-gradient(56% 52% at 10% 2%, rgba(255, 255, 255, 0.26), transparent 68%),
+    radial-gradient(46% 44% at 90% -4%, rgba(255, 255, 255, 0.2), transparent 66%),
+    radial-gradient(58% 54% at 80% 98%, rgba(255, 255, 255, 0.17), transparent 68%),
+    radial-gradient(50% 48% at 14% 102%, rgba(255, 255, 255, 0.14), transparent 66%);
+  filter: blur(18px);
   animation: liquid-drift 28s ease-in-out infinite alternate;
 }
 body.light-theme::before {
   background:
-    radial-gradient(45% 40% at 14% 6%, rgba(0, 0, 0, 0.1), transparent 62%),
-    radial-gradient(38% 34% at 86% 0%, rgba(0, 0, 0, 0.06), transparent 60%),
-    radial-gradient(46% 42% at 76% 94%, rgba(0, 0, 0, 0.05), transparent 62%),
-    radial-gradient(40% 36% at 18% 98%, rgba(0, 0, 0, 0.04), transparent 60%);
+    radial-gradient(56% 52% at 10% 2%, rgba(0, 0, 0, 0.3), transparent 68%),
+    radial-gradient(46% 44% at 90% -4%, rgba(0, 0, 0, 0.22), transparent 66%),
+    radial-gradient(58% 54% at 80% 98%, rgba(0, 0, 0, 0.18), transparent 68%),
+    radial-gradient(50% 48% at 14% 102%, rgba(0, 0, 0, 0.14), transparent 66%);
 }
 @keyframes liquid-drift {
   from {
@@ -3274,6 +3288,16 @@ body.light-theme header {
 }
 body.light-theme header {
   border-bottom-color: var(--line-soft);
+}
+/* Earlier light rules paint the sidebar, header and slash menu solid white;
+   restate them so the transparent glass shows through. */
+body.light-theme aside,
+body.light-theme header,
+body.light-theme .slash-menu {
+  background: var(--glass-bg-soft);
+}
+body.light-theme .slash-menu {
+  background: var(--glass-2);
 }
 body.light-theme .history-title,
 body.light-theme .history-day {
@@ -3773,13 +3797,13 @@ body.light-theme .user {
   border: 1px solid var(--user-border);
   color: var(--user-ink);
   box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    0 16px 40px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
 body.light-theme .user {
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
 }
 .message-meta,
 body.light-theme .message-meta,
