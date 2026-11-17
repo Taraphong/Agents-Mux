@@ -45,6 +45,84 @@ const I18N = {
     "chat.modelTitle": "เลือกโมเดล",
     "chat.modelLoading": "กำลังโหลดโมเดล...",
     "chat.send": "ส่ง",
+    "header.toggleSidebar": "ย่อ/ขยายแถบด้านข้าง",
+    "message.copyPrompt": "คัดลอกคำสั่ง",
+    "message.copyAnswer": "คัดลอกคำตอบ",
+    "message.editPrompt": "แก้ไขคำสั่ง",
+    "message.editTitle": "แก้ไขคำสั่ง",
+    "message.editHint":
+      "บันทึกแล้วระบบจะลบคำตอบที่ได้จากคำสั่งนี้ และนำคำสั่งที่แก้ไขไปไว้ในช่องพิมพ์เพื่อส่งใหม่",
+    "message.editSave": "บันทึกและลบคำตอบเดิม",
+    "message.editEmpty": "คำสั่งต้องไม่ว่าง",
+    "message.editBusy": "รอให้ AI ตอบเสร็จก่อนแก้ไขคำสั่ง",
+    "message.editDeleted":
+      "แก้ไขคำสั่งแล้ว ลบคำตอบเดิม และเตรียมข้อความไว้ในช่องพิมพ์",
+    "message.editFailed": "แก้ไขคำสั่งไม่สำเร็จ",
+    "message.copied": "คัดลอกแล้ว",
+    "message.copyFailed": "คัดลอกไม่สำเร็จ",
+    "server.title": "ควบคุมเซิร์ฟเวอร์",
+    "server.hint":
+      "สั่งเปิด ปิด หรือรีสตาร์ตเซิร์ฟเวอร์จากหน้านี้ เมื่อหยุดแล้วหน้าเว็บจะใช้งานไม่ได้จนกว่าจะเปิดใหม่จากเครื่องด้วย ./start_web.sh --start",
+    "server.refresh": "รีเฟรชสถานะ",
+    "server.state": "สถานะ",
+    "server.pid": "PID",
+    "server.uptime": "ทำงานมา",
+    "server.mode": "โหมด",
+    "server.start": "เริ่ม",
+    "server.restart": "รีสตาร์ต",
+    "server.stop": "หยุด",
+    "server.running": "กำลังทำงาน",
+    "server.stopped": "หยุดแล้ว",
+    "server.unknown": "ไม่ทราบสถานะ",
+    "server.loadFailed": "โหลดสถานะเซิร์ฟเวอร์ไม่สำเร็จ",
+    "server.actionPending": "กำลังส่งคำสั่ง: {action}",
+    "server.actionFailed": "สั่งงานไม่สำเร็จ: {error}",
+    "server.confirmRestart":
+      "รีสตาร์ตเซิร์ฟเวอร์หรือไม่? หน้าเว็บจะขาดการเชื่อมต่อชั่วครู่",
+    "server.confirmStop":
+      "หยุดเซิร์ฟเวอร์หรือไม่? หน้าเว็บจะใช้งานไม่ได้จนกว่าจะเปิดใหม่จากเครื่อง",
+    "server.restartConfirmTitle": "ยืนยันการรีสตาร์ต",
+    "server.stopConfirmTitle": "ยืนยันการหยุดเซิร์ฟเวอร์",
+    "server.restarting": "กำลังรีสตาร์ตเซิร์ฟเวอร์...",
+    "server.restartDone": "เซิร์ฟเวอร์กลับมาทำงานแล้ว",
+    "server.restartSlow":
+      "ยังเชื่อมต่อเซิร์ฟเวอร์ไม่ได้ หากเปลี่ยน HTTP/HTTPS ให้เปิดที่อยู่ใหม่ในเบราว์เซอร์",
+    "server.stoppedNow":
+      "ส่งคำสั่งหยุดเซิร์ฟเวอร์แล้ว เปิดใหม่ได้จากเครื่องด้วย ./start_web.sh --start",
+    "server.uptimeValue": "{hours} ชม. {minutes} นาที",
+    "server.uptimeMinutes": "{minutes} นาที",
+    "settings.group.server": "เซิร์ฟเวอร์",
+    "settings.group.serverDesc": "เปิด ปิด และรีสตาร์ตเซิร์ฟเวอร์ของเว็บนี้",
+    "network.title": "การเชื่อมต่อเว็บ (HTTP / HTTPS)",
+    "network.hint":
+      "เลือกโหมดที่เซิร์ฟเวอร์ใช้ให้บริการหน้าเว็บ การเปลี่ยนโหมดมีผลหลังรีสตาร์ตเซิร์ฟเวอร์",
+    "network.refresh": "รีเฟรช",
+    "network.currentMode": "โหมดที่ใช้งาน",
+    "network.address": "ที่อยู่",
+    "network.certState": "ใบรับรอง",
+    "network.optionsAria": "เลือกโหมด HTTP หรือ HTTPS",
+    "network.httpTitle": "HTTP",
+    "network.httpHint":
+      "ไม่เข้ารหัสการเชื่อมต่อ เหมาะกับเครือข่ายที่เชื่อถือได้ในบ้าน",
+    "network.certTitle": "HTTPS ด้วยไฟล์ใบรับรอง",
+    "network.certHint": "ใช้ certs/cert.pem และ certs/key.pem ที่มีอยู่",
+    "network.adhocTitle": "HTTPS ด้วยใบรับรองชั่วคราว",
+    "network.adhocHint":
+      "สร้างใบรับรองชั่วคราวอัตโนมัติ ต้องมีแพ็กเกจ cryptography",
+    "network.save": "บันทึกโหมด",
+    "network.restart": "รีสตาร์ตเซิร์ฟเวอร์",
+    "network.certHelp": "สร้างใบรับรองถาวรได้ด้วย ./start_web.sh --make-cert <ip>",
+    "network.saved": "บันทึกโหมดการเชื่อมต่อแล้ว",
+    "network.saveFailed": "บันทึกโหมดการเชื่อมต่อไม่สำเร็จ",
+    "network.needRestart":
+      "บันทึกแล้ว — กดรีสตาร์ตเซิร์ฟเวอร์เพื่อให้โหมดใหม่มีผล ที่อยู่ใหม่: {url}",
+    "network.loadFailed": "โหลดการตั้งค่าการเชื่อมต่อไม่สำเร็จ",
+    "network.certReady": "พร้อมใช้งาน",
+    "network.certMissing": "ไม่พบไฟล์",
+    "network.certOff": "ไม่ได้ใช้",
+    "network.adhocOn": "ใช้ใบรับรองชั่วคราว",
+    "nav.network": "🛡 HTTPS",
+    "page.network": "HTTPS / HTTP",
     "chat.typingThinking": "AI กำลังคิด",
     "chat.typingWorking": "AI กำลังเรียบเรียงคำตอบ",
     "chat.typingStillWorking": "AI ยังทำงานอยู่ กรุณารออีกนิด",
@@ -478,6 +556,84 @@ const I18N = {
     "chat.modelTitle": "Choose model",
     "chat.modelLoading": "Loading models...",
     "chat.send": "Send",
+    "header.toggleSidebar": "Show or hide the sidebar",
+    "message.copyPrompt": "Copy prompt",
+    "message.copyAnswer": "Copy answer",
+    "message.editPrompt": "Edit prompt",
+    "message.editTitle": "Edit prompt",
+    "message.editHint":
+      "Saving removes the answer that came from this prompt and puts the edited text in the composer to send again",
+    "message.editSave": "Save and delete old answer",
+    "message.editEmpty": "The prompt cannot be empty",
+    "message.editBusy": "Wait for the AI to finish before editing a prompt",
+    "message.editDeleted":
+      "Prompt edited, its old answer removed, and the text placed in the composer",
+    "message.editFailed": "Could not edit the prompt",
+    "message.copied": "Copied",
+    "message.copyFailed": "Could not copy",
+    "server.title": "Server control",
+    "server.hint":
+      "Start, stop, or restart the server here. After stopping, the web page stays offline until you start it on the machine with ./start_web.sh --start",
+    "server.refresh": "Refresh status",
+    "server.state": "State",
+    "server.pid": "PID",
+    "server.uptime": "Uptime",
+    "server.mode": "Mode",
+    "server.start": "Start",
+    "server.restart": "Restart",
+    "server.stop": "Stop",
+    "server.running": "Running",
+    "server.stopped": "Stopped",
+    "server.unknown": "Unknown state",
+    "server.loadFailed": "Could not load the server status",
+    "server.actionPending": "Sending command: {action}",
+    "server.actionFailed": "Command failed: {error}",
+    "server.confirmRestart":
+      "Restart the server? The page will disconnect briefly.",
+    "server.confirmStop":
+      "Stop the server? The page will be unavailable until you start it on the machine.",
+    "server.restartConfirmTitle": "Confirm restart",
+    "server.stopConfirmTitle": "Confirm stop",
+    "server.restarting": "Restarting the server...",
+    "server.restartDone": "The server is back online",
+    "server.restartSlow":
+      "Still cannot reach the server. If you changed HTTP/HTTPS, open the new address in the browser.",
+    "server.stoppedNow":
+      "Stop command sent. Start it on the machine with ./start_web.sh --start",
+    "server.uptimeValue": "{hours}h {minutes}m",
+    "server.uptimeMinutes": "{minutes}m",
+    "settings.group.server": "Server",
+    "settings.group.serverDesc": "Start, stop, and restart this web server",
+    "network.title": "Web connection (HTTP / HTTPS)",
+    "network.hint":
+      "Choose whether the server serves this page over HTTP or HTTPS. A change takes effect after a server restart.",
+    "network.refresh": "Refresh",
+    "network.currentMode": "Active mode",
+    "network.address": "Address",
+    "network.certState": "Certificate",
+    "network.optionsAria": "Choose HTTP or HTTPS mode",
+    "network.httpTitle": "HTTP",
+    "network.httpHint":
+      "No encryption; suitable for a trusted home network",
+    "network.certTitle": "HTTPS with certificate files",
+    "network.certHint": "Uses the existing certs/cert.pem and certs/key.pem",
+    "network.adhocTitle": "HTTPS with an ad-hoc certificate",
+    "network.adhocHint":
+      "Generates a temporary certificate automatically; requires the cryptography package",
+    "network.save": "Save mode",
+    "network.restart": "Restart server",
+    "network.certHelp": "Create a permanent certificate with ./start_web.sh --make-cert <ip>",
+    "network.saved": "Connection mode saved",
+    "network.saveFailed": "Could not save the connection mode",
+    "network.needRestart":
+      "Saved — restart the server to apply the new mode. New address: {url}",
+    "network.loadFailed": "Could not load the connection settings",
+    "network.certReady": "Ready",
+    "network.certMissing": "Files missing",
+    "network.certOff": "Not used",
+    "network.adhocOn": "Ad-hoc certificate",
+    "nav.network": "🛡 HTTPS",
+    "page.network": "HTTPS / HTTP",
     "chat.typingThinking": "AI is thinking",
     "chat.typingWorking": "AI is composing a reply",
     "chat.typingStillWorking": "AI is still working — one moment",
@@ -1434,6 +1590,23 @@ $("mobile-menu-toggle").addEventListener("click", () => {
   $("mobile-menu-toggle").setAttribute("aria-expanded", String(open));
 });
 $("sidebar-backdrop").addEventListener("click", closeSidebar);
+// Laptop-width sidebar toggle. The mobile menu button keeps handling narrow
+// screens, so this state only applies above 700px.
+const SIDEBAR_STORAGE_KEY = "ai-control-center-sidebar-collapsed";
+const appRoot = document.querySelector(".app");
+let sidebarCollapsed = localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
+function applySidebarCollapsed(collapsed) {
+  appRoot.classList.toggle("sidebar-collapsed", collapsed);
+  const button = $("sidebar-toggle");
+  button.setAttribute("aria-expanded", String(!collapsed));
+  button.textContent = collapsed ? "▤" : "◧";
+}
+applySidebarCollapsed(sidebarCollapsed);
+$("sidebar-toggle").addEventListener("click", () => {
+  sidebarCollapsed = !appRoot.classList.contains("sidebar-collapsed");
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0");
+  applySidebarCollapsed(sidebarCollapsed);
+});
 function formatUsage(durationMs, usage) {
   const duration = Number.isFinite(Number(durationMs))
     ? t("usage.duration", {
@@ -1448,7 +1621,7 @@ function formatUsage(durationMs, usage) {
       : t("usage.unknownTokens");
   return t("usage.summary", { duration, tokens });
 }
-function addMessage(role, content, meta = null) {
+function addMessage(role, content, meta = null, messageIndex = null) {
   const el = document.createElement("div");
   el.className = `message ${role}`;
   const text = document.createElement("div");
@@ -1497,9 +1670,111 @@ function addMessage(role, content, meta = null) {
     details.textContent = `${formatUsage(meta.duration_ms, meta.usage)}${meta.fallback_used ? t("chat.fallbackUsed", { model: meta.fallback_used }) : ""}`;
     el.appendChild(details);
   }
+  if (role === "user" || role === "assistant") {
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "message-action";
+    copyButton.textContent = t(
+      role === "user" ? "message.copyPrompt" : "message.copyAnswer",
+    );
+    copyButton.addEventListener("click", () => copyMessageText(content));
+    actions.appendChild(copyButton);
+    if (role === "user" && Number.isInteger(messageIndex)) {
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "message-action";
+      editButton.textContent = t("message.editPrompt");
+      editButton.addEventListener("click", () =>
+        openMessageEditor(messageIndex),
+      );
+      actions.appendChild(editButton);
+    }
+    el.appendChild(actions);
+  }
   $("messages").appendChild(el);
   $("messages").scrollTop = $("messages").scrollHeight;
 }
+async function copyMessageText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      // Plain HTTP on the LAN is not a secure context, so use the legacy path.
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      const copied = document.execCommand("copy");
+      area.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+    showNotice(t("message.copied"));
+  } catch (error) {
+    showNotice(t("message.copyFailed"), true);
+  }
+}
+let editingMessageIndex = null;
+function openMessageEditor(index) {
+  const message = messages[index];
+  if (!message || message.role !== "user") return;
+  editingMessageIndex = index;
+  $("message-modal-input").value = message.content || "";
+  $("message-modal").classList.add("open");
+  $("message-modal-input").focus();
+  $("message-modal-input").select();
+}
+function closeMessageEditor() {
+  $("message-modal").classList.remove("open");
+  editingMessageIndex = null;
+}
+async function saveMessageEdit() {
+  if (editingMessageIndex === null) return;
+  const nextText = $("message-modal-input").value.trim();
+  if (!nextText) {
+    showNotice(t("message.editEmpty"), true);
+    return;
+  }
+  if (chatBusy) {
+    showNotice(t("message.editBusy"), true);
+    return;
+  }
+  const index = editingMessageIndex;
+  const prefix = messages.slice(0, index);
+  const targetConversationId = conversationId;
+  if (targetConversationId) {
+    // Drop queued retries first so loadHistoryList() inside updateHistory()
+    // cannot write the removed answers back.
+    pendingHistoryAppends.delete(targetConversationId);
+    try {
+      await updateHistory(targetConversationId, {
+        messages: prefix.map(historyMessagePayload),
+      });
+    } catch (error) {
+      showNotice(t("message.editFailed"), true);
+      return;
+    }
+  }
+  messages.splice(0, messages.length, ...prefix);
+  persistedMessageCount = prefix.length;
+  failedSend = null;
+  closeMessageEditor();
+  $("input").value = nextText;
+  resizeInput();
+  updateSendState();
+  renderMessages();
+  showNotice(t("message.editDeleted"));
+  $("input").focus();
+}
+$("message-modal-cancel").addEventListener("click", closeMessageEditor);
+$("message-modal-confirm").addEventListener("click", saveMessageEdit);
+$("message-modal").addEventListener("click", (event) => {
+  if (event.target === $("message-modal")) closeMessageEditor();
+});
 function addTypingIndicator() {
   removeTypingIndicator();
   const el = document.createElement("div");
@@ -1634,10 +1909,12 @@ document.querySelectorAll("nav button").forEach((button) =>
     if (button.dataset.view === "settings") {
       loadSettings();
       loadAuthSessions();
+      loadServerStatus();
     }
     if (button.dataset.view === "terminal") openTerminalView();
     if (button.dataset.view === "schedule") loadSchedules();
     if (button.dataset.view === "logs") loadLogs();
+    if (button.dataset.view === "network") loadServerStatus();
     closeSidebar();
   }),
 );
@@ -1648,6 +1925,7 @@ const SETTINGS_SECTIONS = [
   "integrations",
   "security",
   "update",
+  "server",
 ];
 let activeSettingsSection = SETTINGS_SECTIONS[0];
 function activateSettingsSection(section) {
@@ -1668,9 +1946,10 @@ function activateSettingsSection(section) {
   $("settings-view").scrollTop = 0;
 }
 document.querySelectorAll("[data-settings-section]").forEach((button) => {
-  button.addEventListener("click", () =>
-    activateSettingsSection(button.dataset.settingsSection),
-  );
+  button.addEventListener("click", () => {
+    activateSettingsSection(button.dataset.settingsSection);
+    if (button.dataset.settingsSection === "server") loadServerStatus();
+  });
 });
 function renderLogs() {
   const list = $("logs-list");
@@ -2355,7 +2634,7 @@ async function sendChatMessage(content, requestedSkills = null) {
       : null;
   if (appliedSkill) userMessage.skill = appliedSkill;
   messages.push(userMessage);
-  addMessage("user", userMessage.content, userMessage);
+  addMessage("user", userMessage.content, userMessage, messages.length - 1);
   addTypingIndicator();
   chatBusy = true;
   $("send").disabled = true;
@@ -2414,7 +2693,7 @@ async function sendChatMessage(content, requestedSkills = null) {
       if (targetConversationId && conversationId === targetConversationId) {
         messages.push(assistantMessage);
         removeTypingIndicator();
-        addMessage("assistant", data.answer, assistantMessage);
+        addMessage("assistant", data.answer, assistantMessage, messages.length - 1);
       }
       await appendAssistantToHistory(
         targetConversationId,
@@ -2425,7 +2704,7 @@ async function sendChatMessage(content, requestedSkills = null) {
     }
     messages.push(assistantMessage);
     removeTypingIndicator();
-    addMessage("assistant", data.answer, assistantMessage);
+    addMessage("assistant", data.answer, assistantMessage, messages.length - 1);
     const saved = await saveConversation(sessionToken);
     if (!saved) {
       queuePendingAppend(
@@ -2446,7 +2725,7 @@ async function sendChatMessage(content, requestedSkills = null) {
     if (sessionToken !== chatSessionToken) {
       if (targetConversationId && conversationId === targetConversationId) {
         messages.push(errorMessage);
-        addMessage("assistant", errorMessage.content);
+        addMessage("assistant", errorMessage.content, null, messages.length - 1);
       }
       if (targetConversationId) {
         await appendAssistantToHistory(
@@ -2458,7 +2737,7 @@ async function sendChatMessage(content, requestedSkills = null) {
       return;
     }
     messages.push(errorMessage);
-    addMessage("assistant", errorMessage.content);
+    addMessage("assistant", errorMessage.content, null, messages.length - 1);
     const saved = targetConversationId
       ? await saveConversation(sessionToken)
       : null;
@@ -4026,6 +4305,229 @@ $("reset").addEventListener("click", async () => {
   await loadSettings();
   showNotice(t("notice.resetDone"));
 });
+// Server control (Settings) and HTTP/HTTPS selection (Network page).
+const serverState = {
+  known: false,
+  failed: false,
+  running: false,
+  pid: null,
+  scheme: "",
+  port: 5000,
+  url: "",
+  uptime: 0,
+  scriptAvailable: false,
+  tls: {
+    mode: "http",
+    kind: "none",
+    cert_exists: false,
+    key_exists: false,
+    adhoc: false,
+  },
+};
+let activeServerAction = "";
+function applyServerStatus(data) {
+  serverState.known = true;
+  serverState.failed = false;
+  serverState.running = Boolean(data.running);
+  serverState.pid = data.pid ?? null;
+  serverState.scheme = data.scheme || "";
+  serverState.port = Number(data.port) || 5000;
+  serverState.url = data.url || "";
+  serverState.uptime = Number(data.uptime_seconds) || 0;
+  serverState.tls = data.tls || serverState.tls;
+  serverState.scriptAvailable = Boolean(data.script_available);
+}
+function serverUptimeText(seconds) {
+  const totalMinutes = Math.max(0, Math.floor(Number(seconds) / 60));
+  if (totalMinutes < 60) {
+    return t("server.uptimeMinutes", { minutes: totalMinutes });
+  }
+  return t("server.uptimeValue", {
+    hours: Math.floor(totalMinutes / 60),
+    minutes: totalMinutes % 60,
+  });
+}
+function renderServerStatus() {
+  const state = $("server-state");
+  if (!state) return;
+  if (!serverState.known) {
+    state.textContent = serverState.failed ? t("server.loadFailed") : "—";
+    $("server-pid").textContent = "—";
+    $("server-uptime").textContent = "—";
+    $("server-mode").textContent = "—";
+    return;
+  }
+  state.textContent = serverState.running
+    ? t("server.running")
+    : t("server.stopped");
+  $("server-pid").textContent =
+    serverState.running && serverState.pid ? String(serverState.pid) : "—";
+  $("server-uptime").textContent = serverState.running
+    ? serverUptimeText(serverState.uptime)
+    : "—";
+  $("server-mode").textContent = serverState.scheme
+    ? serverState.scheme.toUpperCase()
+    : "—";
+}
+function renderNetworkState() {
+  const tls = serverState.tls || {};
+  // Keep the option the user is about to save when the language changes.
+  const selected =
+    document.querySelector('input[name="tls-mode"]:checked')?.value ||
+    (tls.mode === "https"
+      ? tls.kind === "adhoc"
+        ? "https-adhoc"
+        : "https-cert"
+      : "http");
+  document.querySelectorAll('input[name="tls-mode"]').forEach((input) => {
+    input.checked = input.value === selected;
+  });
+  $("network-scheme").textContent = serverState.known
+    ? serverState.scheme?.toUpperCase() || "—"
+    : "—";
+  $("network-url").textContent =
+    serverState.known && serverState.url ? serverState.url : "—";
+  if (!serverState.known) {
+    $("network-cert").textContent = serverState.failed
+      ? t("network.loadFailed")
+      : "—";
+    return;
+  }
+  if (tls.kind === "cert") {
+    $("network-cert").textContent =
+      tls.cert_exists && tls.key_exists
+        ? t("network.certReady")
+        : t("network.certMissing");
+  } else if (tls.kind === "adhoc") {
+    $("network-cert").textContent = t("network.adhocOn");
+  } else {
+    $("network-cert").textContent = t("network.certOff");
+  }
+}
+async function loadServerStatus() {
+  try {
+    const response = await fetch("/api/server/status", { cache: "no-store" });
+    if (!response.ok) throw new Error("status failed");
+    applyServerStatus(await response.json());
+  } catch (error) {
+    serverState.known = false;
+    serverState.failed = true;
+  }
+  renderServerStatus();
+  renderNetworkState();
+}
+function setServerStatusText(text, isError) {
+  const el = $("server-status-text");
+  el.textContent = text;
+  el.classList.toggle("error", Boolean(isError));
+  el.classList.toggle("restarting", !isError && Boolean(activeServerAction));
+}
+async function pollServerRestart(attempt = 0) {
+  if (attempt > 40) {
+    activeServerAction = "";
+    setServerStatusText(t("server.restartSlow"), true);
+    return;
+  }
+  await new Promise((resolve) =>
+    setTimeout(resolve, attempt === 0 ? 1200 : 1000),
+  );
+  try {
+    const response = await fetch("/api/server/status", { cache: "no-store" });
+    if (!response.ok) throw new Error("down");
+    const data = await response.json();
+    if (!data.running) throw new Error("down");
+    applyServerStatus(data);
+    renderServerStatus();
+    renderNetworkState();
+    activeServerAction = "";
+    setServerStatusText(t("server.restartDone"), false);
+  } catch (error) {
+    pollServerRestart(attempt + 1);
+  }
+}
+async function runServerAction(action) {
+  if (action === "stop" || action === "restart") {
+    const confirmed = await confirmDialog({
+      title: t(
+        action === "stop"
+          ? "server.stopConfirmTitle"
+          : "server.restartConfirmTitle",
+      ),
+      text: t(action === "stop" ? "server.confirmStop" : "server.confirmRestart"),
+      confirmLabel: t(action === "stop" ? "server.stop" : "server.restart"),
+    });
+    if (!confirmed) return;
+  }
+  activeServerAction = action;
+  setServerStatusText(
+    t("server.actionPending", { action: t(`server.${action}`) }),
+    false,
+  );
+  try {
+    const response = await fetch("/api/server/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, lang: currentLanguage }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || t("server.unknown"));
+    }
+  } catch (error) {
+    activeServerAction = "";
+    setServerStatusText(t("server.actionFailed", { error: error.message }), true);
+    return;
+  }
+  if (action === "stop") {
+    serverState.running = false;
+    setServerStatusText(t("server.stoppedNow"), false);
+    renderServerStatus();
+    return;
+  }
+  setServerStatusText(t("server.restarting"), false);
+  pollServerRestart(0);
+}
+$("server-refresh").addEventListener("click", loadServerStatus);
+$("server-start").addEventListener("click", () => runServerAction("start"));
+$("server-restart").addEventListener("click", () => runServerAction("restart"));
+$("server-stop").addEventListener("click", () => runServerAction("stop"));
+$("network-refresh").addEventListener("click", loadServerStatus);
+$("network-restart").addEventListener("click", () => runServerAction("restart"));
+$("network-save").addEventListener("click", async () => {
+  const selected =
+    document.querySelector('input[name="tls-mode"]:checked')?.value || "http";
+  const [mode, kind] = selected.split("-");
+  const button = $("network-save");
+  button.disabled = true;
+  $("network-status-text").textContent = "";
+  try {
+    const response = await fetch("/api/server/tls", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode,
+        https_kind: kind || "cert",
+        lang: currentLanguage,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || t("network.saveFailed"));
+    }
+    await loadServerStatus();
+    const port = serverState.port || Number(location.port) || 5000;
+    const targetUrl = `${mode}://${location.hostname}:${port}/`;
+    $("network-status-text").textContent = t("network.needRestart", {
+      url: targetUrl,
+    });
+    showNotice(t("network.saved"));
+  } catch (error) {
+    $("network-status-text").textContent = error.message;
+    showNotice(t("network.saveFailed"), true);
+  } finally {
+    button.disabled = false;
+  }
+});
 function renderMessages(keepTyping = false) {
   // A live "AI is thinking" indicator must survive re-renders such as a
   // language switch, so keep the same node and its running elapsed timer
@@ -4073,8 +4575,8 @@ function renderMessages(keepTyping = false) {
     restoreIndicator();
     return;
   }
-  messages.forEach((message) =>
-    addMessage(message.role, message.content, message),
+  messages.forEach((message, index) =>
+    addMessage(message.role, message.content, message, index),
   );
   restoreIndicator();
 }
@@ -4134,6 +4636,8 @@ function applyTranslations() {
   updateScheduleFormMode();
   renderAuthSessions();
   renderUpdatePanel();
+  renderServerStatus();
+  renderNetworkState();
   renderLogs();
   updateTerminalUi();
   $("schedule-timezone").textContent =

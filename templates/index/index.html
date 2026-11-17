@@ -31,6 +31,8 @@
             ◷ งานตามเวลา</button
           ><button data-view="logs" data-i18n="nav.logs">
             ▤ Log ระบบ</button
+          ><button data-view="network" data-i18n="nav.network">
+            🛡 HTTPS</button
           ><button data-view="about" data-i18n="nav.about">ⓘ เกี่ยวกับ</button>
         </nav>
         <div class="history-title" data-i18n="sidebar.history">
@@ -83,6 +85,18 @@
             aria-expanded="false"
           >
             ☰
+          </button>
+          <button
+            class="header-icon theme-toggle sidebar-toggle"
+            id="sidebar-toggle"
+            type="button"
+            title="ย่อ/ขยายแถบด้านข้าง"
+            aria-label="ย่อ/ขยายแถบด้านข้าง"
+            data-i18n-title="header.toggleSidebar"
+            data-i18n-aria-label="header.toggleSidebar"
+            aria-expanded="true"
+          >
+            ◧
           </button>
           <h1 id="page-title" data-i18n="chat.title">แชตกับ AI</h1>
           <div
@@ -326,6 +340,17 @@
                   data-i18n="settings.group.update"
                 >
                   อัปเดต
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="settings-tab-server"
+                  aria-controls="settings-panel-server"
+                  aria-selected="false"
+                  data-settings-section="server"
+                  data-i18n="settings.group.server"
+                >
+                  เซิร์ฟเวอร์
                 </button>
               </div>
               <div class="settings-panels">
@@ -984,6 +1009,72 @@
                     <pre class="update-log is-empty" id="update-log"></pre>
                   </div>
                 </div>
+                <div
+                  class="settings-panel"
+                  id="settings-panel-server"
+                  role="tabpanel"
+                  aria-labelledby="settings-tab-server"
+                  data-settings-panel="server"
+                >
+                  <div class="settings-panel-head">
+                    <h2 data-i18n="settings.group.server">เซิร์ฟเวอร์</h2>
+                    <p class="hint" data-i18n="settings.group.serverDesc">
+                      เปิด ปิด และรีสตาร์ตเซิร์ฟเวอร์ของเว็บนี้
+                    </p>
+                  </div>
+                  <div class="card">
+                    <div class="card-head">
+                      <h2 data-i18n="server.title">ควบคุมเซิร์ฟเวอร์</h2>
+                      <button
+                        class="secondary"
+                        id="server-refresh"
+                        type="button"
+                        data-i18n="server.refresh"
+                      >
+                        รีเฟรชสถานะ
+                      </button>
+                    </div>
+                    <p class="hint" data-i18n="server.hint">
+                      สั่งเปิด ปิด หรือรีสตาร์ตเซิร์ฟเวอร์จากหน้านี้
+                      เมื่อหยุดแล้วหน้าเว็บจะใช้งานไม่ได้จนกว่าจะเปิดใหม่จากเครื่องด้วย
+                      ./start_web.sh --start
+                    </p>
+                    <div class="update-metrics server-metrics">
+                      <div class="update-metric">
+                        <span data-i18n="server.state">สถานะ</span>
+                        <strong id="server-state">—</strong>
+                      </div>
+                      <div class="update-metric">
+                        <span data-i18n="server.pid">PID</span>
+                        <strong id="server-pid">—</strong>
+                      </div>
+                      <div class="update-metric">
+                        <span data-i18n="server.uptime">ทำงานมา</span>
+                        <strong id="server-uptime">—</strong>
+                      </div>
+                      <div class="update-metric">
+                        <span data-i18n="server.mode">โหมด</span>
+                        <strong id="server-mode">—</strong>
+                      </div>
+                    </div>
+                    <div class="update-actions server-actions">
+                      <button id="server-start" type="button">
+                        <span data-i18n="server.start">เริ่ม</span>
+                      </button>
+                      <button
+                        id="server-restart"
+                        type="button"
+                        class="secondary"
+                      >
+                        <span data-i18n="server.restart">รีสตาร์ต</span>
+                      </button>
+                      <button id="server-stop" type="button" class="danger">
+                        <span data-i18n="server.stop">หยุด</span>
+                      </button>
+                    </div>
+                    <p class="hint update-status" id="server-status-text"></p>
+                  </div>
+                </div>
               </div>
               <div class="settings-footer">
                 <p class="hint settings-footer-hint" data-i18n="settings.saveScopeHint">
@@ -1252,6 +1343,95 @@
               </div>
             </div>
           </section>
+          <section id="network-view" class="view">
+            <div class="card">
+              <div class="card-head">
+                <h2 data-i18n="network.title">การเชื่อมต่อเว็บ (HTTP / HTTPS)</h2>
+                <button
+                  class="secondary"
+                  id="network-refresh"
+                  type="button"
+                  data-i18n="network.refresh"
+                >
+                  รีเฟรช
+                </button>
+              </div>
+              <p class="hint" data-i18n="network.hint">
+                เลือกโหมดที่เซิร์ฟเวอร์ใช้ให้บริการหน้าเว็บ
+                การเปลี่ยนโหมดมีผลหลังรีสตาร์ตเซิร์ฟเวอร์
+              </p>
+              <div class="network-status">
+                <div class="network-metric">
+                  <span data-i18n="network.currentMode">โหมดที่ใช้งาน</span>
+                  <strong id="network-scheme">—</strong>
+                </div>
+                <div class="network-metric">
+                  <span data-i18n="network.address">ที่อยู่</span>
+                  <strong id="network-url">—</strong>
+                </div>
+                <div class="network-metric">
+                  <span data-i18n="network.certState">ใบรับรอง</span>
+                  <strong id="network-cert">—</strong>
+                </div>
+              </div>
+              <div
+                class="network-options"
+                role="radiogroup"
+                aria-label="โหมดการเชื่อมต่อ"
+                data-i18n-aria-label="network.optionsAria"
+              >
+                <label class="network-option">
+                  <input type="radio" name="tls-mode" value="http" />
+                  <span>
+                    <strong data-i18n="network.httpTitle">HTTP</strong>
+                    <small data-i18n="network.httpHint">
+                      ไม่เข้ารหัสการเชื่อมต่อ เหมาะกับเครือข่ายที่เชื่อถือได้ในบ้าน
+                    </small>
+                  </span>
+                </label>
+                <label class="network-option">
+                  <input type="radio" name="tls-mode" value="https-cert" />
+                  <span>
+                    <strong data-i18n="network.certTitle"
+                      >HTTPS ด้วยไฟล์ใบรับรอง</strong
+                    >
+                    <small data-i18n="network.certHint">
+                      ใช้ certs/cert.pem และ certs/key.pem ที่มีอยู่
+                    </small>
+                  </span>
+                </label>
+                <label class="network-option">
+                  <input type="radio" name="tls-mode" value="https-adhoc" />
+                  <span>
+                    <strong data-i18n="network.adhocTitle"
+                      >HTTPS ด้วยใบรับรองชั่วคราว</strong
+                    >
+                    <small data-i18n="network.adhocHint">
+                      สร้างใบรับรองชั่วคราวอัตโนมัติ
+                      ต้องมีแพ็กเกจ cryptography
+                    </small>
+                  </span>
+                </label>
+              </div>
+              <div class="actions">
+                <button id="network-save" type="button" data-i18n="network.save">
+                  บันทึกโหมด
+                </button>
+                <button
+                  id="network-restart"
+                  type="button"
+                  class="secondary"
+                  data-i18n="network.restart"
+                >
+                  รีสตาร์ตเซิร์ฟเวอร์
+                </button>
+              </div>
+              <p class="hint" id="network-status-text"></p>
+              <p class="hint" data-i18n="network.certHelp">
+                สร้างใบรับรองถาวรได้ด้วย ./start_web.sh --make-cert &lt;ip&gt;
+              </p>
+            </div>
+          </section>
           <section id="about-view" class="view">
             <div class="card">
               <h2 data-i18n="about.title">เกี่ยวกับระบบ</h2>
@@ -1265,6 +1445,39 @@
               </p>
             </div>
           </section>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="message-modal">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="message-modal-title"
+      >
+        <h3 id="message-modal-title" data-i18n="message.editTitle">
+          แก้ไขคำสั่ง
+        </h3>
+        <p data-i18n="message.editHint">
+          บันทึกแล้วระบบจะลบคำตอบที่ได้จากคำสั่งนี้
+          และนำคำสั่งที่แก้ไขไปไว้ในช่องพิมพ์เพื่อส่งใหม่
+        </p>
+        <textarea id="message-modal-input" rows="5"></textarea>
+        <div class="modal-actions">
+          <button
+            class="modal-cancel"
+            id="message-modal-cancel"
+            type="button"
+            data-i18n="common.cancel"
+          >
+            ยกเลิก</button
+          ><button
+            id="message-modal-confirm"
+            type="button"
+            data-i18n="message.editSave"
+          >
+            บันทึกและลบคำตอบเดิม
+          </button>
         </div>
       </div>
     </div>

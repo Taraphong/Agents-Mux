@@ -67,6 +67,15 @@ SCHEDULE_FILE = Path(os.getenv("AI_WEB_SCHEDULE_FILE", "scheduled-jobs.json"))
 SCHEDULE_LOCK = threading.Lock()
 HISTORY_LOCK = threading.Lock()
 PROJECT_ROOT = Path(__file__).resolve().parent
+ENV_FILE = Path(os.getenv("AI_WEB_ENV_FILE", str(PROJECT_ROOT / ".env")))
+CERT_DIR = PROJECT_ROOT / "certs"
+# Server control from the web UI goes through start_web.sh so the CLI and the
+# page use exactly the same start/stop/restart rules.
+SERVER_SCRIPT = PROJECT_ROOT / "start_web.sh"
+SERVER_CONTROL_LOG = PROJECT_ROOT / "logs" / "server-control.log"
+APP_STARTED_AT = time.time()
+SERVER_JOB: dict[str, Any] = {"process": None, "action": "", "started_at": ""}
+SERVER_JOB_LOCK = threading.Lock()
 # Each page keeps its template and its CSS/JS together in templates/<page>/.
 TEMPLATES_ROOT = PROJECT_ROOT / "templates"
 PAGE_ASSETS = {"index", "pair"}
@@ -1735,6 +1744,13 @@ STATUS_MESSAGES = {
         "missing_key": "ยังไม่ได้ตั้งค่า API key ของ {label}",
         "missing_model": "ยังไม่ได้เลือกโมเดลของ {label}",
         "invalid_key_shape": "API key ของ {label} ดูไม่ถูกต้อง (สั้นเกินไปหรือเป็นค่าตัวอย่าง)",
+        "tls_invalid_mode": "โหมดการเชื่อมต่อไม่ถูกต้อง",
+        "tls_cert_missing": "ไม่พบ certs/cert.pem และ certs/key.pem — สร้างใบรับรองด้วย ./start_web.sh --make-cert <ip> ก่อน",
+        "env_write_failed": "บันทึกไฟล์ .env ไม่สำเร็จ: {error}",
+        "server_action_invalid": "คำสั่งควบคุมเซิร์ฟเวอร์ไม่ถูกต้อง",
+        "server_script_missing": "ไม่พบสคริปต์ start_web.sh ในโฟลเดอร์โปรเจกต์",
+        "server_busy": "มีคำสั่งควบคุมเซิร์ฟเวอร์กำลังทำงานอยู่",
+        "server_action_failed": "เริ่มคำสั่งควบคุมเซิร์ฟเวอร์ไม่สำเร็จ: {error}",
     },
     "en": {
         "invalid_key": "{label} API key is invalid or unauthorized",
@@ -1746,6 +1762,13 @@ STATUS_MESSAGES = {
         "missing_key": "{label} API key is not configured",
         "missing_model": "No {label} model is selected",
         "invalid_key_shape": "The {label} API key looks invalid (too short or a placeholder)",
+        "tls_invalid_mode": "Invalid connection mode",
+        "tls_cert_missing": "certs/cert.pem and certs/key.pem were not found — create them with ./start_web.sh --make-cert <ip> first",
+        "env_write_failed": "Could not write the .env file: {error}",
+        "server_action_invalid": "Invalid server action",
+        "server_script_missing": "start_web.sh was not found in the project folder",
+        "server_busy": "A server control command is already running",
+        "server_action_failed": "Could not start the server control command: {error}",
     },
 }
 
@@ -3370,8 +3393,8 @@ def history_update(conversation_id: str):
         if record is None:
             return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
         body = request.get_json(silent=True) or {}
-        if record.get("locked") and "title" in body:
-            return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนเปลี่ยนชื่อ"}), 423
+        if record.get("locked") and {"title", "messages"} & set(body):
+            return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนแก้ไข"}), 423
         if "title" in body:
             title = str(body["title"]).strip()
             if title:
@@ -3380,6 +3403,15 @@ def history_update(conversation_id: str):
             record["locked"] = bool(body["locked"])
         if "pinned" in body:
             record["pinned"] = bool(body["pinned"])
+        if "messages" in body:
+            new_messages = body.get("messages")
+            if not isinstance(new_messages, list):
+                return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
+            if len(new_messages) > 5000:
+                return jsonify({"error": "จำนวนข้อความมากเกินไป"}), 400
+            # Editing a prompt replaces the stored list with the truncated one.
+            record["messages"] = [item for item in new_messages if isinstance(item, dict)]
+            record["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
         _write_history_record(path, record)
         return jsonify(record)
 
@@ -3751,6 +3783,161 @@ def watch_update_job(process: "subprocess.Popen[bytes]") -> None:
         UPDATE_JOB["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         UPDATE_JOB["exit_code"] = code
         UPDATE_JOB["ok"] = code == 0
+
+
+def server_tls_state() -> dict[str, Any]:
+    """Describe the TLS mode the server will use on its next start."""
+    cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
+    key = os.getenv("AI_WEB_TLS_KEY", "").strip()
+    adhoc = os.getenv("AI_WEB_TLS_ADHOC", "").strip().lower() in {"1", "true", "yes", "on"}
+    if cert and key:
+        kind = "cert"
+    elif adhoc:
+        kind = "adhoc"
+    else:
+        kind = "none"
+    return {
+        "mode": "https" if kind != "none" else "http",
+        "kind": kind,
+        "cert_exists": bool(cert) and Path(cert).is_file(),
+        "key_exists": bool(key) and Path(key).is_file(),
+        "adhoc": adhoc,
+    }
+
+
+def update_env_file(values: dict[str, str]) -> None:
+    """Update keys in .env atomically; an empty value removes the key.
+
+    Only the three AI_WEB_TLS_* keys are ever written, and the rest of the
+    file (API keys included) is preserved byte for byte.
+    """
+    lines: list[str] = []
+    if ENV_FILE.exists():
+        try:
+            lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            raise OSError(f"อ่านไฟล์ .env ไม่สำเร็จ: {exc}") from exc
+    pending = dict(values)
+    output: list[str] = []
+    pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+    for line in lines:
+        match = pattern.match(line)
+        key = match.group(1) if match else ""
+        if key and key in pending:
+            value = pending.pop(key)
+            if value:
+                output.append(f"{key}={value}")
+            continue
+        output.append(line)
+    for key, value in pending.items():
+        if value:
+            output.append(f"{key}={value}")
+    ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = ENV_FILE.with_name(f".{ENV_FILE.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        descriptor = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(output).strip("\n") + "\n")
+        os.replace(temp_path, ENV_FILE)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+
+@app.get("/api/server/status")
+def server_status():
+    """Report the running server, its address, and the saved TLS mode."""
+    return no_store(jsonify({
+        "running": True,
+        "pid": os.getpid(),
+        "scheme": "https" if request.is_secure else "http",
+        "port": env_int("PORT", 5000, 1),
+        "url": request.url_root.rstrip("/"),
+        "uptime_seconds": max(0, int(time.time() - APP_STARTED_AT)),
+        "tls": server_tls_state(),
+        "script_available": SERVER_SCRIPT.is_file(),
+    }))
+
+
+@app.put("/api/server/tls")
+def server_tls_update():
+    """Save HTTP/HTTPS mode to .env; the next restart applies it."""
+    body = request.get_json(silent=True) or {}
+    language = normalize_language(body.get("lang"))
+    mode = str(body.get("mode") or "").strip().lower()
+    if mode not in {"http", "https"}:
+        return jsonify({"ok": False, "error": status_message(language, "tls_invalid_mode")}), 400
+    if mode == "http":
+        https_kind = "none"
+        values = {"AI_WEB_TLS_CERT": "", "AI_WEB_TLS_KEY": "", "AI_WEB_TLS_ADHOC": ""}
+    else:
+        https_kind = "adhoc" if str(body.get("https_kind") or "").strip().lower() == "adhoc" else "cert"
+        if https_kind == "cert":
+            cert_path = CERT_DIR / "cert.pem"
+            key_path = CERT_DIR / "key.pem"
+            if not (cert_path.is_file() and key_path.is_file()):
+                return jsonify({"ok": False, "error": status_message(language, "tls_cert_missing")}), 400
+            values = {
+                "AI_WEB_TLS_CERT": str(cert_path),
+                "AI_WEB_TLS_KEY": str(key_path),
+                "AI_WEB_TLS_ADHOC": "",
+            }
+        else:
+            values = {"AI_WEB_TLS_CERT": "", "AI_WEB_TLS_KEY": "", "AI_WEB_TLS_ADHOC": "1"}
+    try:
+        update_env_file(values)
+    except OSError as exc:
+        return jsonify({"ok": False, "error": status_message(language, "env_write_failed", error=str(exc))}), 500
+    log_event("system.tls_saved", "บันทึกโหมดการเชื่อมต่อจากหน้าเว็บ", mode=mode, kind=https_kind)
+    return no_store(jsonify({
+        "ok": True,
+        "mode": mode,
+        "https_kind": https_kind,
+        "restart_required": True,
+    }))
+
+
+@app.post("/api/server/action")
+def server_action():
+    """Start, stop, or restart the server through start_web.sh."""
+    body = request.get_json(silent=True) or {}
+    language = normalize_language(body.get("lang"))
+    action = str(body.get("action") or "").strip().lower()
+    if action not in {"start", "stop", "restart"}:
+        return jsonify({"ok": False, "error": status_message(language, "server_action_invalid")}), 400
+    if not SERVER_SCRIPT.is_file():
+        return jsonify({"ok": False, "error": status_message(language, "server_script_missing")}), 400
+    with SERVER_JOB_LOCK:
+        process = SERVER_JOB.get("process")
+        if process is not None and process.poll() is None:
+            return jsonify({"ok": False, "error": status_message(language, "server_busy")}), 409
+        try:
+            SERVER_CONTROL_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with open(SERVER_CONTROL_LOG, "ab") as handle:
+                # stop/restart terminate this process, so wait until this
+                # response has been delivered before the server goes away.
+                command = [
+                    "bash",
+                    "-c",
+                    f"sleep 2; exec {shlex.quote(str(SERVER_SCRIPT))} --{action}",
+                ]
+                child = subprocess.Popen(
+                    command,
+                    cwd=str(PROJECT_ROOT),
+                    stdin=subprocess.DEVNULL,
+                    stdout=handle,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+        except OSError as exc:
+            return jsonify({"ok": False, "error": status_message(language, "server_action_failed", error=str(exc))}), 500
+        SERVER_JOB.update({
+            "process": child,
+            "action": action,
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+    log_event("system.server_action", "สั่งควบคุมเซิร์ฟเวอร์จากหน้าเว็บ", action=action)
+    return no_store(jsonify({"ok": True, "action": action, "pid": child.pid})), 202
 
 
 @app.get("/api/update")
