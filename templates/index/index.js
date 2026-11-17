@@ -85,6 +85,8 @@ const I18N = {
     "server.stopConfirmTitle": "ยืนยันการหยุดเซิร์ฟเวอร์",
     "server.restarting": "กำลังรีสตาร์ตเซิร์ฟเวอร์...",
     "server.restartDone": "เซิร์ฟเวอร์กลับมาทำงานแล้ว",
+    "server.restartNewScheme":
+      "กำลังเปลี่ยนโหมดการเชื่อมต่อ — เปิดที่อยู่ใหม่เมื่อเซิร์ฟเวอร์กลับมา: {url}",
     "server.restartSlow":
       "ยังเชื่อมต่อเซิร์ฟเวอร์ไม่ได้ หากเปลี่ยน HTTP/HTTPS ให้เปิดที่อยู่ใหม่ในเบราว์เซอร์",
     "server.stoppedNow":
@@ -105,10 +107,11 @@ const I18N = {
     "network.httpHint":
       "ไม่เข้ารหัสการเชื่อมต่อ เหมาะกับเครือข่ายที่เชื่อถือได้ในบ้าน",
     "network.certTitle": "HTTPS ด้วยไฟล์ใบรับรอง",
-    "network.certHint": "ใช้ certs/cert.pem และ certs/key.pem ที่มีอยู่",
+    "network.certHint":
+      "ใช้ certs/cert.pem และ certs/key.pem หรือคู่ไฟล์ที่ตั้งไว้ใน .env",
     "network.adhocTitle": "HTTPS ด้วยใบรับรองชั่วคราว",
     "network.adhocHint":
-      "สร้างใบรับรองชั่วคราวอัตโนมัติ ต้องมีแพ็กเกจ cryptography",
+      "สร้างใบรับรอง self-signed อัตโนมัติด้วย openssl และใช้ไฟล์เดิมทุกครั้งที่รีสตาร์ต",
     "network.save": "บันทึกโหมด",
     "network.restart": "รีสตาร์ตเซิร์ฟเวอร์",
     "network.certHelp": "สร้างใบรับรองถาวรได้ด้วย ./start_web.sh --make-cert <ip>",
@@ -596,6 +599,8 @@ const I18N = {
     "server.stopConfirmTitle": "Confirm stop",
     "server.restarting": "Restarting the server...",
     "server.restartDone": "The server is back online",
+    "server.restartNewScheme":
+      "Switching the connection mode — open the new address once the server is back: {url}",
     "server.restartSlow":
       "Still cannot reach the server. If you changed HTTP/HTTPS, open the new address in the browser.",
     "server.stoppedNow":
@@ -616,10 +621,11 @@ const I18N = {
     "network.httpHint":
       "No encryption; suitable for a trusted home network",
     "network.certTitle": "HTTPS with certificate files",
-    "network.certHint": "Uses the existing certs/cert.pem and certs/key.pem",
+    "network.certHint":
+      "Uses certs/cert.pem and certs/key.pem, or the pair already set in .env",
     "network.adhocTitle": "HTTPS with an ad-hoc certificate",
     "network.adhocHint":
-      "Generates a temporary certificate automatically; requires the cryptography package",
+      "Generates a self-signed certificate with openssl and reuses the same files on every restart",
     "network.save": "Save mode",
     "network.restart": "Restart server",
     "network.certHelp": "Create a permanent certificate with ./start_web.sh --make-cert <ip>",
@@ -4321,10 +4327,13 @@ const serverState = {
     kind: "none",
     cert_exists: false,
     key_exists: false,
+    pair_available: false,
     adhoc: false,
   },
 };
 let activeServerAction = "";
+// Address the next restart will answer on when the protocol changes.
+let pendingSchemeUrl = "";
 function applyServerStatus(data) {
   serverState.known = true;
   serverState.failed = false;
@@ -4394,10 +4403,9 @@ function renderNetworkState() {
     return;
   }
   if (tls.kind === "cert") {
-    $("network-cert").textContent =
-      tls.cert_exists && tls.key_exists
-        ? t("network.certReady")
-        : t("network.certMissing");
+    $("network-cert").textContent = tls.pair_available
+      ? t("network.certReady")
+      : t("network.certMissing");
   } else if (tls.kind === "adhoc") {
     $("network-cert").textContent = t("network.adhocOn");
   } else {
@@ -4421,6 +4429,13 @@ function setServerStatusText(text, isError) {
   el.textContent = text;
   el.classList.toggle("error", Boolean(isError));
   el.classList.toggle("restarting", !isError && Boolean(activeServerAction));
+  // The network view has its own copy of the same state, so a restart or a
+  // failed start is visible from the page that triggered it.
+  const networkEl = $("network-status-text");
+  if (networkEl) {
+    networkEl.textContent = text;
+    networkEl.classList.toggle("error", Boolean(isError));
+  }
 }
 async function pollServerRestart(attempt = 0) {
   if (attempt > 40) {
@@ -4429,7 +4444,7 @@ async function pollServerRestart(attempt = 0) {
     return;
   }
   await new Promise((resolve) =>
-    setTimeout(resolve, attempt === 0 ? 1200 : 1000),
+    setTimeout(resolve, attempt === 0 ? 3000 : 1000),
   );
   try {
     const response = await fetch("/api/server/status", { cache: "no-store" });
@@ -4437,6 +4452,7 @@ async function pollServerRestart(attempt = 0) {
     const data = await response.json();
     if (!data.running) throw new Error("down");
     applyServerStatus(data);
+    pendingSchemeUrl = "";
     renderServerStatus();
     renderNetworkState();
     activeServerAction = "";
@@ -4485,6 +4501,14 @@ async function runServerAction(action) {
     return;
   }
   setServerStatusText(t("server.restarting"), false);
+  if (pendingSchemeUrl) {
+    // This page cannot follow a restart that changes the protocol: the old
+    // address stops answering, so polling would only time out. Point at the
+    // new address instead.
+    setServerStatusText(t("server.restartNewScheme", { url: pendingSchemeUrl }), false);
+    activeServerAction = "";
+    return;
+  }
   pollServerRestart(0);
 }
 $("server-refresh").addEventListener("click", loadServerStatus);
@@ -4517,6 +4541,9 @@ $("network-save").addEventListener("click", async () => {
     await loadServerStatus();
     const port = serverState.port || Number(location.port) || 5000;
     const targetUrl = `${mode}://${location.hostname}:${port}/`;
+    // Remember the address the restart will answer on, but only when the
+    // protocol actually changes; otherwise the page can just poll as usual.
+    pendingSchemeUrl = mode === location.protocol.slice(0, -1) ? "" : targetUrl;
     $("network-status-text").textContent = t("network.needRestart", {
       url: targetUrl,
     });

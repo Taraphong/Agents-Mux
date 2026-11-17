@@ -1757,7 +1757,7 @@ STATUS_MESSAGES = {
         "missing_model": "ยังไม่ได้เลือกโมเดลของ {label}",
         "invalid_key_shape": "API key ของ {label} ดูไม่ถูกต้อง (สั้นเกินไปหรือเป็นค่าตัวอย่าง)",
         "tls_invalid_mode": "โหมดการเชื่อมต่อไม่ถูกต้อง",
-        "tls_cert_missing": "ไม่พบ certs/cert.pem และ certs/key.pem — สร้างใบรับรองด้วย ./start_web.sh --make-cert <ip> ก่อน",
+        "tls_cert_missing": "ไม่พบไฟล์ใบรับรอง — สร้างด้วย ./start_web.sh --make-cert <ip> หรือตั้ง AI_WEB_TLS_CERT และ AI_WEB_TLS_KEY ใน .env ให้ชี้ไฟล์ที่มีอยู่",
         "env_write_failed": "บันทึกไฟล์ .env ไม่สำเร็จ: {error}",
         "server_action_invalid": "คำสั่งควบคุมเซิร์ฟเวอร์ไม่ถูกต้อง",
         "server_script_missing": "ไม่พบสคริปต์ start_web.sh ในโฟลเดอร์โปรเจกต์",
@@ -1775,7 +1775,7 @@ STATUS_MESSAGES = {
         "missing_model": "No {label} model is selected",
         "invalid_key_shape": "The {label} API key looks invalid (too short or a placeholder)",
         "tls_invalid_mode": "Invalid connection mode",
-        "tls_cert_missing": "certs/cert.pem and certs/key.pem were not found — create them with ./start_web.sh --make-cert <ip> first",
+        "tls_cert_missing": "No certificate files found — create them with ./start_web.sh --make-cert <ip>, or point AI_WEB_TLS_CERT and AI_WEB_TLS_KEY in .env at existing files",
         "env_write_failed": "Could not write the .env file: {error}",
         "server_action_invalid": "Invalid server action",
         "server_script_missing": "start_web.sh was not found in the project folder",
@@ -3827,6 +3827,24 @@ def watch_update_job(process: "subprocess.Popen[bytes]") -> None:
         UPDATE_JOB["ok"] = code == 0
 
 
+def configured_certificate_pair() -> tuple[str, str] | None:
+    """Return a usable certificate pair the server can actually serve.
+
+    `certs/cert.pem` + `certs/key.pem` (what --make-cert writes) win. When they
+    are absent, keep a pair that is already configured in .env instead of
+    refusing to save the mode the server is running with right now.
+    """
+    default_cert = CERT_DIR / "cert.pem"
+    default_key = CERT_DIR / "key.pem"
+    if default_cert.is_file() and default_key.is_file():
+        return str(default_cert), str(default_key)
+    cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
+    key = os.getenv("AI_WEB_TLS_KEY", "").strip()
+    if cert and key and Path(cert).is_file() and Path(key).is_file():
+        return cert, key
+    return None
+
+
 def server_tls_state() -> dict[str, Any]:
     """Describe the TLS mode the server will use on its next start."""
     cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
@@ -3843,6 +3861,9 @@ def server_tls_state() -> dict[str, Any]:
         "kind": kind,
         "cert_exists": bool(cert) and Path(cert).is_file(),
         "key_exists": bool(key) and Path(key).is_file(),
+        # True when saving "HTTPS with certificate files" would succeed: either
+        # certs/cert.pem + certs/key.pem exist, or the pair in .env is usable.
+        "pair_available": configured_certificate_pair() is not None,
         "adhoc": adhoc,
     }
 
@@ -3934,13 +3955,12 @@ def server_tls_update():
     else:
         https_kind = "adhoc" if str(body.get("https_kind") or "").strip().lower() == "adhoc" else "cert"
         if https_kind == "cert":
-            cert_path = CERT_DIR / "cert.pem"
-            key_path = CERT_DIR / "key.pem"
-            if not (cert_path.is_file() and key_path.is_file()):
+            pair = configured_certificate_pair()
+            if pair is None:
                 return jsonify({"ok": False, "error": status_message(language, "tls_cert_missing")}), 400
             values = {
-                "AI_WEB_TLS_CERT": str(cert_path),
-                "AI_WEB_TLS_KEY": str(key_path),
+                "AI_WEB_TLS_CERT": pair[0],
+                "AI_WEB_TLS_KEY": pair[1],
                 "AI_WEB_TLS_ADHOC": "",
             }
         else:
