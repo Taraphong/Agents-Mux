@@ -232,6 +232,28 @@ You must use `--restart` (or `--stop` and then `--start`) because `--start` does
 
 ---
 
+## HTTPS
+
+The server can terminate HTTPS itself; `openssl` is the only extra requirement (`pkg install openssl-tool` on Termux).
+
+The easiest route is the page: **Settings → Web connection (HTTP / HTTPS)**, pick a mode, save, then restart. A page cannot follow a restart that changes the protocol, so it tells you the new address to open.
+
+From the shell, create a self-signed certificate and enable it:
+
+```bash
+./start_web.sh --make-cert 192.168.2.40   # writes certs/cert.pem and certs/key.pem
+# set AI_WEB_TLS_CERT=/path/to/certs/cert.pem and AI_WEB_TLS_KEY=/path/to/certs/key.pem in .env
+./start_web.sh --restart
+./start_web.sh --check                    # prints http:// or https:// with the real scheme
+```
+
+- With `AI_WEB_TLS_CERT` + `AI_WEB_TLS_KEY` the server uses those files; the page's "certificate files" mode prefers `certs/cert.pem` + `certs/key.pem` and otherwise keeps a usable pair already set in `.env`.
+- With `AI_WEB_TLS_ADHOC=1` the server creates a self-signed certificate with `openssl` on first start (SAN: `localhost`, `127.0.0.1`, hostname, LAN address) and reuses `certs/adhoc-cert.pem` / `certs/adhoc-key.pem` afterwards. No Python `cryptography` package is needed.
+- A self-signed certificate makes each browser warn once; accepting it is enough. For a warning-free setup use a certificate from a trusted CA, install your local CA on the device, or put a reverse proxy (`Caddy`, `nginx`, `tailscale serve`) in front and set `AI_WEB_TRUST_PROXY=1`.
+- `tailscale cert` only works on the node that owns the name. The Android Tailscale app has no CLI, so a Termux server cannot issue its own Tailscale certificate; run `tailscale serve` on another node instead.
+
+---
+
 ## Update the project
 
 If the project folder has this script, run it on the machine that serves the app:

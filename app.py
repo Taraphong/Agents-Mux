@@ -5,6 +5,7 @@ import getpass
 import gzip
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import re
@@ -35,7 +36,6 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.serving import (
     ThreadedWSGIServer,
     WSGIRequestHandler,
-    generate_adhoc_ssl_context,
     load_ssl_context,
 )
 
@@ -69,6 +69,11 @@ HISTORY_LOCK = threading.Lock()
 PROJECT_ROOT = Path(__file__).resolve().parent
 ENV_FILE = Path(os.getenv("AI_WEB_ENV_FILE", str(PROJECT_ROOT / ".env")))
 CERT_DIR = PROJECT_ROOT / "certs"
+# Files for ad-hoc HTTPS: created once and reused so restarts keep the same
+# certificate, and kept apart from certs/cert.pem so the certificate mode
+# never picks them up by accident.
+ADHOC_CERT_FILE = CERT_DIR / "adhoc-cert.pem"
+ADHOC_KEY_FILE = CERT_DIR / "adhoc-key.pem"
 # Server control from the web UI goes through start_web.sh so the CLI and the
 # page use exactly the same start/stop/restart rules.
 SERVER_SCRIPT = PROJECT_ROOT / "start_web.sh"
@@ -119,6 +124,13 @@ TERMINAL_SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", 
 AUTH_FILE = Path(os.getenv("AI_WEB_AUTH_FILE", ".app-auth.json"))
 AUTH_ENABLED = os.getenv("AI_WEB_AUTH", "on").strip().lower() not in {"0", "false", "no", "off"}
 AUTH_SESSION_COOKIE = "ai-web-session"
+# Browsers refuse to let an insecure origin set a cookie whose name matches an
+# existing Secure cookie (RFC 6265bis, "Leave Secure Cookies Alone"). Without a
+# second name, a device that paired while the app served HTTPS could never pair
+# again after switching to HTTP, because its old Secure cookie blocks the new
+# one and is not sent over HTTP. Each scheme therefore gets its own name.
+AUTH_SESSION_COOKIE_HTTP = "ai-web-session-http"
+AUTH_SESSION_COOKIE_NAMES = (AUTH_SESSION_COOKIE, AUTH_SESSION_COOKIE_HTTP)
 AUTH_PAIRING_TTL_MINUTES = env_int("AI_WEB_PAIRING_TTL_MINUTES", 30, 1)
 AUTH_SESSION_DAYS = env_int("AI_WEB_SESSION_DAYS", 30, 1)
 AUTH_KEY_LENGTH = 12
@@ -1745,7 +1757,7 @@ STATUS_MESSAGES = {
         "missing_model": "ยังไม่ได้เลือกโมเดลของ {label}",
         "invalid_key_shape": "API key ของ {label} ดูไม่ถูกต้อง (สั้นเกินไปหรือเป็นค่าตัวอย่าง)",
         "tls_invalid_mode": "โหมดการเชื่อมต่อไม่ถูกต้อง",
-        "tls_cert_missing": "ไม่พบ certs/cert.pem และ certs/key.pem — สร้างใบรับรองด้วย ./start_web.sh --make-cert <ip> ก่อน",
+        "tls_cert_missing": "ไม่พบไฟล์ใบรับรอง — สร้างด้วย ./start_web.sh --make-cert <ip> หรือตั้ง AI_WEB_TLS_CERT และ AI_WEB_TLS_KEY ใน .env ให้ชี้ไฟล์ที่มีอยู่",
         "env_write_failed": "บันทึกไฟล์ .env ไม่สำเร็จ: {error}",
         "server_action_invalid": "คำสั่งควบคุมเซิร์ฟเวอร์ไม่ถูกต้อง",
         "server_script_missing": "ไม่พบสคริปต์ start_web.sh ในโฟลเดอร์โปรเจกต์",
@@ -1763,7 +1775,7 @@ STATUS_MESSAGES = {
         "missing_model": "No {label} model is selected",
         "invalid_key_shape": "The {label} API key looks invalid (too short or a placeholder)",
         "tls_invalid_mode": "Invalid connection mode",
-        "tls_cert_missing": "certs/cert.pem and certs/key.pem were not found — create them with ./start_web.sh --make-cert <ip> first",
+        "tls_cert_missing": "No certificate files found — create them with ./start_web.sh --make-cert <ip>, or point AI_WEB_TLS_CERT and AI_WEB_TLS_KEY in .env at existing files",
         "env_write_failed": "Could not write the .env file: {error}",
         "server_action_invalid": "Invalid server action",
         "server_script_missing": "start_web.sh was not found in the project folder",
@@ -2900,28 +2912,38 @@ def create_auth_session(label: str = "", user_agent: str = "", client_ip: str = 
     return token
 
 
+def auth_session_tokens() -> list[str]:
+    """Return the session tokens this request carries, one per cookie name."""
+    return [
+        token
+        for name in AUTH_SESSION_COOKIE_NAMES
+        if (token := request.cookies.get(name, ""))
+    ]
+
+
 def current_auth_session() -> dict[str, Any] | None:
-    """Resolve the request cookie to a live paired-device session."""
-    token = request.cookies.get(AUTH_SESSION_COOKIE, "")
-    if not token:
+    """Resolve one of the request cookies to a live paired-device session."""
+    tokens = auth_session_tokens()
+    if not tokens:
         return None
-    digest = hash_auth_token(token)
     now = auth_now()
     with AUTH_LOCK:
         state = load_auth_state()
-        for item in state["sessions"]:
-            if not hmac.compare_digest(str(item.get("token_hash") or ""), digest):
-                continue
-            if auth_expired(item, now):
-                return None
-            try:
-                recently_seen = (now - datetime.fromisoformat(str(item.get("last_seen_at") or ""))).total_seconds() <= 60
-            except (TypeError, ValueError):
-                recently_seen = False
-            if not recently_seen:
-                item["last_seen_at"] = auth_timestamp(now)
-                save_auth_state(state)
-            return dict(item)
+        for token in tokens:
+            digest = hash_auth_token(token)
+            for item in state["sessions"]:
+                if not hmac.compare_digest(str(item.get("token_hash") or ""), digest):
+                    continue
+                if auth_expired(item, now):
+                    continue
+                try:
+                    recently_seen = (now - datetime.fromisoformat(str(item.get("last_seen_at") or ""))).total_seconds() <= 60
+                except (TypeError, ValueError):
+                    recently_seen = False
+                if not recently_seen:
+                    item["last_seen_at"] = auth_timestamp(now)
+                    save_auth_state(state)
+                return dict(item)
     return None
 
 
@@ -3186,8 +3208,9 @@ def auth_pair():
     )
     log_event("auth.paired", "จับคู่อุปกรณ์ใหม่สำเร็จ", ip=client_ip)
     response = jsonify({"ok": True, "redirect": "/"})
+    cookie_name = AUTH_SESSION_COOKIE if request.is_secure else AUTH_SESSION_COOKIE_HTTP
     response.set_cookie(
-        AUTH_SESSION_COOKIE,
+        cookie_name,
         token,
         max_age=AUTH_SESSION_DAYS * 24 * 60 * 60,
         httponly=True,
@@ -3195,6 +3218,10 @@ def auth_pair():
         secure=request.is_secure,
         path="/",
     )
+    # Drop a leftover cookie from the other scheme so an old token cannot be
+    # picked up later when the app runs over the other protocol.
+    other_name = AUTH_SESSION_COOKIE_HTTP if request.is_secure else AUTH_SESSION_COOKIE
+    response.delete_cookie(other_name, path="/", secure=request.is_secure, samesite="Lax")
     return response
 
 
@@ -3232,21 +3259,24 @@ def auth_create_pairing_key():
 
 @app.post("/api/auth/logout")
 def auth_logout():
-    """Revoke this device's session and clear its cookie."""
-    token = request.cookies.get(AUTH_SESSION_COOKIE, "")
-    digest = hash_auth_token(token) if token else ""
-    if digest:
+    """Revoke this device's session and clear its cookies."""
+    digests = [hash_auth_token(token) for token in auth_session_tokens()]
+    if digests:
         with AUTH_LOCK:
             state = load_auth_state()
             remaining = [
                 item for item in state["sessions"]
-                if not hmac.compare_digest(str(item.get("token_hash") or ""), digest)
+                if not any(
+                    hmac.compare_digest(str(item.get("token_hash") or ""), digest)
+                    for digest in digests
+                )
             ]
             if len(remaining) != len(state["sessions"]):
                 state["sessions"] = remaining
                 save_auth_state(state)
     response = jsonify({"ok": True, "redirect": "/pair"})
-    response.delete_cookie(AUTH_SESSION_COOKIE, path="/")
+    for name in AUTH_SESSION_COOKIE_NAMES:
+        response.delete_cookie(name, path="/", secure=request.is_secure, samesite="Lax")
     return response
 
 
@@ -3797,6 +3827,24 @@ def watch_update_job(process: "subprocess.Popen[bytes]") -> None:
         UPDATE_JOB["ok"] = code == 0
 
 
+def configured_certificate_pair() -> tuple[str, str] | None:
+    """Return a usable certificate pair the server can actually serve.
+
+    `certs/cert.pem` + `certs/key.pem` (what --make-cert writes) win. When they
+    are absent, keep a pair that is already configured in .env instead of
+    refusing to save the mode the server is running with right now.
+    """
+    default_cert = CERT_DIR / "cert.pem"
+    default_key = CERT_DIR / "key.pem"
+    if default_cert.is_file() and default_key.is_file():
+        return str(default_cert), str(default_key)
+    cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
+    key = os.getenv("AI_WEB_TLS_KEY", "").strip()
+    if cert and key and Path(cert).is_file() and Path(key).is_file():
+        return cert, key
+    return None
+
+
 def server_tls_state() -> dict[str, Any]:
     """Describe the TLS mode the server will use on its next start."""
     cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
@@ -3813,8 +3861,62 @@ def server_tls_state() -> dict[str, Any]:
         "kind": kind,
         "cert_exists": bool(cert) and Path(cert).is_file(),
         "key_exists": bool(key) and Path(key).is_file(),
+        # True when saving "HTTPS with certificate files" would succeed: either
+        # certs/cert.pem + certs/key.pem exist, or the pair in .env is usable.
+        "pair_available": configured_certificate_pair() is not None,
         "adhoc": adhoc,
     }
+
+
+TLS_ENV_KEYS = ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY", "AI_WEB_TLS_ADHOC")
+TLS_ENV_LOCK = threading.Lock()
+
+
+def apply_tls_environment(values: dict[str, str]) -> None:
+    """Mirror a saved TLS mode into this process environment.
+
+    load_dotenv() only fills variables when the process starts, so without this
+    the running server keeps the old AI_WEB_TLS_* values in its environment.
+    A restart started from the web page inherits them, and because an exported
+    variable wins over .env, switching back to HTTP would never take effect.
+
+    When the TLS mode switches to HTTP or ad-hoc, the certificate-path
+    environment variables are preserved separately so that re-selecting
+    "HTTPS with certificate files" can reuse the same pair without needing
+    to reconfigure.
+    """
+    # Preserve the pair that was set, keyed by the mode name, so it is not
+    # lost when the mode switches away from "cert".
+    mode = values.get("AI_WEB_TLS_ADHOC", "").strip().lower()
+    if mode not in {"1", "true", "yes", "on"}:
+        # cert mode or HTTP mode — keep whatever pair was previously saved
+        # under the TLS_CERT/TLS_KEY env vars (may be empty if none set).
+        for key in TLS_ENV_KEYS:
+            value = values.get(key, "")
+            if value:
+                os.environ[key] = value
+            else:
+                os.environ.pop(key, None)
+    else:
+        # ad-hoc mode — still clear Secure-path keys but keep the cert/key
+        # pair that was previously configured, if any, so a later switch back
+        # to cert mode does not require re‑entering paths.
+        cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
+        key = os.getenv("AI_WEB_TLS_KEY", "").strip()
+        if cert and key:
+            # keep the existing pair; do not overwrite with empty values
+            pass
+        else:
+            # no pair configured — clear them so a later cert-mode select
+            # can be prompted properly
+            for key in ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY"):
+                os.environ.pop(key, None)
+    for key in TLS_ENV_KEYS:
+        value = values.get(key, "")
+        if value:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
 
 
 def update_env_file(values: dict[str, str]) -> None:
@@ -3885,21 +3987,22 @@ def server_tls_update():
     else:
         https_kind = "adhoc" if str(body.get("https_kind") or "").strip().lower() == "adhoc" else "cert"
         if https_kind == "cert":
-            cert_path = CERT_DIR / "cert.pem"
-            key_path = CERT_DIR / "key.pem"
-            if not (cert_path.is_file() and key_path.is_file()):
+            pair = configured_certificate_pair()
+            if pair is None:
                 return jsonify({"ok": False, "error": status_message(language, "tls_cert_missing")}), 400
             values = {
-                "AI_WEB_TLS_CERT": str(cert_path),
-                "AI_WEB_TLS_KEY": str(key_path),
+                "AI_WEB_TLS_CERT": pair[0],
+                "AI_WEB_TLS_KEY": pair[1],
                 "AI_WEB_TLS_ADHOC": "",
             }
         else:
             values = {"AI_WEB_TLS_CERT": "", "AI_WEB_TLS_KEY": "", "AI_WEB_TLS_ADHOC": "1"}
-    try:
-        update_env_file(values)
-    except OSError as exc:
-        return jsonify({"ok": False, "error": status_message(language, "env_write_failed", error=str(exc))}), 500
+    with TLS_ENV_LOCK:
+        try:
+            update_env_file(values)
+        except OSError as exc:
+            return jsonify({"ok": False, "error": status_message(language, "env_write_failed", error=str(exc))}), 500
+        apply_tls_environment(values)
     log_event("system.tls_saved", "บันทึกโหมดการเชื่อมต่อจากหน้าเว็บ", mode=mode, kind=https_kind)
     return no_store(jsonify({
         "ok": True,
@@ -4196,11 +4299,93 @@ class DrainingRequestHandler(WSGIRequestHandler):
             pass
 
 
+def adhoc_certificate() -> tuple[str, str]:
+    """Create (once) and reuse a self-signed certificate for ad-hoc HTTPS.
+
+    Werkzeug's ad-hoc context needs the optional `cryptography` package, which
+    a Termux install does not have, so the server died on startup with
+    "Using ad-hoc certificates requires the cryptography library". openssl is
+    already required for --make-cert, so generate the pair with it instead and
+    keep the files under certs/ so a restart hands the browser the same
+    certificate instead of a new warning every time.
+    """
+    if ADHOC_CERT_FILE.is_file() and ADHOC_KEY_FILE.is_file():
+        return str(ADHOC_CERT_FILE), str(ADHOC_KEY_FILE)
+    openssl = shutil.which("openssl")
+    if not openssl:
+        raise RuntimeError(
+            "ไม่พบ openssl สำหรับสร้างใบรับรองชั่วคราว — ติดตั้งด้วย pkg install openssl-tool "
+            "หรือใช้ ./start_web.sh --make-cert แล้วเลือกโหมด certificate"
+        )
+    names = ["localhost", "127.0.0.1"]
+    try:
+        hostname = socket.gethostname()
+    except OSError:
+        hostname = ""
+    if hostname and hostname not in names:
+        names.append(hostname)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("1.1.1.1", 80))
+            address = probe.getsockname()[0]
+    except OSError:
+        address = ""
+    if address and address not in names:
+        names.append(address)
+    try:
+        ipaddress.ip_address(names[0])
+        common_name = hostname or "localhost"
+    except ValueError:
+        common_name = names[0]
+    san = ",".join(
+        f"IP:{name}" if _is_ip_address(name) else f"DNS:{name}" for name in names
+    )
+    CERT_DIR.mkdir(parents=True, exist_ok=True)
+    temp_key = ADHOC_KEY_FILE.with_name(f".{ADHOC_KEY_FILE.name}.{uuid.uuid4().hex}.tmp")
+    temp_cert = ADHOC_CERT_FILE.with_name(f".{ADHOC_CERT_FILE.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        result = subprocess.run(
+            [
+                openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256",
+                "-days", "3650",
+                "-keyout", str(temp_key), "-out", str(temp_cert),
+                "-subj", f"/CN={common_name}",
+                "-addext", f"subjectAltName={san}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"สร้างใบรับรองชั่วคราวไม่สำเร็จ: {result.stderr.strip()[:300]}"
+            )
+        os.chmod(temp_key, 0o600)
+        os.replace(temp_cert, ADHOC_CERT_FILE)
+        os.replace(temp_key, ADHOC_KEY_FILE)
+    finally:
+        for leftover in (temp_key, temp_cert):
+            leftover.unlink(missing_ok=True)
+    log_event("system.adhoc_cert", "สร้างใบรับรอง HTTPS ชั่วคราว", names=", ".join(names))
+    return str(ADHOC_CERT_FILE), str(ADHOC_KEY_FILE)
+
+
+def _is_ip_address(value: str) -> bool:
+    """Report whether a name is a literal IP address for the certificate SAN."""
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
 def build_tls_context(ssl_context: Any) -> Any:
     """Turn a tls_configuration() value into a ready ssl.SSLContext."""
     if isinstance(ssl_context, tuple):
         return load_ssl_context(*ssl_context)
-    return generate_adhoc_ssl_context()
+    try:
+        return load_ssl_context(*adhoc_certificate())
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        raise SystemExit(f"สร้างใบรับรอง HTTPS ชั่วคราวไม่สำเร็จ: {exc}") from exc
 
 
 class TLSServer(ThreadedWSGIServer):

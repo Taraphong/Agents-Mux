@@ -62,13 +62,17 @@ python app.py
 
 ### HTTPS
 
-แอปเปิด HTTPS ได้เองโดยไม่ต้องติดตั้งแพ็กเกจ Python เพิ่ม เมื่อมีไฟล์ใบรับรองอยู่แล้ว
+แอปเปิด HTTPS ได้เอง โดยต้องมี `openssl` อย่างเดียว ทั้งกรณีใช้ไฟล์ใบรับรองและใบรับรองชั่วคราว
 
+- **สั่งจากหน้าเว็บ:** ไปที่ **Settings → การเชื่อมต่อเว็บ (HTTP / HTTPS)** เลือก HTTP, HTTPS ด้วยไฟล์ใบรับรอง หรือ HTTPS ด้วยใบรับรองชั่วคราว แล้วบันทึกและรีสตาร์ต หน้าเว็บไม่สามารถตามการรีสตาร์ตที่เปลี่ยนโปรโตคอลได้ จึงจะแสดงที่อยู่ใหม่ให้เปิดแทน
 - สร้างใบรับรอง self-signed สำหรับ IP ใน LAN ของเครื่อง server: `./start_web.sh --make-cert 192.168.2.40` (ต้องมี `openssl` — บน Termux ติดตั้งด้วย `pkg install openssl-tool`) ไฟล์จะถูกสร้างที่ `certs/cert.pem` และ `certs/key.pem` ซึ่งไม่ถูก commit
 - ตั้ง `AI_WEB_TLS_CERT` และ `AI_WEB_TLS_KEY` ใน `.env` แล้วรัน `./start_web.sh --restart` เปิด `https://<termux-ip>:5000` คุกกี้ session จะถูกตั้งเป็น `Secure` อัตโนมัติ
+- การเลือก **HTTPS ด้วยไฟล์ใบรับรอง** ในหน้าเว็บจะใช้ `certs/cert.pem` และ `certs/key.pem` แต่ถ้าไม่มีไฟล์ดังกล่าว ระบบจะใช้คู่ไฟล์ที่ตั้งไว้ใน `.env` อยู่แล้วแทนการปฏิเสธโหมดที่เซิร์ฟเวอร์กำลังรันอยู่
+- `AI_WEB_TLS_ADHOC=1` (หรือโหมดใบรับรองชั่วคราวในหน้าเว็บ) จะสร้างใบรับรอง self-signed ด้วย `openssl` ครั้งแรก ครอบคลุม `localhost`, `127.0.0.1`, ชื่อเครื่อง และ IP ใน LAN แล้ว**ใช้ไฟล์เดิม** `certs/adhoc-cert.pem` และ `certs/adhoc-key.pem` ทุกครั้งที่สตาร์ต เบราว์เซอร์จึงเห็นใบรับรองเดิม และไม่ต้องใช้แพ็กเกจ `cryptography`
+- การสลับ HTTPS → HTTP ไม่ทำให้อุปกรณ์ที่จับคู่ไว้มีสัญญาณต่อ	continue ( device must pair again) สุดท้ายแล้วเบราว์เซอร์ไม่อัพโหลดคุกกี้ `Secure` `ai-web-session` แล้วเหมือนเดิม และ `ai-web-session-http` จะสร้างขึ้นได้เฉพาะหลังจากการจับคู่ใหม่ ชื่อคุกกี้แยกกันจึงใช้ให้อุปกรณ์สามารถจับคู่ใหม่ได้บน HTTP ไม่ใช่การรักษา session เก่าที่มีอยู่
 - ใบรับรอง self-signed จะทำให้เบราว์เซอร์เตือนครั้งแรก ถ้าไม่ต้องการคำเตือนให้ใช้ใบรับรองจาก CA ที่เชื่อถือได้ หรือติดตั้ง CA ของคุณลงในอุปกรณ์แต่ละเครื่อง
 - ถ้าใช้ reverse proxy ที่ terminate TLS (Caddy, nginx, `tailscale serve`) ให้เว้น `AI_WEB_TLS_*` ว่างและตั้ง `AI_WEB_TRUST_PROXY=1` โดย proxy ต้องเขียนทับ `X-Forwarded-Proto` ทุก request
-- `AI_WEB_TLS_ADHOC=1` สร้างใบรับรองชั่วคราวตอนสตาร์ต ต้องมีแพ็กเกจ `cryptography` (`pkg install python-cryptography` บน Termux หรือ `pip install cryptography`)
+- `tailscale cert` ต้องรันบนเครื่องที่เป็นเจ้าของชื่อนั้น แอป Tailscale บน Android ไม่มี CLI เครื่อง Termux/Android จึงออกใบรับรอง Tailscale ของตัวเองไม่ได้ ให้รัน `tailscale serve` บนเครื่องอื่นใน tailnet ที่ proxy มาที่นี่ หรือใช้ใบรับรองจาก CA ที่เชื่อถือได้
 
 ### ประวัติการสนทนา
 
