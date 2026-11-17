@@ -729,19 +729,17 @@ def approval_required_tools(settings: dict[str, Any] | None = None) -> set[str]:
 
 
 def resolve_tool_path(raw_path: str, must_exist: bool = False) -> Path:
-    """Resolve a tool path, reaching the whole machine when machine access is on.
-
-    With machine access the path may be absolute, start with `~`, or be relative
-    to the project folder. Without it the old project-only guard applies.
-    """
-    if not machine_access_enabled():
-        return resolve_project_path(raw_path, must_exist)
+    """Resolve a tool path safely for tool execution requests."""
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("ต้องระบุ path")
     candidate = Path(os.path.expanduser(raw_path.strip()))
     if not candidate.is_absolute():
         candidate = PROJECT_ROOT / candidate
     candidate = candidate.resolve()
+    try:
+        candidate.relative_to(PROJECT_ROOT)
+    except ValueError as exc:
+        raise PermissionError("path อยู่นอกโฟลเดอร์โปรเจกต์และไม่ได้รับอนุญาต") from exc
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"ไม่พบ path: {raw_path}")
     return candidate
