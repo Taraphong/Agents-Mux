@@ -64,13 +64,17 @@ The web interface requires a paired device. Pairing keys are always generated on
 
 ### HTTPS
 
-The app can terminate HTTPS itself; no extra Python packages are needed when you supply certificate files.
+The app can terminate HTTPS itself; the only requirement is `openssl`, with or without certificate files.
 
+- **From the page:** open **Settings → Web connection (HTTP / HTTPS)**, choose HTTP, HTTPS with certificate files, or HTTPS with an ad-hoc certificate, save, and restart. A page cannot follow a restart that changes the protocol, so it shows the new address to open instead.
 - Create a self-signed certificate for the server's LAN IP: `./start_web.sh --make-cert 192.168.2.40` (requires `openssl`; in Termux install it with `pkg install openssl-tool`). It writes `certs/cert.pem` and `certs/key.pem`, which are excluded from Git.
 - Set `AI_WEB_TLS_CERT` and `AI_WEB_TLS_KEY` in `.env`, then run `./start_web.sh --restart` and open `https://<termux-ip>:5000`. Session cookies become `Secure` automatically because the request is HTTPS.
+- Choosing **HTTPS with certificate files** in the page uses `certs/cert.pem` and `certs/key.pem`; when they are absent it keeps a usable pair already set in `.env` instead of refusing the mode the server is running with.
+- `AI_WEB_TLS_ADHOC=1` (or the page's ad-hoc mode) creates a self-signed certificate with `openssl` on first use, covering `localhost`, `127.0.0.1`, the hostname, and the LAN address, and reuses `certs/adhoc-cert.pem` and `certs/adhoc-key.pem` on later starts so the browser sees the same certificate. No `cryptography` package is needed.
+- Switching HTTPS → HTTP keeps paired devices signed in: HTTP sessions use the `ai-web-session-http` cookie, because browsers refuse to let an insecure origin overwrite a `Secure` cookie of the same name, and the server accepts either cookie. Logging out clears both.
 - A self-signed certificate makes the browser warn on first visit. To avoid the warning, use a certificate from a trusted CA, or install your local CA certificate on each device.
 - Behind a TLS-terminating reverse proxy (Caddy, nginx, `tailscale serve`) leave `AI_WEB_TLS_*` empty and set `AI_WEB_TRUST_PROXY=1`; the proxy must overwrite `X-Forwarded-Proto` on every request.
-- `AI_WEB_TLS_ADHOC=1` generates a throwaway certificate at startup and needs the `cryptography` package (`pkg install python-cryptography` in Termux, or `pip install cryptography`).
+- `tailscale cert` must run on the node that owns the name. The Tailscale app on Android has no CLI, so a Termux/Android server cannot issue its own Tailscale certificate: run `tailscale serve` on another tailnet node that proxies to it, or use a certificate from a trusted CA.
 
 ### Conversation History
 
