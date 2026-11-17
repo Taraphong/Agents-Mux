@@ -3006,3 +3006,1382 @@ body.light-theme .update-status.restarting {
     padding: 8px 10px;
   }
 }
+
+/* ============================================================
+/* ============================================================
+   Liquid Glass UI — monochrome
+   Frosted, layered surfaces floating over a soft black-and-white
+   backdrop. No accent hues: every colour is black, white or a
+   neutral grey. Dark is the default; the light theme only swaps
+   the tokens, so every surface follows automatically.
+   ============================================================ */
+:root {
+  color-scheme: dark;
+  --void: #050505;
+  --surface: transparent;
+  --panel: rgba(255, 255, 255, 0.06);
+  --panel-hi: rgba(255, 255, 255, 0.1);
+  --line: rgba(255, 255, 255, 0.16);
+  --line-soft: rgba(255, 255, 255, 0.1);
+  --indigo: #ededed;
+  --cyan: #d4d4d4;
+  --mint: #e2e2e2;
+  --text: #f6f6f6;
+  --muted: #b6b6b6;
+  --dim: #8d8d8d;
+  --glass-1: rgba(20, 20, 20, 0.42);
+  --glass-2: rgba(12, 12, 12, 0.6);
+  --glass-3: rgba(8, 8, 8, 0.42);
+  --glass-4: rgba(255, 255, 255, 0.06);
+  --glass-bg: radial-gradient(
+      130% 120% at 0% 0%,
+      rgba(255, 255, 255, 0.11),
+      transparent 46%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.012));
+  --glass-bg-soft: radial-gradient(
+      130% 120% at 0% 0%,
+      rgba(255, 255, 255, 0.08),
+      transparent 48%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.008));
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-edge:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  --glass-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  --glass-shadow-soft: 0 14px 36px rgba(0, 0, 0, 0.3);
+  --glass-blur: blur(30px);
+  --field-bg: rgba(255, 255, 255, 0.035);
+  --field-border: rgba(255, 255, 255, 0.16);
+  --hover-bg: rgba(255, 255, 255, 0.07);
+  --active-bg: rgba(255, 255, 255, 0.12);
+  --accent-grad: linear-gradient(135deg, #ffffff, #c4c4c4);
+  --accent-ink: #090909;
+  --accent-glow: rgba(255, 255, 255, 0.14);
+  --ring: 0 0 0 3px rgba(255, 255, 255, 0.22);
+  --danger-bg: rgba(255, 255, 255, 0.05);
+  --danger-border: rgba(255, 255, 255, 0.36);
+  --danger-text: #ffffff;
+  --chip-bg: rgba(255, 255, 255, 0.07);
+  --sheen: rgba(255, 255, 255, 0.16);
+  --user-grad: radial-gradient(
+      130% 130% at 0% 0%,
+      rgba(255, 255, 255, 0.18),
+      transparent 55%
+    ),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  --user-ink: #ffffff;
+  --user-border: rgba(255, 255, 255, 0.3);
+  --radius-lg: 22px;
+  --radius-md: 14px;
+}
+body.light-theme {
+  color-scheme: light;
+  --void: #f2f2f2;
+  --surface: transparent;
+  --panel: rgba(255, 255, 255, 0.66);
+  --panel-hi: rgba(255, 255, 255, 0.86);
+  --line: rgba(0, 0, 0, 0.14);
+  --line-soft: rgba(0, 0, 0, 0.09);
+  --indigo: #1c1c1c;
+  --cyan: #303030;
+  --mint: #101010;
+  --text: #0b0b0b;
+  --muted: #3e3e3e;
+  --dim: #565656;
+  --glass-1: rgba(255, 255, 255, 0.62);
+  --glass-2: rgba(255, 255, 255, 0.88);
+  --glass-3: rgba(255, 255, 255, 0.55);
+  --glass-4: rgba(255, 255, 255, 0.8);
+  --glass-bg: radial-gradient(
+      130% 120% at 0% 0%,
+      rgba(255, 255, 255, 0.92),
+      transparent 48%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.48));
+  --glass-bg-soft: radial-gradient(
+      130% 120% at 0% 0%,
+      rgba(255, 255, 255, 0.85),
+      transparent 50%
+    ),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.42));
+  --glass-border: rgba(0, 0, 0, 0.16);
+  --glass-edge:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.05);
+  --glass-shadow:
+    0 22px 52px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.1);
+  --glass-shadow-soft:
+    0 12px 28px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  --field-bg: rgba(255, 255, 255, 0.75);
+  --field-border: rgba(0, 0, 0, 0.14);
+  --hover-bg: rgba(0, 0, 0, 0.05);
+  --active-bg: rgba(0, 0, 0, 0.09);
+  --accent-grad: linear-gradient(135deg, #2b2b2b, #000000);
+  --accent-ink: #ffffff;
+  --accent-glow: rgba(0, 0, 0, 0.2);
+  --ring: 0 0 0 3px rgba(0, 0, 0, 0.2);
+  --danger-bg: rgba(0, 0, 0, 0.04);
+  --danger-border: rgba(0, 0, 0, 0.32);
+  --danger-text: #000000;
+  --chip-bg: rgba(0, 0, 0, 0.05);
+  --sheen: rgba(0, 0, 0, 0.08);
+  --user-grad: radial-gradient(
+      130% 130% at 0% 0%,
+      rgba(255, 255, 255, 0.55),
+      transparent 55%
+    ),
+    linear-gradient(150deg, rgba(0, 0, 0, 0.09), rgba(0, 0, 0, 0.035));
+  --user-ink: #0e0e0e;
+  --user-border: rgba(0, 0, 0, 0.18);
+}
+body {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  background: var(--void);
+  color: var(--text);
+  font-family:
+    "Inter",
+    "SF Pro Display",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition:
+    background 0.35s ease,
+    color 0.35s ease;
+}
+/* Backdrop: soft monochrome light fields that the glass refracts. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(62% 58% at 16% 10%, rgba(255, 255, 255, 0.3), transparent 70%),
+    radial-gradient(52% 50% at 84% 6%, rgba(255, 255, 255, 0.22), transparent 68%),
+    radial-gradient(64% 60% at 74% 88%, rgba(255, 255, 255, 0.19), transparent 70%),
+    radial-gradient(56% 54% at 18% 84%, rgba(255, 255, 255, 0.15), transparent 68%),
+    linear-gradient(160deg, #0b0b0b, #050505 55%, #0a0a0a);
+  filter: blur(20px);
+  animation: liquid-drift 32s ease-in-out infinite;
+  will-change: transform;
+}
+body.light-theme::before {
+  background:
+    radial-gradient(62% 58% at 16% 10%, rgba(0, 0, 0, 0.26), transparent 70%),
+    radial-gradient(52% 50% at 84% 6%, rgba(0, 0, 0, 0.2), transparent 68%),
+    radial-gradient(64% 60% at 74% 88%, rgba(0, 0, 0, 0.17), transparent 70%),
+    radial-gradient(56% 54% at 18% 84%, rgba(0, 0, 0, 0.13), transparent 68%),
+    linear-gradient(160deg, #f7f7f7, #ededed 55%, #f4f4f4);
+}
+@keyframes liquid-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  25% {
+    transform: translate3d(-3.2%, 2.2%, 0) scale(1.06);
+  }
+  50% {
+    transform: translate3d(2.4%, -2.4%, 0) scale(1.11);
+  }
+  75% {
+    transform: translate3d(3.4%, 1.8%, 0) scale(1.05);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+/* Second, slower layer drifting against the first for depth. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: -15%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(32% 32% at 32% 30%, rgba(255, 255, 255, 0.09), transparent 70%),
+    radial-gradient(26% 26% at 70% 64%, rgba(255, 255, 255, 0.07), transparent 70%);
+  filter: blur(42px);
+  animation: liquid-drift-reverse 48s ease-in-out infinite;
+  will-change: transform;
+}
+body.light-theme::after {
+  background:
+    radial-gradient(32% 32% at 32% 30%, rgba(0, 0, 0, 0.08), transparent 70%),
+    radial-gradient(26% 26% at 70% 64%, rgba(0, 0, 0, 0.06), transparent 70%);
+}
+@keyframes liquid-drift-reverse {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(3%, -2%, 0) scale(1.1);
+  }
+  66% {
+    transform: translate3d(-2.5%, 2.5%, 0) scale(0.97);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+.app {
+  background: transparent;
+}
+
+/* --- Shell: sidebar, header, footer ------------------------------- */
+aside {
+  background: var(--glass-bg-soft);
+  border-right: 1px solid var(--glass-border);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.05),
+    18px 0 50px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+header {
+  background: var(--glass-bg-soft);
+  border-bottom: 1px solid var(--line-soft);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.settings-footer {
+  padding: 12px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--glass-2);
+  box-shadow: var(--glass-shadow-soft), var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+body.light-theme .settings-footer {
+  background: var(--glass-2);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow-soft), var(--glass-edge);
+}
+.brand-mark {
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  border-radius: 12px;
+  box-shadow:
+    0 8px 22px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.brand-copy strong {
+  letter-spacing: -0.01em;
+}
+.new-chat {
+  background: var(--glass-4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.new-chat:hover,
+body.light-theme .new-chat:hover {
+  background: var(--hover-bg);
+  border-color: var(--glass-border);
+  color: var(--text);
+}
+nav button,
+body.light-theme nav button {
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  background: transparent;
+}
+nav button:hover,
+body.light-theme nav button:hover,
+body:not(.light-theme) nav button:hover {
+  color: var(--text);
+  background: var(--hover-bg);
+  border-color: transparent;
+}
+nav button.active,
+body.light-theme nav button.active,
+body:not(.light-theme) nav button.active {
+  color: var(--text);
+  background: var(--active-bg);
+  border-color: rgba(255, 255, 255, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 8px 22px rgba(0, 0, 0, 0.22);
+}
+body.light-theme nav button.active {
+  border-color: rgba(0, 0, 0, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 20px rgba(0, 0, 0, 0.1);
+}
+/* The light theme sets the nav colours with !important in an earlier layer;
+   restate them here so no indigo tint survives in the monochrome palette. */
+body.light-theme nav button {
+  background: transparent !important;
+  color: var(--muted) !important;
+  border-color: transparent !important;
+}
+body.light-theme nav button:hover {
+  background: var(--hover-bg) !important;
+  color: var(--text) !important;
+}
+body.light-theme nav button.active {
+  background: var(--active-bg) !important;
+  color: #000000 !important;
+  border-color: rgba(0, 0, 0, 0.34) !important;
+}
+/* Neutralise the cool grey borders and text an earlier light theme used. */
+body.light-theme aside,
+body.light-theme header {
+  border-color: var(--glass-border);
+}
+body.light-theme header {
+  border-bottom-color: rgba(0, 0, 0, 0.12);
+}
+body.light-theme aside {
+  border-right-color: rgba(0, 0, 0, 0.12);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.6),
+    16px 0 38px rgba(0, 0, 0, 0.1);
+}
+/* Earlier light rules paint the sidebar, header and slash menu solid white;
+   restate them so the transparent glass shows through. */
+body.light-theme aside,
+body.light-theme header,
+body.light-theme .slash-menu {
+  background: var(--glass-bg-soft);
+}
+body.light-theme .slash-menu {
+  background: var(--glass-2);
+}
+body.light-theme .history-title,
+body.light-theme .history-day {
+  color: var(--dim);
+}
+body.light-theme .history-item,
+body.light-theme .history-action {
+  color: var(--muted);
+}
+body.light-theme .history-row:hover .history-item,
+body.light-theme .history-action:hover {
+  color: var(--text);
+}
+body.light-theme input,
+body.light-theme textarea,
+body.light-theme select,
+body.light-theme .chat-tools select,
+body.light-theme .chat-form textarea {
+  color: var(--text);
+}
+.history-title,
+.history-day {
+  color: var(--dim);
+  letter-spacing: 0.12em;
+}
+.history-row:hover,
+body.light-theme .history-row:hover {
+  background: var(--hover-bg);
+}
+.history-item,
+body.light-theme .history-item {
+  color: var(--muted);
+}
+.history-row:hover .history-item,
+body.light-theme .history-row:hover .history-item,
+body:not(.light-theme) .history-row:hover .history-item {
+  color: var(--text);
+}
+.history-actions .history-action:hover,
+body.light-theme .history-action:hover,
+body:not(.light-theme) .history-actions .history-action:hover {
+  color: var(--text);
+  background: transparent;
+}
+.header-model,
+body.light-theme .header-model {
+  background: var(--glass-4);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.header-model i {
+  background: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+}
+body.light-theme .header-model i {
+  background: #000000;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
+}
+.header-icon,
+body.light-theme .header-icon {
+  border-radius: 10px;
+  color: var(--muted);
+}
+.header-icon:hover,
+body.light-theme .header-icon:hover,
+body:not(.light-theme) .header-tools .header-icon:hover {
+  color: var(--text);
+  background: var(--hover-bg);
+}
+#theme-toggle {
+  font-size: 0;
+}
+/* A masked SVG keeps the icon geometrically centred; text glyphs sit
+   off-centre because their ink box does not match the line box. */
+#theme-toggle::before {
+  content: "";
+  display: block;
+  width: 17px;
+  height: 17px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E")
+    center / 17px 17px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/%3E%3C/svg%3E")
+    center / 17px 17px no-repeat;
+}
+body.light-theme #theme-toggle::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41'/%3E%3C/svg%3E");
+}
+.mobile-menu-toggle,
+body.light-theme .mobile-menu-toggle,
+body:not(.light-theme) button.mobile-menu-toggle:hover {
+  background: var(--glass-4);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  border-radius: 12px;
+}
+body:not(.light-theme) button.mobile-menu-toggle:hover,
+body.light-theme .mobile-menu-toggle:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.status,
+body.light-theme .status {
+  color: var(--mint);
+}
+.status.offline,
+body.light-theme .status.offline {
+  color: var(--muted);
+}
+
+/* --- Surfaces ------------------------------------------------------ */
+.card,
+.modal,
+.chat-form,
+.logs-list,
+.terminal-window,
+.settings-rail,
+.slash-menu,
+.update-log,
+.auth-key-output,
+.schedule-item,
+.update-metric,
+.typing-indicator,
+.notice,
+.command-result,
+.tool-approval-detail {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.card {
+  padding: 22px 24px;
+}
+/* form.chat-form is declared in an earlier layer with an element+class
+   selector, so restate the composer at the same specificity. */
+form.chat-form {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+body.light-theme form.chat-form {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow-soft), var(--glass-edge);
+}
+form.chat-form:focus-within {
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-edge),
+    0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+body.light-theme form.chat-form:focus-within {
+  border-color: rgba(0, 0, 0, 0.45);
+  box-shadow:
+    var(--glass-shadow-soft),
+    var(--glass-edge),
+    0 0 0 4px rgba(0, 0, 0, 0.06);
+}
+.modal,
+body.light-theme .modal {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+}
+body.light-theme .card,
+body.light-theme .chat-form,
+body.light-theme .assistant,
+body.light-theme .log-row,
+body.light-theme .schedule-item,
+body.light-theme .new-chat {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow-soft), var(--glass-edge);
+}
+.modal-backdrop,
+.sidebar-backdrop.open {
+  background: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+body.light-theme .modal-backdrop,
+body.light-theme .sidebar-backdrop.open {
+  background: rgba(120, 120, 120, 0.28);
+}
+.modal p,
+body.light-theme .modal p {
+  color: var(--muted);
+}
+.modal-cancel,
+body.light-theme .modal-cancel,
+body:not(.light-theme) button.modal-cancel:hover {
+  background: var(--glass-4);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+}
+body.light-theme .modal-cancel:hover,
+body:not(.light-theme) button.modal-cancel:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.settings-rail,
+body.light-theme .settings-rail {
+  background: var(--glass-bg-soft);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow-soft), var(--glass-edge);
+}
+.settings-rail button,
+body.light-theme .settings-rail button {
+  border-radius: 10px;
+  color: var(--muted);
+}
+.settings-rail button:not(.active):hover:not(:disabled),
+body.light-theme .settings-rail button:not(.active):hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.settings-rail button.active,
+body.light-theme .settings-rail button.active {
+  background: var(--active-bg);
+  border-color: rgba(255, 255, 255, 0.36);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+body.light-theme .settings-rail button.active {
+  border-color: rgba(0, 0, 0, 0.32);
+  color: #000000;
+}
+
+/* --- Fields and controls ------------------------------------------ */
+input,
+textarea,
+select,
+body.light-theme input,
+body.light-theme textarea,
+body.light-theme select,
+body.light-theme .chat-tools select {
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  border-radius: 12px;
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: var(--ring), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+body.light-theme input:focus,
+body.light-theme textarea:focus,
+body.light-theme select:focus {
+  border-color: rgba(0, 0, 0, 0.55);
+}
+input::placeholder,
+textarea::placeholder,
+body.light-theme input::placeholder,
+body.light-theme textarea::placeholder,
+.chat-form textarea::placeholder,
+body.light-theme .chat-form textarea::placeholder {
+  color: var(--dim);
+  opacity: 1;
+}
+select option {
+  background: #0b0b0b;
+  color: var(--text);
+}
+body.light-theme select option {
+  background: #ffffff;
+  color: var(--text);
+}
+.chat-form textarea,
+body.light-theme .chat-form textarea,
+body.light-theme .chat-form textarea:focus {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.chat-tools select.composer-select,
+.composer-pill select,
+body.light-theme .composer-pill select,
+body.light-theme .chat-tools select.composer-select {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 9px;
+  color: var(--muted);
+}
+.chat-tools select.composer-select:hover,
+body.light-theme .chat-tools select.composer-select:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+/* The border reset above also swallows the shared focus ring, so the
+   composer selects need their own keyboard focus indicator. */
+.chat-tools select.composer-select:focus-visible,
+.composer-pill select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+.chat-tools #chat-model-select,
+body.light-theme .chat-tools #chat-model-select {
+  color: var(--text);
+}
+.composer-divider,
+body.light-theme .composer-divider {
+  background: var(--line);
+}
+.chat-tools,
+.chat-form,
+body.light-theme .chat-form {
+  border-color: var(--glass-border);
+}
+.chat-form:focus-within,
+body.light-theme .chat-form:focus-within {
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-edge),
+    0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+body.light-theme .chat-form:focus-within {
+  border-color: rgba(0, 0, 0, 0.45);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-edge),
+    0 0 0 4px rgba(0, 0, 0, 0.06);
+}
+.attach-button,
+body.light-theme .attach-button {
+  background: transparent;
+  border-radius: 10px;
+  color: var(--muted);
+}
+.attach-button:hover,
+body.light-theme .attach-button:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.attachment-chip,
+body.light-theme .attachment-chip {
+  background: var(--chip-bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+.skill-chip,
+body.light-theme .skill-chip {
+  background: var(--chip-bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+.slash-menu {
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.slash-item,
+body.light-theme .slash-item {
+  color: var(--text);
+  border-radius: 9px;
+}
+.slash-item:hover,
+.slash-item.active,
+body.light-theme .slash-item:hover,
+body.light-theme .slash-item.active {
+  background: var(--active-bg);
+}
+.slash-item code {
+  color: var(--text);
+}
+.slash-item small {
+  color: var(--dim);
+}
+.command-result,
+body.light-theme .command-result {
+  background: var(--glass-3);
+  border-left: 3px solid var(--text);
+  color: var(--text);
+}
+.command-result.error {
+  border-left-color: var(--text);
+}
+
+/* Buttons: selected actions are white in dark mode and black in light. */
+button {
+  border-radius: 12px;
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  font-weight: 700;
+  box-shadow:
+    0 10px 26px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    filter 0.18s ease,
+    background 0.18s ease;
+}
+button:hover:not(:disabled) {
+  background: var(--accent-grad);
+  filter: brightness(1.06);
+  box-shadow:
+    0 14px 34px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+}
+button:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+}
+/* Navigation, list rows and icon buttons stay flat; only actions glow. */
+nav button,
+.history-item,
+.history-action,
+.attach-button,
+.header-icon,
+.slash-item,
+.logs-filter button,
+.settings-rail button {
+  box-shadow: none;
+}
+/* Utility controls keep their translucent hover instead of taking the
+   primary gradient from button:hover (which left light text on white). */
+.new-chat:hover:not(:disabled),
+.attach-button:hover:not(:disabled),
+.header-icon:hover:not(:disabled),
+.logs-filter button:not(.active):hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text);
+  filter: none;
+  transform: none;
+  box-shadow: none;
+}
+.history-item:hover:not(:disabled),
+.history-action:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text);
+  filter: none;
+  transform: none;
+  box-shadow: none;
+}
+.slash-menu .slash-item:hover,
+.slash-menu .slash-item.active {
+  background: var(--active-bg);
+  color: var(--text);
+  filter: none;
+  transform: none;
+  box-shadow: none;
+}
+.logs-filter button.active:hover:not(:disabled) {
+  filter: none;
+  transform: none;
+  box-shadow: none;
+}
+nav button.active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 8px 22px rgba(0, 0, 0, 0.22);
+}
+body.light-theme nav button.active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 20px rgba(0, 0, 0, 0.1);
+}
+.secondary,
+body.light-theme .secondary,
+body:not(.light-theme) button.secondary:hover,
+body.light-theme .secondary:hover {
+  background: var(--glass-4);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+body:not(.light-theme) button.secondary:hover,
+body.light-theme .secondary:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.danger,
+.modal-danger,
+body.light-theme .danger,
+body.light-theme .modal-danger {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+body:not(.light-theme) button.danger:hover,
+body:not(.light-theme) button.modal-danger:hover,
+body.light-theme .danger:hover {
+  background: var(--active-bg);
+  color: var(--danger-text);
+}
+.send-round,
+.chat-form .send-round,
+body.light-theme .send-round {
+  background: var(--accent-grad);
+  color: var(--accent-ink);
+  border-radius: 12px;
+  box-shadow:
+    0 8px 22px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.chat-form .send-round:hover:not(:disabled) {
+  background: var(--accent-grad);
+  filter: brightness(1.06);
+  box-shadow:
+    0 10px 26px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+body.light-theme .mobile-menu-toggle,
+body.light-theme .new-chat {
+  color: var(--text);
+}
+
+/* --- Conversation -------------------------------------------------- */
+.message {
+  border-radius: 20px;
+  padding: 14px 18px;
+  box-shadow: var(--glass-shadow-soft);
+}
+.assistant,
+body.light-theme .assistant,
+body.light-theme .assistant-shell .assistant {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  box-shadow: var(--glass-shadow-soft);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.user,
+body.light-theme .user {
+  background: var(--user-grad);
+  border: 1px solid var(--user-border);
+  color: var(--user-ink);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+body.light-theme .user {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+}
+.message-meta,
+body.light-theme .message-meta,
+body.light-theme .message-attachment,
+.message-attachment {
+  color: var(--dim);
+}
+.assistant-mark,
+body.light-theme .assistant-mark {
+  background: var(--glass-4);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+.session-divider,
+body.light-theme .session-divider {
+  color: var(--dim);
+}
+.session-divider::before,
+.session-divider::after,
+body.light-theme .session-divider::before,
+body.light-theme .session-divider::after {
+  background: var(--line-soft);
+}
+.typing-indicator,
+body.light-theme .typing-indicator {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--muted);
+  box-shadow: var(--glass-shadow-soft);
+}
+.typing-avatar,
+body.light-theme .typing-avatar {
+  background: var(--active-bg);
+  color: var(--text);
+}
+.typing-dots span {
+  background: var(--text);
+}
+.quick-actions span,
+body.light-theme .quick-actions span,
+.quick-actions span:first-child,
+body.light-theme .quick-actions span:first-child {
+  background: var(--glass-4);
+  border: 1px solid var(--glass-border);
+  color: var(--muted);
+}
+.tool-approval,
+body.light-theme .tool-approval {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-weight: 600;
+}
+.tool-approval-detail,
+body.light-theme .tool-approval-detail,
+body.light-theme .log-details {
+  color: var(--muted);
+}
+
+/* --- Schedule, logs, terminal, settings extras --------------------- */
+.cron-help,
+body.light-theme .cron-help,
+.cron-help code,
+body.light-theme .cron-help code {
+  color: var(--muted);
+}
+.cron-help summary,
+body.light-theme .cron-help summary {
+  color: var(--text);
+}
+.cron-help code,
+body.light-theme .cron-help code {
+  background: var(--chip-bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 1px 6px;
+}
+.schedule-item,
+body.light-theme .schedule-item {
+  background: var(--glass-3);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+}
+.schedule-item strong,
+body.light-theme .schedule-item strong {
+  color: var(--text);
+}
+.schedule-item small,
+body.light-theme .schedule-item small {
+  color: var(--muted);
+}
+.log-row,
+body.light-theme .log-row {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 10px;
+  color: var(--muted);
+}
+.log-row:hover {
+  background: var(--hover-bg);
+  transform: none;
+}
+.logs-list,
+body.light-theme .logs-list {
+  --log-bg: transparent;
+  --log-border: var(--glass-border);
+  --log-text: var(--text);
+  --log-accent: var(--text);
+  --log-muted: var(--dim);
+  --log-number: var(--dim);
+  --log-message: var(--text);
+  --log-details: var(--muted);
+  background: var(--glass-3);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow-soft), var(--glass-edge);
+}
+.log-row strong,
+body.light-theme .log-row strong {
+  color: var(--text);
+}
+.log-prompt,
+body.light-theme .log-prompt {
+  color: var(--dim);
+}
+.log-row.error,
+.log-row.failed,
+.log-row.parse_failed {
+  color: var(--text);
+  font-weight: 600;
+}
+.logs-filter button,
+body.light-theme .logs-filter button {
+  background: var(--glass-4);
+  border: 1px solid transparent;
+  color: var(--muted);
+  border-radius: 10px;
+}
+.logs-filter button.active,
+body.light-theme .logs-filter button.active {
+  background: var(--active-bg);
+  border-color: rgba(255, 255, 255, 0.36);
+  color: var(--text);
+}
+body.light-theme .logs-filter button.active {
+  border-color: rgba(0, 0, 0, 0.32);
+  color: #000000;
+}
+#terminal-view,
+body.light-theme #terminal-view {
+  --terminal-bg: var(--glass-3);
+  --terminal-bar: var(--glass-4);
+  --terminal-border: var(--glass-border);
+  --terminal-text: var(--text);
+  --terminal-dim: var(--muted);
+  --terminal-accent: var(--text);
+  --terminal-danger: var(--text);
+  --terminal-notice: var(--text);
+  --terminal-warning-bg: var(--chip-bg);
+  --terminal-warning-border: var(--line);
+  --terminal-warning-text: var(--muted);
+}
+.terminal-window,
+.terminal-window:focus-within {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow-soft), var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  background: var(--glass-3);
+}
+.terminal-window:focus-within {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+body.light-theme .terminal-window:focus-within {
+  border-color: rgba(0, 0, 0, 0.45);
+}
+.terminal-warning,
+body.light-theme .terminal-warning {
+  border-radius: 12px;
+}
+.auth-key-output,
+body.light-theme .auth-key-output {
+  background: var(--glass-3);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+}
+.auth-key-output code,
+body.light-theme .auth-key-output code {
+  color: var(--text);
+}
+.auth-session-row,
+body.light-theme .auth-session-row,
+.custom-key-row,
+body.light-theme .custom-key-row {
+  border-top: 1px solid var(--line-soft);
+}
+.auth-subtitle,
+body.light-theme .auth-subtitle {
+  color: var(--text);
+}
+.auth-session-info small {
+  color: var(--muted);
+}
+.update-metric,
+body.light-theme .update-metric {
+  background: var(--glass-4);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+}
+.update-log,
+body.light-theme .update-log {
+  background: var(--glass-3);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+}
+.update-log.is-empty {
+  color: var(--muted);
+}
+.update-status.error,
+body.light-theme .update-status.error,
+.update-metric strong.is-missing,
+body.light-theme .update-metric strong.is-missing {
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: underline;
+}
+.update-status.restarting,
+body.light-theme .update-status.restarting {
+  color: var(--muted);
+}
+.hint,
+body.light-theme .hint,
+.update-note {
+  color: var(--muted);
+}
+label,
+body.light-theme label {
+  color: var(--text);
+}
+.range-value,
+body.light-theme .range-value {
+  color: var(--text);
+}
+input[type="range"],
+.toggle input {
+  accent-color: var(--text);
+}
+body.light-theme input[type="range"],
+body.light-theme .toggle input {
+  accent-color: #101010;
+}
+.model-status {
+  color: var(--dim);
+}
+.notice,
+body.light-theme .notice {
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+}
+.notice.error,
+body.light-theme .notice.error {
+  background: var(--glass-2);
+  border-color: var(--danger-border);
+  color: var(--text);
+}
+
+/* --- Motion: the glass keeps moving ------------------------------- */
+.view.active {
+  animation: view-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.card:not(.terminal-card),
+form.chat-form,
+.modal,
+.terminal-window,
+.schedule-item,
+.update-metric {
+  position: relative;
+  transition:
+    transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1),
+    box-shadow 0.5s ease,
+    border-color 0.35s ease;
+}
+/* A slow specular highlight breathing across each pane. */
+.card:not(.terminal-card)::after,
+form.chat-form::after,
+.modal::after,
+.terminal-window::after,
+.schedule-item::after,
+.update-metric::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    90% 90% at 0% 0%,
+    var(--sheen),
+    transparent 62%
+  );
+  opacity: 0.4;
+  animation: glass-live 18s ease-in-out infinite;
+  will-change: opacity;
+}
+.card:nth-child(even)::after {
+  animation-delay: -7s;
+}
+.card:nth-child(3n)::after {
+  animation-delay: -12s;
+}
+.modal::after {
+  animation-delay: -4s;
+}
+.schedule-item:nth-child(even)::after {
+  animation-delay: -9s;
+}
+@keyframes glass-live {
+  0%,
+  100% {
+    opacity: 0.32;
+  }
+  50% {
+    opacity: 0.78;
+  }
+}
+.card:not(.terminal-card):hover {
+  transform: translateY(-2px);
+}
+/* The logo stays still; the continuous motion lives in the backdrop. */
+.brand-mark {
+  animation: none;
+}
+.header-model i {
+  animation: dot-pulse 3.4s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.85);
+  }
+}
+body.light-theme .header-model i {
+  animation-name: dot-pulse-dark;
+}
+@keyframes dot-pulse-dark {
+  0%,
+  100% {
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.45);
+  }
+}
+nav button,
+.history-row,
+.history-item,
+.history-action,
+.log-row,
+.schedule-item,
+.settings-rail button,
+.logs-filter button {
+  transition:
+    background 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  body::after,
+  .brand-mark,
+  .header-model i,
+  .view.active,
+  .card::after,
+  form.chat-form::after,
+  .modal::after,
+  .terminal-window::after,
+  .schedule-item::after,
+  .update-metric::after {
+    animation: none !important;
+  }
+  .card:not(.terminal-card):hover {
+    transform: none;
+  }
+}
+
+/* --- Keyboard focus: one visible ring on every control ------------ */
+button:focus-visible,
+a[href]:focus-visible,
+summary:focus-visible,
+[role="tab"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+/* Keep scrolled-to controls clear of the scroll container edge so the
+   ring is never sliced in half by overflow. */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a[href]:focus-visible,
+[tabindex]:focus-visible {
+  scroll-margin: 26px;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  border-color: var(--text);
+  box-shadow: var(--ring);
+}
+/* The terminal field resets its outline with a two-class selector. */
+.terminal-input-row input:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+/* Keep the composer selects on their own tighter ring. */
+.chat-tools select.composer-select:focus-visible,
+.composer-pill select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+@media (max-width: 700px) {
+  aside {
+    border-right: 1px solid var(--glass-border);
+  }
+  .content {
+    padding: 14px 12px 18px;
+  }
+  .card {
+    padding: 18px 16px;
+    border-radius: 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
+}
