@@ -955,6 +955,8 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
     if name == "read_file":
         machine_access = machine_access_enabled()
         path = resolve_tool_path(arguments.get("path", ""), must_exist=True)
+        if not machine_access:
+            path = resolve_project_path(str(path), must_exist=True)
         if not path.is_file():
             raise ValueError("path นี้ไม่ใช่ไฟล์")
         if path.stat().st_size > TOOL_MAX_READ_BYTES:
