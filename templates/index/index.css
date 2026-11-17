@@ -3654,6 +3654,14 @@ body.light-theme .chat-tools select.composer-select:hover {
   background: var(--hover-bg);
   color: var(--text);
 }
+/* The border reset above also swallows the shared focus ring, so the
+   composer selects need their own keyboard focus indicator. */
+.chat-tools select.composer-select:focus-visible,
+.composer-pill select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  box-shadow: none;
+}
 .chat-tools #chat-model-select,
 body.light-theme .chat-tools #chat-model-select {
   color: var(--text);
@@ -3775,6 +3783,39 @@ nav button,
 .slash-item,
 .logs-filter button,
 .settings-rail button {
+  box-shadow: none;
+}
+/* Utility controls keep their translucent hover instead of taking the
+   primary gradient from button:hover (which left light text on white). */
+.new-chat:hover:not(:disabled),
+.attach-button:hover:not(:disabled),
+.header-icon:hover:not(:disabled),
+.logs-filter button:not(.active):hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text);
+  filter: none;
+  transform: none;
+  box-shadow: none;
+}
+.history-item:hover:not(:disabled),
+.history-action:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text);
+  filter: none;
+  transform: none;
+  box-shadow: none;
+}
+.slash-menu .slash-item:hover,
+.slash-menu .slash-item.active {
+  background: var(--active-bg);
+  color: var(--text);
+  filter: none;
+  transform: none;
+  box-shadow: none;
+}
+.logs-filter button.active:hover:not(:disabled) {
+  filter: none;
+  transform: none;
   box-shadow: none;
 }
 nav button.active {

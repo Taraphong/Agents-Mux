@@ -374,7 +374,11 @@ button[type="submit"] {
 }
 button[type="submit"]:hover:not(:disabled) {
   filter: brightness(1.06);
-  transform: translateY(-1px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  button[type="submit"]:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
 }
 button[type="submit"]:disabled {
   opacity: 0.65;
