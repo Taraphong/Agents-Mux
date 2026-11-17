@@ -693,12 +693,11 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     raw_candidate = Path(cleaned_path)
     if raw_candidate.is_absolute() or cleaned_path.startswith("~"):
         raise ValueError("อนุญาตเฉพาะ path แบบ relative ภายในโฟลเดอร์โปรเจกต์")
-    project_root = PROJECT_ROOT.resolve()
-    candidate = (project_root / raw_candidate).resolve()
-    try:
-        relative_path = candidate.relative_to(project_root)
-    except ValueError as exc:
-        raise ValueError("อนุญาตเฉพาะ path ภายในโฟลเดอร์โปรเจกต์") from exc
+    project_root = PROJECT_ROOT.resolve(strict=True)
+    candidate = (project_root / raw_candidate).resolve(strict=False)
+    if not candidate.is_relative_to(project_root):
+        raise ValueError("อนุญาตเฉพาะ path ภายในโฟลเดอร์โปรเจกต์")
+    relative_path = candidate.relative_to(project_root)
     relative_parts = relative_path.parts
     if any(part in PROTECTED_PARTS for part in relative_parts) or candidate.name in PROTECTED_NAMES:
         raise ValueError("ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
