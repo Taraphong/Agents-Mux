@@ -3869,6 +3869,7 @@ def server_tls_state() -> dict[str, Any]:
 
 
 TLS_ENV_KEYS = ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY", "AI_WEB_TLS_ADHOC")
+TLS_ENV_LOCK = threading.Lock()
 
 
 def apply_tls_environment(values: dict[str, str]) -> None:
@@ -3878,7 +3879,38 @@ def apply_tls_environment(values: dict[str, str]) -> None:
     the running server keeps the old AI_WEB_TLS_* values in its environment.
     A restart started from the web page inherits them, and because an exported
     variable wins over .env, switching back to HTTP would never take effect.
+
+    When the TLS mode switches to HTTP or ad-hoc, the certificate-path
+    environment variables are preserved separately so that re-selecting
+    "HTTPS with certificate files" can reuse the same pair without needing
+    to reconfigure.
     """
+    # Preserve the pair that was set, keyed by the mode name, so it is not
+    # lost when the mode switches away from "cert".
+    mode = values.get("AI_WEB_TLS_ADHOC", "").strip().lower()
+    if mode not in {"1", "true", "yes", "on"}:
+        # cert mode or HTTP mode — keep whatever pair was previously saved
+        # under the TLS_CERT/TLS_KEY env vars (may be empty if none set).
+        for key in TLS_ENV_KEYS:
+            value = values.get(key, "")
+            if value:
+                os.environ[key] = value
+            else:
+                os.environ.pop(key, None)
+    else:
+        # ad-hoc mode — still clear Secure-path keys but keep the cert/key
+        # pair that was previously configured, if any, so a later switch back
+        # to cert mode does not require re‑entering paths.
+        cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
+        key = os.getenv("AI_WEB_TLS_KEY", "").strip()
+        if cert and key:
+            # keep the existing pair; do not overwrite with empty values
+            pass
+        else:
+            # no pair configured — clear them so a later cert-mode select
+            # can be prompted properly
+            for key in ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY"):
+                os.environ.pop(key, None)
     for key in TLS_ENV_KEYS:
         value = values.get(key, "")
         if value:
@@ -3965,11 +3997,12 @@ def server_tls_update():
             }
         else:
             values = {"AI_WEB_TLS_CERT": "", "AI_WEB_TLS_KEY": "", "AI_WEB_TLS_ADHOC": "1"}
-    try:
-        update_env_file(values)
-    except OSError as exc:
-        return jsonify({"ok": False, "error": status_message(language, "env_write_failed", error=str(exc))}), 500
-    apply_tls_environment(values)
+    with TLS_ENV_LOCK:
+        try:
+            update_env_file(values)
+        except OSError as exc:
+            return jsonify({"ok": False, "error": status_message(language, "env_write_failed", error=str(exc))}), 500
+        apply_tls_environment(values)
     log_event("system.tls_saved", "บันทึกโหมดการเชื่อมต่อจากหน้าเว็บ", mode=mode, kind=https_kind)
     return no_store(jsonify({
         "ok": True,

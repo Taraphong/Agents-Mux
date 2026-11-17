@@ -4345,6 +4345,16 @@ function applyServerStatus(data) {
   serverState.uptime = Number(data.uptime_seconds) || 0;
   serverState.tls = data.tls || serverState.tls;
   serverState.scriptAvailable = Boolean(data.script_available);
+  // Rebuild pendingSchemeUrl if the mode from the server differs from the
+  // current browser protocol, so a page reload preserves the new-address
+  // behaviour instead of polling the old origin until it times out.
+  const currentMode = location.protocol.slice(0, -1); // "http" or "https"
+  if (serverState.scheme && currentMode !== serverState.scheme) {
+    const port = serverState.port || Number(location.port) || 5000;
+    pendingSchemeUrl = `${serverState.scheme}://${location.hostname}:${port}/`;
+  } else {
+    pendingSchemeUrl = "";
+  }
 }
 function serverUptimeText(seconds) {
   const totalMinutes = Math.max(0, Math.floor(Number(seconds) / 60));
