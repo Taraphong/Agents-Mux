@@ -63,7 +63,9 @@ aside {
   letter-spacing: 0.04em;
 }
 #history-list {
-  max-height: 45vh;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
 }
 .history-day {
@@ -2442,6 +2444,8 @@ form.chat-form {
   max-width: 96px;
 }
 .composer-pill {
+  display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   min-width: 0;
   max-width: 100%;
@@ -2449,6 +2453,8 @@ form.chat-form {
   padding: 0 4px;
 }
 .composer-pill select {
+  flex: 0 1 auto;
+  min-width: 0;
   height: 30px;
   padding: 0 4px;
   border: 0;
@@ -3242,6 +3248,14 @@ aside {
     18px 0 50px rgba(0, 0, 0, 0.28);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
+  /* Keep the sidebar inside the viewport so a long conversation list cannot
+     stretch the page taller than the window and drag the whole layout down.
+     The brand and navigation stay in place; only the history list scrolls. */
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 header {
   background: var(--glass-bg-soft);
