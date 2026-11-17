@@ -689,8 +689,12 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     """Resolve a user path inside the project while blocking protected files."""
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("ต้องระบุ path ภายในโปรเจกต์")
+    cleaned_path = raw_path.strip()
+    raw_candidate = Path(cleaned_path)
+    if raw_candidate.is_absolute() or cleaned_path.startswith("~"):
+        raise ValueError("อนุญาตเฉพาะ path แบบ relative ภายในโฟลเดอร์โปรเจกต์")
     project_root = PROJECT_ROOT.resolve()
-    candidate = (project_root / raw_path.strip()).resolve()
+    candidate = (project_root / raw_candidate).resolve()
     try:
         relative_path = candidate.relative_to(project_root)
     except ValueError as exc:
