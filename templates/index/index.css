@@ -875,7 +875,6 @@ nav button,
 .history-title,
 .history-day,
 .hint,
-.log-time,
 .message-meta,
 .message-attachment,
 .schedule-item small {
@@ -4055,12 +4054,6 @@ body.light-theme .log-row strong {
 .log-prompt,
 body.light-theme .log-prompt {
   color: var(--dim);
-}
-/* Timestamps follow the theme; the old hardcoded #c7c7c7 left them unreadable
-   on the light log list (`--log-muted` is too close to the row text there). */
-.log-time,
-body.light-theme .log-time {
-  color: var(--muted);
 }
 .log-row.error,
 .log-row.failed,
