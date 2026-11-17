@@ -3799,12 +3799,21 @@ nav button,
 .new-chat:hover:not(:disabled),
 .attach-button:hover:not(:disabled),
 .header-icon:hover:not(:disabled),
-.logs-filter button:not(.active):hover:not(:disabled) {
+.logs-filter button:not(.active):hover:not(:disabled),
+nav button:hover:not(:disabled),
+.settings-rail button:hover:not(:disabled) {
   background: var(--hover-bg);
   color: var(--text);
   filter: none;
   transform: none;
   box-shadow: none;
+}
+/* The selected nav row and settings tab keep their own fill while hovered;
+   the shared gradient left near-white text on a white tile. */
+nav button.active:hover:not(:disabled),
+.settings-rail button.active:hover:not(:disabled) {
+  background: var(--active-bg);
+  color: var(--text);
 }
 .history-item:hover:not(:disabled),
 .history-action:hover:not(:disabled) {
