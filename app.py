@@ -119,6 +119,13 @@ TERMINAL_SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", 
 AUTH_FILE = Path(os.getenv("AI_WEB_AUTH_FILE", ".app-auth.json"))
 AUTH_ENABLED = os.getenv("AI_WEB_AUTH", "on").strip().lower() not in {"0", "false", "no", "off"}
 AUTH_SESSION_COOKIE = "ai-web-session"
+# Browsers refuse to let an insecure origin set a cookie whose name matches an
+# existing Secure cookie (RFC 6265bis, "Leave Secure Cookies Alone"). Without a
+# second name, a device that paired while the app served HTTPS could never pair
+# again after switching to HTTP, because its old Secure cookie blocks the new
+# one and is not sent over HTTP. Each scheme therefore gets its own name.
+AUTH_SESSION_COOKIE_HTTP = "ai-web-session-http"
+AUTH_SESSION_COOKIE_NAMES = (AUTH_SESSION_COOKIE, AUTH_SESSION_COOKIE_HTTP)
 AUTH_PAIRING_TTL_MINUTES = env_int("AI_WEB_PAIRING_TTL_MINUTES", 30, 1)
 AUTH_SESSION_DAYS = env_int("AI_WEB_SESSION_DAYS", 30, 1)
 AUTH_KEY_LENGTH = 12
@@ -2900,28 +2907,38 @@ def create_auth_session(label: str = "", user_agent: str = "", client_ip: str = 
     return token
 
 
+def auth_session_tokens() -> list[str]:
+    """Return the session tokens this request carries, one per cookie name."""
+    return [
+        token
+        for name in AUTH_SESSION_COOKIE_NAMES
+        if (token := request.cookies.get(name, ""))
+    ]
+
+
 def current_auth_session() -> dict[str, Any] | None:
-    """Resolve the request cookie to a live paired-device session."""
-    token = request.cookies.get(AUTH_SESSION_COOKIE, "")
-    if not token:
+    """Resolve one of the request cookies to a live paired-device session."""
+    tokens = auth_session_tokens()
+    if not tokens:
         return None
-    digest = hash_auth_token(token)
     now = auth_now()
     with AUTH_LOCK:
         state = load_auth_state()
-        for item in state["sessions"]:
-            if not hmac.compare_digest(str(item.get("token_hash") or ""), digest):
-                continue
-            if auth_expired(item, now):
-                return None
-            try:
-                recently_seen = (now - datetime.fromisoformat(str(item.get("last_seen_at") or ""))).total_seconds() <= 60
-            except (TypeError, ValueError):
-                recently_seen = False
-            if not recently_seen:
-                item["last_seen_at"] = auth_timestamp(now)
-                save_auth_state(state)
-            return dict(item)
+        for token in tokens:
+            digest = hash_auth_token(token)
+            for item in state["sessions"]:
+                if not hmac.compare_digest(str(item.get("token_hash") or ""), digest):
+                    continue
+                if auth_expired(item, now):
+                    continue
+                try:
+                    recently_seen = (now - datetime.fromisoformat(str(item.get("last_seen_at") or ""))).total_seconds() <= 60
+                except (TypeError, ValueError):
+                    recently_seen = False
+                if not recently_seen:
+                    item["last_seen_at"] = auth_timestamp(now)
+                    save_auth_state(state)
+                return dict(item)
     return None
 
 
@@ -3186,8 +3203,9 @@ def auth_pair():
     )
     log_event("auth.paired", "จับคู่อุปกรณ์ใหม่สำเร็จ", ip=client_ip)
     response = jsonify({"ok": True, "redirect": "/"})
+    cookie_name = AUTH_SESSION_COOKIE if request.is_secure else AUTH_SESSION_COOKIE_HTTP
     response.set_cookie(
-        AUTH_SESSION_COOKIE,
+        cookie_name,
         token,
         max_age=AUTH_SESSION_DAYS * 24 * 60 * 60,
         httponly=True,
@@ -3195,6 +3213,10 @@ def auth_pair():
         secure=request.is_secure,
         path="/",
     )
+    # Drop a leftover cookie from the other scheme so an old token cannot be
+    # picked up later when the app runs over the other protocol.
+    other_name = AUTH_SESSION_COOKIE_HTTP if request.is_secure else AUTH_SESSION_COOKIE
+    response.delete_cookie(other_name, path="/", secure=request.is_secure, samesite="Lax")
     return response
 
 
@@ -3232,21 +3254,24 @@ def auth_create_pairing_key():
 
 @app.post("/api/auth/logout")
 def auth_logout():
-    """Revoke this device's session and clear its cookie."""
-    token = request.cookies.get(AUTH_SESSION_COOKIE, "")
-    digest = hash_auth_token(token) if token else ""
-    if digest:
+    """Revoke this device's session and clear its cookies."""
+    digests = [hash_auth_token(token) for token in auth_session_tokens()]
+    if digests:
         with AUTH_LOCK:
             state = load_auth_state()
             remaining = [
                 item for item in state["sessions"]
-                if not hmac.compare_digest(str(item.get("token_hash") or ""), digest)
+                if not any(
+                    hmac.compare_digest(str(item.get("token_hash") or ""), digest)
+                    for digest in digests
+                )
             ]
             if len(remaining) != len(state["sessions"]):
                 state["sessions"] = remaining
                 save_auth_state(state)
     response = jsonify({"ok": True, "redirect": "/pair"})
-    response.delete_cookie(AUTH_SESSION_COOKIE, path="/")
+    for name in AUTH_SESSION_COOKIE_NAMES:
+        response.delete_cookie(name, path="/", secure=request.is_secure, samesite="Lax")
     return response
 
 
