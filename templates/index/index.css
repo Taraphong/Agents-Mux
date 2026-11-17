@@ -4331,6 +4331,48 @@ nav button,
   }
 }
 
+/* --- Keyboard focus: one visible ring on every control ------------ */
+button:focus-visible,
+a[href]:focus-visible,
+summary:focus-visible,
+[role="tab"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+/* Keep scrolled-to controls clear of the scroll container edge so the
+   ring is never sliced in half by overflow. */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a[href]:focus-visible,
+[tabindex]:focus-visible {
+  scroll-margin: 26px;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  border-color: var(--text);
+  box-shadow: var(--ring);
+}
+/* The terminal field resets its outline with a two-class selector. */
+.terminal-input-row input:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+/* Keep the composer selects on their own tighter ring. */
+.chat-tools select.composer-select:focus-visible,
+.composer-pill select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
 @media (max-width: 700px) {
   aside {
     border-right: 1px solid var(--glass-border);
