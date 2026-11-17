@@ -3817,6 +3817,25 @@ def server_tls_state() -> dict[str, Any]:
     }
 
 
+TLS_ENV_KEYS = ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY", "AI_WEB_TLS_ADHOC")
+
+
+def apply_tls_environment(values: dict[str, str]) -> None:
+    """Mirror a saved TLS mode into this process environment.
+
+    load_dotenv() only fills variables when the process starts, so without this
+    the running server keeps the old AI_WEB_TLS_* values in its environment.
+    A restart started from the web page inherits them, and because an exported
+    variable wins over .env, switching back to HTTP would never take effect.
+    """
+    for key in TLS_ENV_KEYS:
+        value = values.get(key, "")
+        if value:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
+
+
 def update_env_file(values: dict[str, str]) -> None:
     """Update keys in .env atomically; an empty value removes the key.
 
@@ -3900,6 +3919,7 @@ def server_tls_update():
         update_env_file(values)
     except OSError as exc:
         return jsonify({"ok": False, "error": status_message(language, "env_write_failed", error=str(exc))}), 500
+    apply_tls_environment(values)
     log_event("system.tls_saved", "บันทึกโหมดการเชื่อมต่อจากหน้าเว็บ", mode=mode, kind=https_kind)
     return no_store(jsonify({
         "ok": True,
