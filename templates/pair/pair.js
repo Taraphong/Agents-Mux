@@ -135,7 +135,6 @@ function applyLanguage() {
 function applyTheme(theme) {
   const light = theme === "light";
   document.documentElement.classList.toggle("light-theme", light);
-  themeToggle.textContent = light ? "☾" : "☼";
 }
 
 languageToggle.addEventListener("click", () => {
