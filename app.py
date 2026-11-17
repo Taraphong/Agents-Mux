@@ -693,6 +693,9 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     raw_candidate = Path(cleaned_path)
     if raw_candidate.is_absolute() or cleaned_path.startswith("~"):
         raise ValueError("อนุญาตเฉพาะ path แบบ relative ภายในโฟลเดอร์โปรเจกต์")
+    raw_parts = raw_candidate.parts
+    if any(part == ".." for part in raw_parts) or any(part == "" for part in raw_parts):
+        raise ValueError("ไม่อนุญาต path traversal")
     project_root = PROJECT_ROOT.resolve(strict=True)
     candidate = (project_root / raw_candidate).resolve(strict=False)
     if not candidate.is_relative_to(project_root):
