@@ -5,6 +5,7 @@ import getpass
 import gzip
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import re
@@ -35,7 +36,6 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.serving import (
     ThreadedWSGIServer,
     WSGIRequestHandler,
-    generate_adhoc_ssl_context,
     load_ssl_context,
 )
 
@@ -69,6 +69,11 @@ HISTORY_LOCK = threading.Lock()
 PROJECT_ROOT = Path(__file__).resolve().parent
 ENV_FILE = Path(os.getenv("AI_WEB_ENV_FILE", str(PROJECT_ROOT / ".env")))
 CERT_DIR = PROJECT_ROOT / "certs"
+# Files for ad-hoc HTTPS: created once and reused so restarts keep the same
+# certificate, and kept apart from certs/cert.pem so the certificate mode
+# never picks them up by accident.
+ADHOC_CERT_FILE = CERT_DIR / "adhoc-cert.pem"
+ADHOC_KEY_FILE = CERT_DIR / "adhoc-key.pem"
 # Server control from the web UI goes through start_web.sh so the CLI and the
 # page use exactly the same start/stop/restart rules.
 SERVER_SCRIPT = PROJECT_ROOT / "start_web.sh"
@@ -4241,11 +4246,93 @@ class DrainingRequestHandler(WSGIRequestHandler):
             pass
 
 
+def adhoc_certificate() -> tuple[str, str]:
+    """Create (once) and reuse a self-signed certificate for ad-hoc HTTPS.
+
+    Werkzeug's ad-hoc context needs the optional `cryptography` package, which
+    a Termux install does not have, so the server died on startup with
+    "Using ad-hoc certificates requires the cryptography library". openssl is
+    already required for --make-cert, so generate the pair with it instead and
+    keep the files under certs/ so a restart hands the browser the same
+    certificate instead of a new warning every time.
+    """
+    if ADHOC_CERT_FILE.is_file() and ADHOC_KEY_FILE.is_file():
+        return str(ADHOC_CERT_FILE), str(ADHOC_KEY_FILE)
+    openssl = shutil.which("openssl")
+    if not openssl:
+        raise RuntimeError(
+            "ไม่พบ openssl สำหรับสร้างใบรับรองชั่วคราว — ติดตั้งด้วย pkg install openssl-tool "
+            "หรือใช้ ./start_web.sh --make-cert แล้วเลือกโหมด certificate"
+        )
+    names = ["localhost", "127.0.0.1"]
+    try:
+        hostname = socket.gethostname()
+    except OSError:
+        hostname = ""
+    if hostname and hostname not in names:
+        names.append(hostname)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("1.1.1.1", 80))
+            address = probe.getsockname()[0]
+    except OSError:
+        address = ""
+    if address and address not in names:
+        names.append(address)
+    try:
+        ipaddress.ip_address(names[0])
+        common_name = hostname or "localhost"
+    except ValueError:
+        common_name = names[0]
+    san = ",".join(
+        f"IP:{name}" if _is_ip_address(name) else f"DNS:{name}" for name in names
+    )
+    CERT_DIR.mkdir(parents=True, exist_ok=True)
+    temp_key = ADHOC_KEY_FILE.with_name(f".{ADHOC_KEY_FILE.name}.{uuid.uuid4().hex}.tmp")
+    temp_cert = ADHOC_CERT_FILE.with_name(f".{ADHOC_CERT_FILE.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        result = subprocess.run(
+            [
+                openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256",
+                "-days", "3650",
+                "-keyout", str(temp_key), "-out", str(temp_cert),
+                "-subj", f"/CN={common_name}",
+                "-addext", f"subjectAltName={san}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"สร้างใบรับรองชั่วคราวไม่สำเร็จ: {result.stderr.strip()[:300]}"
+            )
+        os.chmod(temp_key, 0o600)
+        os.replace(temp_cert, ADHOC_CERT_FILE)
+        os.replace(temp_key, ADHOC_KEY_FILE)
+    finally:
+        for leftover in (temp_key, temp_cert):
+            leftover.unlink(missing_ok=True)
+    log_event("system.adhoc_cert", "สร้างใบรับรอง HTTPS ชั่วคราว", names=", ".join(names))
+    return str(ADHOC_CERT_FILE), str(ADHOC_KEY_FILE)
+
+
+def _is_ip_address(value: str) -> bool:
+    """Report whether a name is a literal IP address for the certificate SAN."""
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
 def build_tls_context(ssl_context: Any) -> Any:
     """Turn a tls_configuration() value into a ready ssl.SSLContext."""
     if isinstance(ssl_context, tuple):
         return load_ssl_context(*ssl_context)
-    return generate_adhoc_ssl_context()
+    try:
+        return load_ssl_context(*adhoc_certificate())
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        raise SystemExit(f"สร้างใบรับรอง HTTPS ชั่วคราวไม่สำเร็จ: {exc}") from exc
 
 
 class TLSServer(ThreadedWSGIServer):
