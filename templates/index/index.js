@@ -9,13 +9,13 @@ const SUPPORTED_LANGUAGES = ["th", "en"];
 const I18N = {
   th: {
     "app.title": "AI Control Center",
-    "sidebar.newChat": "＋ แชตใหม่",
-    "nav.chat": "▰ แชต",
-    "nav.terminal": ">_ Terminal",
-    "nav.settings": "⚙ ตั้งค่า",
-    "nav.schedule": "◷ งานตามเวลา",
-    "nav.logs": "▤ Log ระบบ",
-    "nav.about": "ⓘ เกี่ยวกับ",
+    "sidebar.newChat": "แชตใหม่",
+    "nav.chat": "แชต",
+    "nav.terminal": "Terminal",
+    "nav.settings": "ตั้งค่า",
+    "nav.schedule": "งานตามเวลา",
+    "nav.logs": "Log ระบบ",
+    "nav.about": "เกี่ยวกับ",
     "sidebar.history": "ประวัติการพูดคุย",
     "history.renameTitle": "เปลี่ยนชื่อประวัติ",
     "history.renamePlaceholder": "ชื่อประวัติใหม่",
@@ -124,7 +124,7 @@ const I18N = {
     "network.certMissing": "ไม่พบไฟล์",
     "network.certOff": "ไม่ได้ใช้",
     "network.adhocOn": "ใช้ใบรับรองชั่วคราว",
-    "nav.network": "🛡 HTTPS",
+    "nav.network": "HTTPS",
     "page.network": "HTTPS / HTTP",
     "chat.typingThinking": "AI กำลังคิด",
     "chat.typingWorking": "AI กำลังเรียบเรียงคำตอบ",
@@ -523,13 +523,13 @@ const I18N = {
   },
   en: {
     "app.title": "AI Control Center",
-    "sidebar.newChat": "+ New chat",
-    "nav.chat": "▰ Chat",
-    "nav.terminal": ">_ Terminal",
-    "nav.settings": "⚙ Settings",
-    "nav.schedule": "◷ Scheduled jobs",
-    "nav.logs": "▤ System logs",
-    "nav.about": "ⓘ About",
+    "sidebar.newChat": "New chat",
+    "nav.chat": "Chat",
+    "nav.terminal": "Terminal",
+    "nav.settings": "Settings",
+    "nav.schedule": "Scheduled jobs",
+    "nav.logs": "System logs",
+    "nav.about": "About",
     "sidebar.history": "Conversation history",
     "history.renameTitle": "Rename conversation",
     "history.renamePlaceholder": "New conversation name",
@@ -638,7 +638,7 @@ const I18N = {
     "network.certMissing": "Files missing",
     "network.certOff": "Not used",
     "network.adhocOn": "Ad-hoc certificate",
-    "nav.network": "🛡 HTTPS",
+    "nav.network": "HTTPS",
     "page.network": "HTTPS / HTTP",
     "chat.typingThinking": "AI is thinking",
     "chat.typingWorking": "AI is composing a reply",
@@ -1613,6 +1613,70 @@ $("sidebar-toggle").addEventListener("click", () => {
   localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0");
   applySidebarCollapsed(sidebarCollapsed);
 });
+// The collapsed sidebar only shows icons, so label the control under the
+// pointer (or keyboard focus) instead of relying on the delayed native title.
+const RAIL_ITEM_SELECTOR = ".new-chat, nav button, .history-item";
+const railTooltip = $("rail-tooltip");
+let railTooltipSource = null;
+let railTooltipTitle = null;
+function railModeActive() {
+  return (
+    appRoot.classList.contains("sidebar-collapsed") &&
+    window.matchMedia("(min-width: 701px)").matches
+  );
+}
+function showRailTooltip(target) {
+  if (!railTooltip || !railModeActive()) return;
+  const label =
+    target.getAttribute("aria-label") || target.getAttribute("title");
+  if (!label) return;
+  if (railTooltipSource !== target) {
+    hideRailTooltip();
+    railTooltipSource = target;
+    railTooltipTitle = target.getAttribute("title");
+    if (railTooltipTitle) target.removeAttribute("title");
+  }
+  railTooltip.textContent = label;
+  railTooltip.hidden = false;
+  const rect = target.getBoundingClientRect();
+  const tip = railTooltip.getBoundingClientRect();
+  const top = rect.top + rect.height / 2 - tip.height / 2;
+  railTooltip.style.left = `${Math.round(rect.right + 10)}px`;
+  railTooltip.style.top = `${Math.round(
+    Math.max(8, Math.min(window.innerHeight - tip.height - 8, top)),
+  )}px`;
+}
+function hideRailTooltip() {
+  if (railTooltipSource && railTooltipTitle) {
+    railTooltipSource.setAttribute("title", railTooltipTitle);
+  }
+  railTooltipSource = null;
+  railTooltipTitle = null;
+  if (railTooltip) railTooltip.hidden = true;
+}
+function railItemFrom(node) {
+  const item = node?.closest?.(RAIL_ITEM_SELECTOR);
+  return item && !item.closest(".history-actions") ? item : null;
+}
+document.querySelector("aside").addEventListener("pointerover", (event) => {
+  const item = railItemFrom(event.target);
+  if (item) showRailTooltip(item);
+});
+document.querySelector("aside").addEventListener("pointerout", (event) => {
+  const item = railItemFrom(event.target);
+  if (!item) return;
+  if (event.relatedTarget && item.contains(event.relatedTarget)) return;
+  hideRailTooltip();
+});
+document.querySelector("aside").addEventListener("focusin", (event) => {
+  const item = railItemFrom(event.target);
+  if (item) showRailTooltip(item);
+});
+document.querySelector("aside").addEventListener("focusout", hideRailTooltip);
+document.querySelector("aside").addEventListener("pointerleave", hideRailTooltip);
+$("history-list").addEventListener("scroll", hideRailTooltip);
+window.addEventListener("resize", hideRailTooltip);
+$("sidebar-toggle").addEventListener("click", hideRailTooltip);
 function formatUsage(durationMs, usage) {
   const duration = Number.isFinite(Number(durationMs))
     ? t("usage.duration", {
@@ -4066,12 +4130,14 @@ function escapeHtml(value) {
       })[character],
   );
 }
+const HISTORY_ITEM_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>';
 function historyRows(items) {
   return items
-    .map(
-      (item) =>
-        `<div class="history-row${item.id === conversationId ? " active" : ""}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.title || t("history.untitled"))}">${item.locked ? "🔒 " : ""}${escapeHtml(item.title || t("history.untitled"))}</button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.rename"))}">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.pinned ? t("history.unpin") : t("history.pin"))}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.locked ? t("history.unlock") : t("history.lock"))}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.delete"))}">×</button></div></div>`,
-    )
+    .map((item) => {
+      const title = escapeHtml(item.title || t("history.untitled"));
+      return `<div class="history-row${item.id === conversationId ? " active" : ""}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${title}" aria-label="${title}"><span class="history-icon">${HISTORY_ITEM_ICON}</span><span class="history-label">${item.locked ? "🔒 " : ""}${title}</span></button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.rename"))}">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.pinned ? t("history.unpin") : t("history.pin"))}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.locked ? t("history.unlock") : t("history.lock"))}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.delete"))}">×</button></div></div>`;
+    })
     .join("");
 }
 function renderHistoryList(items) {

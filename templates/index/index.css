@@ -4415,7 +4415,80 @@ select:focus-visible {
   }
 }
 
-/* Laptop sidebar collapse */
+/* Sidebar icons: shown beside the label when the sidebar is open, and alone
+   in the collapsed rail. */
+.nav-icon,
+.new-chat-icon,
+.history-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+.nav-icon svg,
+.new-chat-icon svg,
+.history-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.history-icon {
+  display: none;
+}
+nav button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+nav button[hidden] {
+  display: none;
+}
+.new-chat {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.history-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Immediate name label shown beside the icon-only rail. */
+.rail-tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: 260px;
+  padding: 6px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--glass-2);
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  pointer-events: none;
+}
+
+/* Laptop sidebar collapse: the sidebar turns into an icon rail instead of
+   disappearing, so navigation, a new chat, and the conversation history stay
+   one click away. */
 .sidebar-toggle {
   display: none;
 }
@@ -4427,10 +4500,112 @@ select:focus-visible {
     transition: grid-template-columns 0.2s ease;
   }
   .app.sidebar-collapsed {
-    grid-template-columns: 0 1fr;
+    grid-template-columns: 64px 1fr;
   }
   .app.sidebar-collapsed aside {
+    position: relative;
+    align-items: center;
+    padding: 14px 8px;
+  }
+  .app.sidebar-collapsed .brand {
+    justify-content: center;
+    padding: 2px 0 16px;
+  }
+  .app.sidebar-collapsed .brand-copy {
     display: none;
+  }
+  .app.sidebar-collapsed .brand-mark {
+    width: auto;
+    height: auto;
+    padding: 0;
+    border-radius: 0;
+    background: linear-gradient(135deg, #fb7185, #a78bfa 45%, #38bdf8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    box-shadow: none;
+    font-size: 1.8rem;
+    line-height: 1;
+  }
+  .app.sidebar-collapsed .new-chat {
+    width: 42px;
+    height: 42px;
+    margin: 0 0 12px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: var(--text);
+  }
+  .app.sidebar-collapsed .new-chat:hover {
+    background: var(--hover-bg);
+  }
+  .app.sidebar-collapsed .nav-label,
+  .app.sidebar-collapsed .history-label {
+    display: none;
+  }
+  .app.sidebar-collapsed nav {
+    width: 100%;
+  }
+  .app.sidebar-collapsed nav button {
+    width: 40px;
+    height: 40px;
+    margin: 2px auto;
+    padding: 0;
+    justify-content: center;
+    border-radius: 10px;
+  }
+  /* Keep settings at the foot of the rail, like the rest of the app shell. */
+  .app.sidebar-collapsed nav button[data-view="settings"] {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    margin: 0;
+    transform: translateX(-50%);
+  }
+  .app.sidebar-collapsed .nav-icon,
+  .app.sidebar-collapsed .new-chat-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .app.sidebar-collapsed .history-title {
+    display: none;
+  }
+  .app.sidebar-collapsed #history-list {
+    width: 100%;
+    margin-top: 8px;
+    /* Leave room for the settings button pinned to the bottom. */
+    padding-bottom: 54px;
+  }
+  .app.sidebar-collapsed .history-day {
+    display: none;
+  }
+  .app.sidebar-collapsed .history-row {
+    justify-content: center;
+    margin: 2px 0;
+  }
+  .app.sidebar-collapsed .history-item {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 40px;
+    height: 34px;
+    padding: 0;
+    border-radius: 10px;
+  }
+  .app.sidebar-collapsed .history-icon {
+    display: grid;
+    width: 18px;
+    height: 18px;
+  }
+  .app.sidebar-collapsed .history-actions {
+    display: none;
+  }
+  .app.sidebar-collapsed .history-row.active .history-item {
+    color: var(--text);
+    background: var(--active-bg);
   }
 }
 
