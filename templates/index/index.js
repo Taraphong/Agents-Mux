@@ -1167,7 +1167,7 @@ window.fetch = (input, init) => {
         : "";
   if (!url.includes("/api/")) return nativeFetch(input, init);
   const options = { ...(init || {}) };
-  const headers = new Headers(options.headers || {});
+  const headers = new Headers(options.headers || (input instanceof Request ? input.headers : {}));
   headers.set("X-Interface-Language", currentLanguage);
   options.headers = headers;
   return nativeFetch(input, options);
