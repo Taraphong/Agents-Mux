@@ -475,8 +475,56 @@ const I18N = {
     "tool.retry": "ลองอีกครั้ง ({message})",
     "tool.resultPrefix": "ผลการใช้เครื่องมือ:",
     "attachment.tooLarge": "ไฟล์ใหญ่เกิน 1 MB",
+    "attachment.binaryTooLarge": "ไฟล์ใหญ่เกิน 6 MB",
     "attachment.readFailed": "อ่านไฟล์ไม่สำเร็จ",
     "attachment.clear": "ยกเลิกไฟล์แนบ",
+    "common.close": "ปิด",
+    "gemini.title": "ความสามารถของคีย์ Gemini",
+    "gemini.hint": "คีย์ Gemini เดียวใช้ได้กับหลายกลุ่มความสามารถ ระบบจะตรวจจากคีย์ที่บันทึกไว้",
+    "gemini.refresh": "ตรวจสอบอีกครั้ง",
+    "gemini.notChecked": "กดตรวจสอบเพื่อดูว่าคีย์รองรับอะไร",
+    "gemini.checking": "กำลังตรวจสอบ...",
+    "gemini.liveModel": "โมเดล Live API",
+    "gemini.defaultModel": "ใช้ค่าเริ่มต้นอัตโนมัติ",
+    "gemini.agent": "Managed agent",
+    "gemini.decisionModel": "โมเดล Decisions API",
+    "gemini.openTools": "เครื่องมือ Gemini",
+    "gemini.toolsTitle": "เครื่องมือ Gemini",
+    "gemini.toolsHint": "Live API, Decisions API และ Managed agents ใช้คีย์ Gemini เดียวกัน",
+    "gemini.liveTitle": "Live API (เสียงเรียลไทม์)",
+    "gemini.liveHint": "อนุญาตไมโครโฟนแล้วกดเริ่ม ระบบจะออก token อายุสั้นให้เบราว์เซอร์โดยไม่เปิดเผย API key",
+    "gemini.liveStart": "เริ่มสนทนาเสียง",
+    "gemini.liveStop": "หยุดสนทนาเสียง",
+    "gemini.liveStarting": "กำลังเชื่อมต่อ...",
+    "gemini.liveListening": "กำลังฟัง — พูดได้เลย",
+    "gemini.liveStopped": "หยุดแล้ว",
+    "gemini.liveError": "เชื่อมต่อ Live API ไม่สำเร็จ",
+    "gemini.liveUnsupported": "เบราว์เซอร์นี้ไม่รองรับไมโครโฟนหรือ WebSocket",
+    "gemini.liveYou": "คุณ",
+    "gemini.liveAgent": "Gemini",
+    "gemini.decisionsTitle": "Decisions API",
+    "gemini.decisionsHint": "ประเมินหลายคำถามจาก input เดียว รองรับ noul (จริง/เท็จ), choice และ score",
+    "gemini.decisionsInput": "Input",
+    "gemini.decisionsQuestions": "Questions (JSON)",
+    "gemini.runDecisions": "ประเมินคำถาม",
+    "gemini.agentsTitle": "Managed agents",
+    "gemini.agentsHint": "ส่งงานให้ agent ที่จัดการโดย Gemini ใน sandbox และรับผลลัพธ์กลับมา",
+    "gemini.agentLabel": "Agent",
+    "gemini.agentPrompt": "งานที่ต้องการ",
+    "gemini.runAgent": "ส่งงานให้ Agent",
+    "gemini.running": "กำลังทำงาน...",
+    "gemini.noResult": "(ไม่มีข้อความตอบกลับ)",
+    "gemini.notConfigured": "ยังไม่ได้ตั้งค่า Gemini API key",
+    "gemini.badQuestions": "Questions ต้องเป็น JSON ที่ถูกต้อง",
+    "gemini.loadFailed": "ตรวจสอบไม่สำเร็จ",
+    "gemini.ready": "พร้อมใช้",
+    "gemini.unavailable": "ไม่พบ",
+    "gemini.group.multimodal": "Multi-modal generative models",
+    "gemini.group.live": "Live API",
+    "gemini.group.decisions": "Decisions API",
+    "gemini.group.agents": "Agents",
+    "gemini.group.other": "Other",
+    "gemini.agentIds": "Interaction: {interaction} · Environment: {environment}",
     "model.custom": "กำหนดเอง...",
     "model.fetching": "กำลังดึงจาก API...",
     "model.fetched": "ดึงจาก API แล้ว {count} รายการ",
@@ -995,8 +1043,56 @@ const I18N = {
     "tool.retry": "Try again ({message})",
     "tool.resultPrefix": "Tool result:",
     "attachment.tooLarge": "File is larger than 1 MB",
+    "attachment.binaryTooLarge": "File is larger than 6 MB",
     "attachment.readFailed": "Could not read the file",
     "attachment.clear": "Remove attachment",
+    "common.close": "Close",
+    "gemini.title": "Gemini key capabilities",
+    "gemini.hint": "One Gemini API key can cover several feature groups; the app checks the saved key",
+    "gemini.refresh": "Check again",
+    "gemini.notChecked": "Run a check to see what this key supports",
+    "gemini.checking": "Checking...",
+    "gemini.liveModel": "Live API model",
+    "gemini.defaultModel": "Use the automatic default",
+    "gemini.agent": "Managed agent",
+    "gemini.decisionModel": "Decisions API model",
+    "gemini.openTools": "Gemini tools",
+    "gemini.toolsTitle": "Gemini tools",
+    "gemini.toolsHint": "Live API, Decisions API and Managed agents share the same Gemini key",
+    "gemini.liveTitle": "Live API (real-time voice)",
+    "gemini.liveHint": "Allow the microphone and press start; the server mints a short-lived token so the API key never reaches the browser",
+    "gemini.liveStart": "Start voice chat",
+    "gemini.liveStop": "Stop voice chat",
+    "gemini.liveStarting": "Connecting...",
+    "gemini.liveListening": "Listening — start speaking",
+    "gemini.liveStopped": "Stopped",
+    "gemini.liveError": "Could not connect to the Live API",
+    "gemini.liveUnsupported": "This browser has no microphone or WebSocket support",
+    "gemini.liveYou": "You",
+    "gemini.liveAgent": "Gemini",
+    "gemini.decisionsTitle": "Decisions API",
+    "gemini.decisionsHint": "Evaluate several questions against one input: noul (true/false), choice and score",
+    "gemini.decisionsInput": "Input",
+    "gemini.decisionsQuestions": "Questions (JSON)",
+    "gemini.runDecisions": "Evaluate questions",
+    "gemini.agentsTitle": "Managed agents",
+    "gemini.agentsHint": "Send a task to a Gemini-managed agent in its sandbox and get the result back",
+    "gemini.agentLabel": "Agent",
+    "gemini.agentPrompt": "Task",
+    "gemini.runAgent": "Send task to the agent",
+    "gemini.running": "Working...",
+    "gemini.noResult": "(no text response)",
+    "gemini.notConfigured": "No Gemini API key is configured",
+    "gemini.badQuestions": "Questions must be valid JSON",
+    "gemini.loadFailed": "Could not check the key",
+    "gemini.ready": "Ready",
+    "gemini.unavailable": "Not found",
+    "gemini.group.multimodal": "Multi-modal generative models",
+    "gemini.group.live": "Live API",
+    "gemini.group.decisions": "Decisions API",
+    "gemini.group.agents": "Agents",
+    "gemini.group.other": "Other",
+    "gemini.agentIds": "Interaction: {interaction} · Environment: {environment}",
     "model.custom": "Custom...",
     "model.fetching": "Fetching from API...",
     "model.fetched": "Fetched {count} models from the API",
@@ -1122,6 +1218,21 @@ const pendingHistoryAppends = new Map();
 let pendingAppendFlush = null;
 let failedSend = null; // { message, skills }
 let pendingAttachment = null;
+// Gemini feature state: the capability report drives the Settings card, and the
+// live session state drives the Live API panel.
+const geminiSettings = { liveModel: "", agent: "", decisionModel: "" };
+let geminiCapabilityReport = null;
+let geminiCapabilityLoading = false;
+const liveState = {
+  ws: null,
+  mic: null,
+  micCtx: null,
+  node: null,
+  outCtx: null,
+  playAt: 0,
+  inputLine: null,
+  outputLine: null,
+};
 let typingIndicator = null;
 let typingTicker = null;
 let connectionState = {
@@ -2633,23 +2744,51 @@ function clearAttachment() {
 $("attachment-cancel").addEventListener("click", clearAttachment);
 $("skill-chip").addEventListener("click", () => clearPendingSkill());
 $("attach-button").addEventListener("click", () => $("file-input").click());
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
 $("file-input").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   attachmentRequestToken += 1;
   const requestToken = attachmentRequestToken;
-  const maxBytes = 1024 * 1024;
+  const type = (file.type || "").toLowerCase();
+  // Images, audio, video and PDFs travel inline as multimodal parts; text
+  // files keep the older plain-text attachment path.
+  const isBinary =
+    type.startsWith("image/") ||
+    type.startsWith("audio/") ||
+    type.startsWith("video/") ||
+    type === "application/pdf";
+  const maxBytes = isBinary ? 6 * 1024 * 1024 : 1024 * 1024;
   if (file.size > maxBytes) {
-    $("attachment-name").textContent = t("attachment.tooLarge");
+    $("attachment-name").textContent = t(
+      isBinary ? "attachment.binaryTooLarge" : "attachment.tooLarge",
+    );
     $("attachment-chip").hidden = false;
     event.target.value = "";
     pendingAttachment = null;
     return;
   }
   try {
-    const content = await file.text();
-    if (requestToken !== attachmentRequestToken) return;
-    pendingAttachment = { name: file.name, content };
+    if (isBinary) {
+      const dataUrl = await readFileAsDataUrl(file);
+      if (requestToken !== attachmentRequestToken) return;
+      pendingAttachment = {
+        name: file.name,
+        mime_type: type,
+        data: dataUrl.split(",")[1] || "",
+      };
+    } else {
+      const content = await file.text();
+      if (requestToken !== attachmentRequestToken) return;
+      pendingAttachment = { name: file.name, content };
+    }
     $("attachment-name").textContent = `📎 ${file.name}`;
     $("attachment-chip").hidden = false;
   } catch (error) {
@@ -2674,8 +2813,15 @@ function historyMessagePayload(message = {}) {
   // after a reload or when the conversation is opened again from the sidebar,
   // for as long as the server-side token has not expired. approval_deadline is
   // a browser-clock value and is recomputed from the server clock on load.
-  if (!message || !("approval_deadline" in message)) return message;
-  const { approval_deadline: _deadline, ...rest } = message;
+  // Inline attachment bytes are not written to history; only the name and type
+  // are kept, so history files do not balloon with base64 media.
+  let payload = message;
+  if (payload?.attachment?.data) {
+    const { data: _data, ...meta } = payload.attachment;
+    payload = { ...payload, attachment: meta };
+  }
+  if (!payload || !("approval_deadline" in payload)) return payload;
+  const { approval_deadline: _deadline, ...rest } = payload;
   return rest;
 }
 async function appendMessagesToHistory(id, newMessages, generation) {
@@ -3899,6 +4045,16 @@ async function loadSettings() {
   $("stream").checked = !!s.stream;
   $("fallback_enabled").checked = !!s.fallback_enabled;
   $("fallback_provider_select").value = s.fallback_provider ?? "openai";
+  geminiSettings.liveModel = s.gemini_live_model || "";
+  geminiSettings.agent = s.gemini_agent || "";
+  geminiSettings.decisionModel = s.gemini_decision_model || "";
+  $("gemini-agent").value = geminiSettings.agent;
+  $("gemini-agent-id").value =
+    geminiSettings.agent || "antigravity-preview-09-2026";
+  $("gemini-decision-model").value = geminiSettings.decisionModel;
+  renderGeminiLiveModels([]);
+  if ((s.provider ?? "openai") === "gemini") loadGeminiCapabilities();
+  else renderGeminiCapabilities(geminiCapabilityReport);
   $("discord_enabled").checked = !!s.discord_enabled;
   $("terminal_enabled").checked = s.terminal_enabled !== false;
   $("machine_access").checked = s.machine_access !== false;
@@ -3956,6 +4112,9 @@ function collectSettingsBody() {
     fallback_enabled: $("fallback_enabled").checked,
     fallback_provider: $("fallback_provider_select").value,
     fallback_model: $("fallback_model_select").value,
+    gemini_live_model: $("gemini-live-model").value,
+    gemini_agent: $("gemini-agent").value,
+    gemini_decision_model: $("gemini-decision-model").value,
     discord_enabled: $("discord_enabled").checked,
     discord_token: $("discord_token").value,
     discord_prefix: $("discord_prefix").value,
@@ -4922,6 +5081,427 @@ function applyStaticTranslations() {
   $("language-display").textContent =
     currentLanguage === "th" ? "TH" : "EN";
 }
+function renderGeminiLiveModels(models = [], defaultModel = "") {
+  const select = $("gemini-live-model");
+  if (!select) return;
+  const current = select.value || geminiSettings.liveModel || "";
+  select.innerHTML = "";
+  const automatic = document.createElement("option");
+  automatic.value = "";
+  automatic.textContent = t("gemini.defaultModel");
+  select.appendChild(automatic);
+  const names = (Array.isArray(models) ? models : []).filter(
+    (name) =>
+      name &&
+      !name.toLowerCase().includes("transcribe") &&
+      !name.toLowerCase().includes("translate"),
+  );
+  if (defaultModel && !names.includes(defaultModel)) names.unshift(defaultModel);
+  if (current && !names.includes(current)) names.unshift(current);
+  for (const name of names) {
+    if (!name) continue;
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  }
+  select.value =
+    current && names.includes(current)
+      ? current
+      : defaultModel && names.includes(defaultModel)
+        ? defaultModel
+        : "";
+}
+function renderGeminiCapabilities(report = geminiCapabilityReport) {
+  const host = $("gemini-capabilities");
+  if (!host) return;
+  host.innerHTML = "";
+  const message = document.createElement("p");
+  message.className = "hint";
+  if (!report) {
+    message.textContent = t("gemini.notChecked");
+    host.appendChild(message);
+    return;
+  }
+  if (report.error) {
+    message.textContent = report.error;
+    host.appendChild(message);
+    return;
+  }
+  for (const groupKey of [
+    "multimodal",
+    "live",
+    "decisions",
+    "agents",
+    "other",
+  ]) {
+    const group = report.groups?.[groupKey];
+    if (!group) continue;
+    const row = document.createElement("div");
+    row.className = "gemini-group";
+    const label = document.createElement("span");
+    label.className = "gemini-group-label";
+    label.textContent = t(`gemini.group.${groupKey}`);
+    const state = document.createElement("span");
+    state.className = `gemini-status ${group.ready ? "ready" : "missing"}`;
+    state.textContent = group.ready ? t("gemini.ready") : t("gemini.unavailable");
+    const detail = document.createElement("small");
+    detail.textContent = (group.models || []).slice(0, 4).join(", ");
+    row.append(label, state, detail);
+    host.appendChild(row);
+  }
+  renderGeminiLiveModels(
+    report.groups?.live?.models || [],
+    report.live_default || "",
+  );
+}
+async function loadGeminiCapabilities(force = false) {
+  if (geminiCapabilityLoading) return;
+  geminiCapabilityLoading = true;
+  const host = $("gemini-capabilities");
+  if (host) {
+    host.innerHTML = "";
+    const message = document.createElement("p");
+    message.className = "hint";
+    message.textContent = t("gemini.checking");
+    host.appendChild(message);
+  }
+  try {
+    const response = await fetch(
+      `/api/gemini/capabilities?lang=${currentLanguage}${force ? "&refresh=1" : ""}`,
+    );
+    geminiCapabilityReport = await response.json();
+  } catch (error) {
+    geminiCapabilityReport = { error: t("gemini.loadFailed") };
+  } finally {
+    geminiCapabilityLoading = false;
+    renderGeminiCapabilities(geminiCapabilityReport);
+  }
+}
+function openGeminiTools() {
+  $("gemini-modal").classList.add("open");
+  if (!$("gemini-agent-id").value) {
+    $("gemini-agent-id").value = "antigravity-preview-09-2026";
+  }
+  if (!$("gemini-decision-questions").value) {
+    $("gemini-decision-questions").value = JSON.stringify(
+      {
+        route: {
+          type: "choice",
+          instructions: "Route the request to the most appropriate team.",
+          criteria: {
+            billing: "Payments, charges, refunds, or plan changes.",
+            technical: "Bugs, errors, or product functionality.",
+            other: "None of these teams.",
+          },
+        },
+        urgent: {
+          type: "noul",
+          instructions: "Determine whether this needs immediate attention.",
+        },
+      },
+      null,
+      2,
+    );
+  }
+  if (!geminiCapabilityReport) loadGeminiCapabilities();
+}
+function closeGeminiTools() {
+  $("gemini-modal").classList.remove("open");
+}
+async function runGeminiDecisions() {
+  const button = $("gemini-decision-run");
+  const output = $("gemini-decision-result");
+  let questions;
+  try {
+    questions = JSON.parse($("gemini-decision-questions").value);
+  } catch (error) {
+    output.hidden = false;
+    output.textContent = t("gemini.badQuestions");
+    return;
+  }
+  button.disabled = true;
+  output.hidden = false;
+  output.textContent = t("gemini.running");
+  try {
+    const response = await fetch("/api/gemini/decisions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input: $("gemini-decision-input").value,
+        questions,
+        lang: currentLanguage,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || t("gemini.loadFailed"));
+    output.textContent = JSON.stringify(data.answers ?? data, null, 2);
+  } catch (error) {
+    output.textContent = error.message || t("gemini.loadFailed");
+  } finally {
+    button.disabled = false;
+  }
+}
+async function runGeminiAgent() {
+  const button = $("gemini-agent-run");
+  const output = $("gemini-agent-result");
+  button.disabled = true;
+  output.hidden = false;
+  output.textContent = t("gemini.running");
+  try {
+    const response = await fetch("/api/gemini/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agent: $("gemini-agent-id").value,
+        input: $("gemini-agent-prompt").value,
+        lang: currentLanguage,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || t("gemini.loadFailed"));
+    const meta = t("gemini.agentIds", {
+      interaction: data.interaction_id || "-",
+      environment: data.environment_id || "-",
+    });
+    output.textContent = `${data.answer || t("gemini.noResult")}\n\n${meta}`;
+  } catch (error) {
+    output.textContent = error.message || t("gemini.loadFailed");
+  } finally {
+    button.disabled = false;
+  }
+}
+function base64FromBytes(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode.apply(
+      null,
+      bytes.subarray(index, index + chunkSize),
+    );
+  }
+  return btoa(binary);
+}
+function liveSetStatus(text) {
+  const status = $("gemini-live-status");
+  if (status) status.textContent = text;
+}
+function liveTranscriptLine(which) {
+  const box = $("gemini-live-transcript");
+  box.hidden = false;
+  const key = which === "input" ? "inputLine" : "outputLine";
+  if (!liveState[key]) {
+    const line = document.createElement("p");
+    const label = document.createElement("strong");
+    label.textContent = `${
+      which === "input" ? t("gemini.liveYou") : t("gemini.liveAgent")
+    }: `;
+    const text = document.createElement("span");
+    line.append(label, text);
+    box.appendChild(line);
+    liveState[key] = text;
+  }
+  return liveState[key];
+}
+function playLiveAudio(encoded, mimeType) {
+  try {
+    const match = /rate=(\d+)/.exec(mimeType || "");
+    const rate = match ? Number(match[1]) : 24000;
+    const bytes = Uint8Array.from(atob(encoded), (char) =>
+      char.charCodeAt(0),
+    );
+    const samples = new Int16Array(bytes.buffer);
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtor) return;
+    if (!liveState.outCtx) liveState.outCtx = new AudioCtor();
+    const context = liveState.outCtx;
+    const buffer = context.createBuffer(1, samples.length, rate || 24000);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < samples.length; index += 1) {
+      channel[index] = samples[index] / 32768;
+    }
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    const startAt = Math.max(context.currentTime + 0.02, liveState.playAt);
+    source.start(startAt);
+    liveState.playAt = startAt + buffer.duration;
+  } catch (error) {
+    console.warn("live audio", error);
+  }
+}
+function handleLiveMessage(data) {
+  const content = data?.serverContent;
+  if (!content) return;
+  if (content.inputTranscription?.text) {
+    liveTranscriptLine("input").textContent += content.inputTranscription.text;
+  }
+  if (content.outputTranscription?.text) {
+    liveTranscriptLine("output").textContent +=
+      content.outputTranscription.text;
+  }
+  for (const part of content.modelTurn?.parts || []) {
+    if (part.inlineData?.data) {
+      playLiveAudio(part.inlineData.data, part.inlineData.mimeType);
+    }
+    if (part.text) liveTranscriptLine("output").textContent += part.text;
+  }
+  if (content.turnComplete) {
+    liveState.inputLine = null;
+    liveState.outputLine = null;
+  }
+}
+async function startLiveMicrophone(ws) {
+  const mic = await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+  });
+  liveState.mic = mic;
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  let context;
+  try {
+    context = new AudioCtor({ sampleRate: 16000 });
+  } catch (error) {
+    context = new AudioCtor();
+  }
+  liveState.micCtx = context;
+  const source = context.createMediaStreamSource(mic);
+  const node = context.createScriptProcessor(4096, 1, 1);
+  const rate = Math.round(context.sampleRate || 16000);
+  node.onaudioprocess = (event) => {
+    if (!liveState.ws || liveState.ws.readyState !== WebSocket.OPEN) return;
+    const input = event.inputBuffer.getChannelData(0);
+    const pcm = new Int16Array(input.length);
+    for (let index = 0; index < input.length; index += 1) {
+      const value = Math.max(-1, Math.min(1, input[index]));
+      pcm[index] = value < 0 ? value * 0x8000 : value * 0x7fff;
+    }
+    liveState.ws.send(
+      JSON.stringify({
+        realtimeInput: {
+          audio: {
+            data: base64FromBytes(new Uint8Array(pcm.buffer)),
+            mimeType: `audio/pcm;rate=${rate}`,
+          },
+        },
+      }),
+    );
+  };
+  source.connect(node);
+  node.connect(context.destination);
+  liveState.node = node;
+}
+function stopGeminiLive(silent = false) {
+  const ws = liveState.ws;
+  liveState.ws = null;
+  if (ws) {
+    ws.onclose = null;
+    try {
+      ws.close();
+    } catch (error) {
+      /* already closed */
+    }
+  }
+  liveState.node?.disconnect();
+  liveState.node = null;
+  liveState.mic?.getTracks().forEach((track) => track.stop());
+  liveState.mic = null;
+  liveState.micCtx?.close();
+  liveState.micCtx = null;
+  liveState.outCtx?.close();
+  liveState.outCtx = null;
+  liveState.playAt = 0;
+  liveState.inputLine = null;
+  liveState.outputLine = null;
+  const toggle = $("gemini-live-toggle");
+  if (toggle) toggle.textContent = t("gemini.liveStart");
+  if (!silent) liveSetStatus(t("gemini.liveStopped"));
+}
+async function openLiveSocket(token) {
+  const ws = new WebSocket(
+    `${token.ws_url}?access_token=${encodeURIComponent(token.token)}`,
+  );
+  liveState.ws = ws;
+  await new Promise((resolve, reject) => {
+    ws.onopen = resolve;
+    ws.onerror = () => reject(new Error(t("gemini.liveError")));
+  });
+  // Attach the handlers before sending setup so an early server message or a
+  // close during setup still reaches the transcript and stops the microphone.
+  ws.onmessage = async (event) => {
+    const text =
+      typeof event.data === "string" ? event.data : await event.data.text();
+    try {
+      handleLiveMessage(JSON.parse(text));
+    } catch (error) {
+      /* ignore non-JSON frames */
+    }
+  };
+  ws.onclose = () => stopGeminiLive();
+  ws.send(
+    JSON.stringify({
+      setup: {
+        model: `models/${token.model}`,
+        responseModalities: ["AUDIO"],
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
+        systemInstruction: {
+          parts: [
+            {
+              text:
+                $("system_prompt").value || "You are a helpful assistant.",
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await startLiveMicrophone(ws);
+  $("gemini-live-toggle").textContent = t("gemini.liveStop");
+  liveSetStatus(t("gemini.liveListening"));
+}
+async function startGeminiLive() {
+  if (liveState.ws) {
+    stopGeminiLive();
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || typeof WebSocket === "undefined") {
+    liveSetStatus(t("gemini.liveUnsupported"));
+    return;
+  }
+  liveSetStatus(t("gemini.liveStarting"));
+  $("gemini-live-toggle").textContent = t("gemini.liveStarting");
+  try {
+    const response = await fetch("/api/gemini/live-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lang: currentLanguage,
+        model: $("gemini-live-model").value,
+      }),
+    });
+    const token = await response.json();
+    if (!response.ok) throw new Error(token.error || t("gemini.liveError"));
+    await openLiveSocket(token);
+  } catch (error) {
+    liveSetStatus(error.message || t("gemini.liveError"));
+    stopGeminiLive(true);
+  }
+}
+$("gemini-refresh").addEventListener("click", () =>
+  loadGeminiCapabilities(true),
+);
+$("gemini-open-tools").addEventListener("click", openGeminiTools);
+$("gemini-tools-button").addEventListener("click", openGeminiTools);
+$("gemini-modal-close").addEventListener("click", closeGeminiTools);
+$("gemini-modal").addEventListener("click", (event) => {
+  if (event.target === $("gemini-modal")) closeGeminiTools();
+});
+$("gemini-live-toggle").addEventListener("click", startGeminiLive);
+$("gemini-decision-run").addEventListener("click", runGeminiDecisions);
+$("gemini-agent-run").addEventListener("click", runGeminiAgent);
+$("gemini-live-model").addEventListener("change", () => {
+  geminiSettings.liveModel = $("gemini-live-model").value;
+});
 function applyTranslations() {
   applyStaticTranslations();
   // Refresh a visible rail tooltip so it shows the new language right away.
@@ -4945,6 +5525,11 @@ function applyTranslations() {
   updateApiKeyHint($("provider").value);
   updateDiscordTokenHint();
   renderCustomApiKeys();
+  renderGeminiCapabilities(geminiCapabilityReport);
+  if (liveState.ws) {
+    $("gemini-live-toggle").textContent = t("gemini.liveStop");
+    $("gemini-live-status").textContent = t("gemini.liveListening");
+  }
   if (connectionState.known) updateConnectionUi();
   renderMessages(true);
   renderHistoryList(currentHistoryItems);

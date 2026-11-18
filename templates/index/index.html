@@ -277,8 +277,19 @@
                       id="file-input"
                       type="file"
                       hidden
-                      accept=".txt,.md,.csv,.json,.py,.js,.ts,.tsx,.jsx,.html,.css,.xml,.yaml,.yml,.sql,.sh,.log"
+                      accept="image/*,audio/*,video/*,application/pdf,.txt,.md,.csv,.json,.py,.js,.ts,.tsx,.jsx,.html,.css,.xml,.yaml,.yml,.sql,.sh,.log"
                     />
+                    <button
+                      class="attach-button"
+                      id="gemini-tools-button"
+                      type="button"
+                      aria-label="เครื่องมือ Gemini"
+                      data-i18n-aria-label="gemini.openTools"
+                      title="เครื่องมือ Gemini"
+                      data-i18n-title="gemini.openTools"
+                    >
+                      <span aria-hidden="true">G</span></button
+                    >
                     <select
                       id="chat-command-mode"
                       class="composer-select"
@@ -625,6 +636,63 @@
                       </button>
                     </div>
                     <div id="custom-keys" class="custom-key-list"></div>
+                  </div>
+                  <div class="card">
+                    <div class="card-head">
+                      <h2 data-i18n="gemini.title">
+                        ความสามารถของคีย์ Gemini
+                      </h2>
+                      <button
+                        class="secondary"
+                        id="gemini-refresh"
+                        type="button"
+                        data-i18n="gemini.refresh"
+                      >
+                        ตรวจสอบอีกครั้ง
+                      </button>
+                    </div>
+                    <p class="hint" data-i18n="gemini.hint">
+                      คีย์ Gemini เดียวใช้ได้กับหลายกลุ่มความสามารถ
+                      ระบบจะตรวจจากคีย์ที่บันทึกไว้
+                    </p>
+                    <div id="gemini-capabilities" class="gemini-groups">
+                      <p class="hint" data-i18n="gemini.notChecked">
+                        กดตรวจสอบเพื่อดูว่าคีย์รองรับอะไร
+                      </p>
+                    </div>
+                    <div class="grid">
+                      <label
+                        ><span data-i18n="gemini.liveModel"
+                          >โมเดล Live API</span
+                        ><select id="gemini-live-model"></select></label
+                      >
+                      <label
+                        ><span data-i18n="gemini.agent"
+                          >Managed agent</span
+                        ><input
+                          id="gemini-agent"
+                          maxlength="100"
+                          placeholder="antigravity-preview-09-2026"
+                      /></label>
+                      <label
+                        ><span data-i18n="gemini.decisionModel"
+                          >โมเดล Decisions API</span
+                        ><input
+                          id="gemini-decision-model"
+                          maxlength="100"
+                          placeholder="gemini-decision-1"
+                      /></label>
+                    </div>
+                    <div class="actions">
+                      <button
+                        class="secondary"
+                        id="gemini-open-tools"
+                        type="button"
+                        data-i18n="gemini.openTools"
+                      >
+                        เปิดเครื่องมือ Gemini
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div
@@ -1579,6 +1647,114 @@
             </div>
           </section>
         </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="gemini-modal">
+      <div
+        class="modal gemini-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gemini-modal-title"
+      >
+        <div class="card-head">
+          <h3 id="gemini-modal-title" data-i18n="gemini.toolsTitle">
+            เครื่องมือ Gemini
+          </h3>
+          <button
+            class="secondary"
+            id="gemini-modal-close"
+            type="button"
+            data-i18n="common.close"
+          >
+            ปิด
+          </button>
+        </div>
+        <p data-i18n="gemini.toolsHint">
+          Live API, Decisions API และ Managed agents ใช้คีย์ Gemini เดียวกัน
+        </p>
+        <section class="gemini-tool">
+          <h4 data-i18n="gemini.liveTitle">Live API (เสียงเรียลไทม์)</h4>
+          <p class="hint" data-i18n="gemini.liveHint">
+            อนุญาตไมโครโฟนแล้วกดเริ่ม ระบบจะออก token อายุสั้นให้เบราว์เซอร์
+            โดยไม่เปิดเผย API key
+          </p>
+          <div class="actions">
+            <button
+              id="gemini-live-toggle"
+              type="button"
+              data-i18n="gemini.liveStart"
+            >
+              เริ่มสนทนาเสียง
+            </button>
+            <span id="gemini-live-status" class="gemini-status"></span>
+          </div>
+          <div
+            id="gemini-live-transcript"
+            class="gemini-transcript"
+            aria-live="polite"
+            hidden
+          ></div>
+        </section>
+        <section class="gemini-tool">
+          <h4 data-i18n="gemini.decisionsTitle">Decisions API</h4>
+          <p class="hint" data-i18n="gemini.decisionsHint">
+            ประเมินหลายคำถามจาก input เดียว รองรับ noul (จริง/เท็จ), choice
+            และ score
+          </p>
+          <label class="full"
+            ><span data-i18n="gemini.decisionsInput">Input</span
+            ><textarea id="gemini-decision-input" rows="3"></textarea>
+          </label>
+          <label class="full"
+            ><span data-i18n="gemini.decisionsQuestions"
+              >Questions (JSON)</span
+            ><textarea
+              id="gemini-decision-questions"
+              rows="10"
+              spellcheck="false"
+            ></textarea>
+          </label>
+          <div class="actions">
+            <button
+              id="gemini-decision-run"
+              type="button"
+              data-i18n="gemini.runDecisions"
+            >
+              ประเมินคำถาม
+            </button>
+          </div>
+          <pre
+            id="gemini-decision-result"
+            class="gemini-result"
+            hidden
+          ></pre>
+        </section>
+        <section class="gemini-tool">
+          <h4 data-i18n="gemini.agentsTitle">Managed agents</h4>
+          <p class="hint" data-i18n="gemini.agentsHint">
+            ส่งงานให้ agent ที่จัดการโดย Gemini ใน sandbox และรับผลลัพธ์กลับมา
+          </p>
+          <div class="grid">
+            <label
+              ><span data-i18n="gemini.agentLabel">Agent</span
+              ><input id="gemini-agent-id" maxlength="100"
+            /></label>
+          </div>
+          <label class="full"
+            ><span data-i18n="gemini.agentPrompt">งานที่ต้องการ</span
+            ><textarea id="gemini-agent-prompt" rows="3"></textarea>
+          </label>
+          <div class="actions">
+            <button
+              id="gemini-agent-run"
+              type="button"
+              data-i18n="gemini.runAgent"
+            >
+              ส่งงานให้ Agent
+            </button>
+          </div>
+          <pre id="gemini-agent-result" class="gemini-result" hidden></pre>
+        </section>
       </div>
     </div>
     <div class="modal-backdrop" id="message-modal">
