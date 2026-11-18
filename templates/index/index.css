@@ -4432,6 +4432,12 @@ select:focus-visible {
   .app.sidebar-collapsed aside {
     display: none;
   }
+  /* Removing the sidebar takes it out of grid auto-placement, so the content
+     pane would fall into the collapsed 0-width first track. Pin it to the
+     second track to keep the full width (and the slide animation) correct. */
+  .app.sidebar-collapsed .layout {
+    grid-column: 2;
+  }
 }
 
 /* Per-message actions (copy prompt, copy answer, edit prompt) */
