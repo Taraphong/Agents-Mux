@@ -4624,9 +4624,11 @@ nav button[hidden] {
   .app.sidebar-collapsed .history-actions {
     display: none;
   }
-  .app.sidebar-collapsed .history-row.active .history-item {
-    color: var(--text);
-    background: var(--active-bg);
+  /* Removing the sidebar takes it out of grid auto-placement, so the content
+     pane would fall into the collapsed 0-width first track. Pin it to the
+     second track to keep the full width (and the slide animation) correct. */
+  .app.sidebar-collapsed .layout {
+    grid-column: 2;
   }
 }
 
