@@ -262,16 +262,19 @@ load_persisted_logs()
 
 DEFAULT_SETTINGS = {
     "agent_name": "Mux",
-    "agent_role": "ผู้ช่วย AI อเนกประสงค์",
+    "agent_role": "A versatile AI assistant",
     "response_language": "auto",
-    "response_style": "เป็นมิตร กระชับ และชัดเจน",
+    "response_style": "Friendly, concise, and clear",
     "use_markdown": True,
     "ask_clarifying_questions": True,
     "provider": os.getenv("AI_PROVIDER", "openai"),
     "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
     "base_url": os.getenv("AI_BASE_URL", ""),
-    "system_prompt": "คุณเป็นผู้ช่วย AI ที่สุภาพ ชัดเจน และช่วยผู้ใช้ให้บรรลุเป้าหมาย",
-    "memory_review": "ก่อนตอบ ให้ทบทวนบทสนทนาก่อนหน้าเพื่อรักษาความต่อเนื่อง ตรวจสอบข้อเท็จจริงและงานที่ค้างอยู่ หากข้อมูลขัดแย้งกันให้ถามผู้ใช้ และอย่าเปิดเผยกระบวนการคิดภายใน",
+    "system_prompt": "You are a polite, clear AI assistant who helps the user achieve their goals.",
+    "memory_review": (
+        "Before answering, review the earlier conversation to keep continuity, check facts and "
+        "outstanding tasks, and ask the user when information conflicts. Do not reveal internal reasoning."
+    ),
     "temperature": 0.7,
     "max_tokens": 2048,
     "top_p": 1,
@@ -4346,10 +4349,10 @@ def apply_settings_update():
         # stops hf/or/groq requests from being sent to the previous endpoint.
         current["base_url"] = ""
     current["agent_name"] = str(current.get("agent_name") or "Mux").strip()[:80]
-    current["agent_role"] = str(current.get("agent_role") or "ผู้ช่วย AI อเนกประสงค์").strip()[:500]
+    current["agent_role"] = str(current.get("agent_role") or "A versatile AI assistant").strip()[:500]
     language = str(current.get("response_language") or "auto").strip().lower()
     current["response_language"] = language if language in {"auto", "th", "en"} else "auto"
-    current["response_style"] = str(current.get("response_style") or "เป็นมิตร กระชับ และชัดเจน").strip()[:500]
+    current["response_style"] = str(current.get("response_style") or "Friendly, concise, and clear").strip()[:500]
     current["use_markdown"] = bool(current.get("use_markdown", True))
     current["ask_clarifying_questions"] = bool(current.get("ask_clarifying_questions", True))
     thinking_level = str(current.get("thinking_level") or "off").strip().lower()

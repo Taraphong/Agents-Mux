@@ -4106,9 +4106,9 @@ async function loadSettings() {
     clearPendingSkill();
   }
   $("agent_name").value = s.agent_name ?? "Mux";
-  $("agent_role").value = s.agent_role ?? "ผู้ช่วย AI อเนกประสงค์";
+  $("agent_role").value = s.agent_role ?? "A versatile AI assistant";
   $("response_language").value = s.response_language ?? "auto";
-  $("response_style").value = s.response_style ?? "เป็นมิตร กระชับ และชัดเจน";
+  $("response_style").value = s.response_style ?? "Friendly, concise, and clear";
   $("use_markdown").checked = s.use_markdown !== false;
   $("ask_clarifying_questions").checked = s.ask_clarifying_questions !== false;
   keyProviders = Array.isArray(s.key_providers) ? s.key_providers : [];

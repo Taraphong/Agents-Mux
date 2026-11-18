@@ -1,20 +1,33 @@
 # AI Web on Termux
 
-Self-hosted AI chat running on Termux and accessible through a browser on the same network. Supports OpenAI, Gemini, and Anthropic.
+Self-hosted AI chat that runs on Termux (Android), Linux, or macOS and is used through a browser on the same network. A small Flask server keeps your provider keys and conversation history on your own machine, and the page is available in English and Thai.
 
-Thai: **[README.th.md](README.th.md)**
+- Thai: **[README.th.md](README.th.md)**
+- Install guide: **[INSTALL.md](INSTALL.md)** · [INSTALL.th.md](INSTALL.th.md)
+- Security policy: **[SECURITY.md](SECURITY.md)** · [SECURITY.th.md](SECURITY.th.md)
 
-Security policy: **[SECURITY.md](SECURITY.md)**
+## Features
 
-## Getting Started
+- **Six providers** behind one chat page: OpenAI (or any OpenAI-compatible API), Google Gemini, Anthropic, Hugging Face, OpenRouter, and Groq.
+- **Per-message model and thinking level** (`off`, `low`, `medium`, `high`), plus an optional fallback provider/model that is retried once.
+- **Attachments**: text and code files up to 1 MB are read in the browser; images and PDFs up to 6 MB travel inline; audio and video work with Gemini.
+- **Skills**: instruction files under `skills/` that are applied in Settings or for a single message with `/`.
+- **Pairing**: the page is protected by single-use Pairing Keys and revocable device sessions.
+- **Conversation history** organized by date, with rename, pin, lock/unlock, and delete.
+- **Local tools**: the model can list, read, and write files and run shell commands on the server, with one approval per call.
+- **Web terminal**, **cron-style scheduler**, **system/agent log viewer**, **in-page updater**, and **server start/stop/restart**.
+- **Gemini extras**: capability report, Decisions API, managed agents, and short-lived Live API tokens.
+- **Discord bot** with channel and user allowlists.
+- **HTTP/HTTPS switching** from the page, with certificate files or an ad-hoc certificate.
+- Responsive layout for phones, Enter to send, Shift+Enter for a newline, Thai/English toggle.
 
-Detailed install guide for Termux / Linux / macOS: **[INSTALL.md](INSTALL.md)**
+## Requirements
 
-Quick install:
+- Python **3.10 or newer**
+- `openssl` only when you want the server to terminate HTTPS
+- At least one provider API key
 
-<!-- coderabbit-ai-generated:v1 -->
-
-<!-- coderabbit-ai-generated-section:v1:fab8f7793def8862ab6a37ae370ebdd61a8c182285c59cd7f65aa58ea4174870 -->
+## Quick start
 
 ```bash
 git clone https://github.com/Taraphong/Agents-mux.git ~/ai-web
@@ -22,15 +35,15 @@ cd ~/ai-web
 bash install.sh
 ```
 
-Edit `.env` to set `AI_PROVIDER` and the matching API key, then start the server:
+Set `AI_PROVIDER` and the matching API key in `.env`, then start the server:
 
 ```bash
 ./start_web.sh --start
 ```
 
-<!-- /coderabbit-ai-generated:v1 -->
+Open `http://127.0.0.1:5000` (or `http://<machine-ip>:5000` from another device). On the first start without a paired device the server prints a Pairing Key; open `/pair` and enter it.
 
-Or set up manually:
+Or set the project up by hand:
 
 ```bash
 python3 -m venv .venv
@@ -40,100 +53,198 @@ cp .env.example .env
 python app.py
 ```
 
-Open `http://127.0.0.1:5000` in a browser.
+## Configuration
 
-### Configuration
+`install.sh` creates `.env` from `.env.example`. The file is read when the process starts and provides defaults only.
 
-- Set `AI_PROVIDER` in `.env` (`openai`, `gemini`, `anthropic`, `hf`, `or`, or `groq`).
-- Set the API key that matches the provider: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `HF_API_KEY`, `OPENROUTER_API_KEY`, or `GROQ_API_KEY`.
-- **Anthropic:** set `AI_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`, then open **Settings** in the web interface and select a Claude model. The startup default comes from `OPENAI_MODEL`, so an OpenAI model will not work with Anthropic.
-- Values saved from **Settings** are stored in `.app-settings.json` and override `.env`, including provider, model, and API keys. Change them in Settings (or remove the saved settings file) if editing `.env` has no effect.
-- Configure additional options from the **Settings** menu in the web interface.
-- Available reasoning levels: `off`, `low`, `medium`, and `high`.
+### Providers
 
-### Device pairing (web auth)
+| `AI_PROVIDER` | Provider | API key | Default model variable |
+| --- | --- | --- | --- |
+| `openai` | OpenAI or an OpenAI-compatible API | `OPENAI_API_KEY` | `OPENAI_MODEL` |
+| `gemini` | Google Gemini | `GEMINI_API_KEY` | `GEMINI_MODEL` |
+| `anthropic` | Anthropic (Claude) | `ANTHROPIC_API_KEY` | select a Claude model in Settings |
+| `hf` | Hugging Face | `HF_API_KEY` | `HF_MODEL` |
+| `or` | OpenRouter | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` |
+| `groq` | Groq | `GROQ_API_KEY` | `GROQ_MODEL` |
 
-The web interface requires a paired device. Pairing keys are always generated on the server; the browser never creates one.
+- **Anthropic:** the startup model comes from `OPENAI_MODEL`, so after setting `AI_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` open **Settings** and pick a Claude model. The model list is fetched from the API once a key is present.
+- **Base URL:** set a custom endpoint in `.env` (`AI_BASE_URL`) or in Settings. A key is only sent over HTTPS; plain HTTP is refused except for loopback addresses (a local OpenAI-compatible server), unless you set `AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP=1`.
+- **Reasoning:** `off`, `low`, `medium`, `high`, chosen in Settings or per message from the chat toolbar.
+- **Fallback:** enable a fallback provider and model in Settings; a failed first request is retried once with it. `/fallback` shows or changes it.
 
-- On the server, create a key with `python app.py --pairing-key` (or `./start_web.sh --pair`). The first start with no paired device prints a key automatically.
-- On the client, open `http://<termux-ip>:5000/pair` and enter the key. A valid key issues an `HttpOnly` session cookie, valid for `AI_WEB_SESSION_DAYS` (default 30).
-- Keys are single-use and expire after `AI_WEB_PAIRING_TTL_MINUTES` (default 30). Only SHA-256 hashes of keys and session tokens are stored, in `.app-auth.json`, which is excluded from Git.
-- Review, revoke, or create a key for another device in **Settings → Security and device pairing**. `python app.py --revoke-sessions` revokes every device.
-- `AI_WEB_AUTH=off` disables pairing and is meant only for a fully trusted network. Unpaired pages redirect to `/pair`; `/api/auth/status` stays reachable for health checks.
-- When TLS terminates at a reverse proxy, set `AI_WEB_TRUST_PROXY=1` so `X-Forwarded-Proto` is trusted and the session cookie is marked `Secure`. Leave it unset for plain local HTTP.
+### Settings versus `.env`
 
-### HTTPS
+- Values saved in **Settings** are stored in `.app-settings.json` and override `.env`, including provider, model, and API keys.
+- If editing `.env` has no effect, change the value in Settings, or use **Reset** at the bottom of Settings (it deletes `.app-settings.json`) and restart.
+- API keys and the Discord token are stored server-side in `.app-settings.json`; the page only ever receives a masked placeholder.
 
-The app can terminate HTTPS itself; the only requirement is `openssl`, with or without certificate files.
+### Other environment variables
 
-- **From the page:** open **Settings → Web connection (HTTP / HTTPS)**, choose HTTP, HTTPS with certificate files, or HTTPS with an ad-hoc certificate, save, and restart. A page cannot follow a restart that changes the protocol, so it shows the new address to open instead.
-- Create a self-signed certificate for the server's LAN IP: `./start_web.sh --make-cert 192.168.2.40` (requires `openssl`; in Termux install it with `pkg install openssl-tool`). It writes `certs/cert.pem` and `certs/key.pem`, which are excluded from Git.
-- Set `AI_WEB_TLS_CERT` and `AI_WEB_TLS_KEY` in `.env`, then run `./start_web.sh --restart` and open `https://<termux-ip>:5000`. Session cookies become `Secure` automatically because the request is HTTPS.
-- Choosing **HTTPS with certificate files** in the page uses `certs/cert.pem` and `certs/key.pem`; when they are absent it keeps a usable pair already set in `.env` instead of refusing the mode the server is running with.
-- `AI_WEB_TLS_ADHOC=1` (or the page's ad-hoc mode) creates a self-signed certificate with `openssl` on first use, covering `localhost`, `127.0.0.1`, the hostname, and the LAN address, and reuses `certs/adhoc-cert.pem` and `certs/adhoc-key.pem` on later starts so the browser sees the same certificate. No `cryptography` package is needed.
-- Switching HTTPS → HTTP does not preserve the existing sign-in. The browser does not send the `Secure` `ai-web-session` cookie over HTTP, and `ai-web-session-http` is created only after a new pairing. The separate cookie name enables a device to pair again over HTTP, not to keep the previous HTTPS session active.
-- A self-signed certificate makes the browser warn on first visit. To avoid the warning, use a certificate from a trusted CA, or install your local CA certificate on each device.
-- Behind a TLS-terminating reverse proxy (Caddy, nginx, `tailscale serve`) leave `AI_WEB_TLS_*` empty and set `AI_WEB_TRUST_PROXY=1`; the proxy must overwrite `X-Forwarded-Proto` on every request.
-- `tailscale cert` must run on the node that owns the name. The Tailscale app on Android has no CLI, so a Termux/Android server cannot issue its own Tailscale certificate: run `tailscale serve` on another tailnet node that proxies to it, or use a certificate from a trusted CA.
+| Variable | Meaning |
+| --- | --- |
+| `PORT` | Listen port (default `5000`) |
+| `AI_FALLBACK_PROVIDER`, `AI_FALLBACK_MODEL` | Initial fallback values |
+| `GEMINI_LIVE_MODEL`, `GEMINI_AGENT`, `GEMINI_DECISION_MODEL` | Initial Gemini feature defaults |
+| `DISCORD_BOT_TOKEN`, `DISCORD_BOT_PREFIX` | Discord bot credentials and message prefix |
+| `DISCORD_ALLOWED_USER_IDS`, `DISCORD_ALLOWED_CHANNEL_IDS` | Comma-separated Discord allowlists |
+| `AI_WEB_AUTH` | `on` (default) or `off` for device pairing |
+| `AI_WEB_AUTH_FILE` | Pairing/session store (default `.app-auth.json`) |
+| `AI_WEB_PAIRING_TTL_MINUTES` | Pairing Key lifetime (default `30`) |
+| `AI_WEB_SESSION_DAYS` | Paired-device session lifetime (default `30`) |
+| `AI_WEB_TRUST_PROXY` | Set to `1` behind a TLS-terminating reverse proxy |
+| `AI_WEB_TLS_CERT`, `AI_WEB_TLS_KEY`, `AI_WEB_TLS_ADHOC` | HTTPS mode |
+| `AI_WEB_ENABLE_SCHEDULER` | Set to `1` to enable the scheduler under WSGI |
+| `AI_WEB_MAX_CONTENT_BYTES` | Request body cap (default 8 MB) |
+| `AI_WEB_LOG_MAX_ENTRIES` | In-memory log window (default `1000`) |
+| `AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_SCHEDULE_FILE` | Storage path overrides |
 
-### Conversation History
+## The chat page
 
-Conversations are stored by date and time in `history/YYYY-MM-DD/HH-MM-SS_<conversation-id>.json`.
+- **Provider, model, and thinking level** are chosen in Settings and can be overridden for the next message from the toolbar above the chat box.
+- **Command execution mode** sits next to them: `Ask first` (default) stops for approval before every tool call, while `Auto` and `Fast+` let the model use tools within the turn without that prompt when **Machine access** is off. With machine access on, every call asks regardless of the mode.
+- **Attachments:** text-like files up to 1 MB are read in the browser and sent as text. Images and PDFs up to 6 MB are sent inline; audio and video work only with Gemini, and PDFs work with Gemini or Anthropic.
+- Markdown rendering can be turned off in Settings. Messages can be copied; Enter sends and Shift+Enter adds a newline.
 
-- The `history/` directory is excluded from Git.
-- Conversations can be renamed, pinned, locked, and unlocked from the chat interface.
+### Slash commands
 
-## AI Tools
+Type `/` in the chat box to open the command menu.
 
-- Agents can reach the whole machine. Paths may be absolute (`/etc/hostname`), start with `~`, or be relative to the project folder.
-- **Every** tool call asks for approval in the chat — including `list_files` and `read_file`. Each approval is single-use, bound to the exact tool name and arguments, and expires after 15 minutes.
-- `run_command` runs through a real shell as the user running the app: pipes, redirections, and `sudo` work when that user may run them without a password prompt. Commands time out after 60 seconds and output is capped at 100 KB.
-- Known API keys, tokens, and PEM private keys are redacted from tool output.
-- Turn **Settings → Machine access** off to restore project-only paths and the `pwd` / `ls` / `git status|diff|log` allowlist.
+| Command | Action |
+| --- | --- |
+| `/help` | List every command and available skill |
+| `/new`, `/clear` | Start a fresh conversation context |
+| `/model` | Show the active provider and model |
+| `/models [provider] [model]` | List models, or switch provider/model |
+| `/status` | Show the active provider, model, and readiness |
+| `/ping` | Measure the server response time |
+| `/fallback [model\|off]` | Show or change the fallback model |
+| `/skills` | List available skills |
+| `/skill <name> [prompt]` | Apply a skill to the next message, or to the given prompt now |
+| `/<skill-name> [prompt]` | Shortcut for `/skill <skill-name> [prompt]` |
 
-> ⚠️ An approved command runs as-is with the power of the app user — and with root power when the app runs as root or the user has passwordless `sudo`. Read every command before approving it.
+A skill invoked with a slash command applies to that request only and does not change the skills selected in Settings.
 
-> ⚠️ Agents can now read any file on the machine. Approved reads of stored credentials are redacted in the chat, but treat the conversation history as sensitive.
+## Conversation history
 
-### Web chat slash commands
+Conversations are stored as JSON, grouped by date: `history/YYYY-MM-DD/HH-MM-SS_<conversation-id>.json`. The `history/` folder is excluded from Git.
 
-Type `/` in the chat box to open an autocomplete menu. Commands run locally unless noted:
+- Rename, pin, lock/unlock, and delete conversations from the sidebar.
+- A locked conversation rejects message and title changes until it is unlocked.
+- The API exposes `/api/history` and `/api/history/<id>` for the page; every request needs a paired session.
 
-- `/help` lists every command and available skill.
-- `/new` or `/clear` starts a fresh conversation context.
-- `/model` and `/status` show the active provider, model, and readiness.
-- `/models [provider] [model]` lists models or switches provider/model.
-- `/ping` measures the server response time.
-- `/fallback [model|off]` shows or changes the fallback model.
-- `/skills` lists available skills.
-- `/skill <name> [prompt]` applies a skill to the next message, or to the given prompt immediately.
-- `/<skill-name> [prompt]` is a shortcut for `/skill <skill-name> [prompt]`.
+## Settings page
 
-A skill used through a slash command applies only to that request and does not change the skills selected in Settings.
+The Settings view is grouped into cards:
 
-### Terminal
+- **Connection** — provider, API key, Base URL, model list, a connection test, custom API keys that skills or schedules can reference, and the Gemini card.
+- **Gemini** — capability report for the stored key (multimodal, Live, Decisions, agents), Decisions runner, managed-agent runner, and a Live API start button that mints a short-lived token in the browser.
+- **Agent** — agent name, role, system prompt, memory-review instructions, and the skills selected for every conversation.
+- **Response** — response language (`auto`, Thai, English), response style, markdown, clarifying questions, temperature, top-p, max tokens, streaming, thinking level, and the fallback model.
+- **Integrations** — machine access, the Discord bot (token, prefix, allowlists), and the terminal switch.
+- **Security** — Pairing Keys and connected devices, with per-device revoke and sign-out.
+- **Update** — installed build, a dry-run check, a real update, and the update log.
+- **Server** — start, stop, and restart through `start_web.sh`, plus PID and uptime.
+- **Web and HTTPS** — HTTP/HTTPS mode, certificate state, and the restart notice with the new address.
 
-The **Terminal** page runs shell commands directly on the server as the user running the app, starting in the project folder and supporting `cd` within the project. Commands time out after 60 seconds, output is capped at 100 KB, credential-like environment variables are removed, and known API keys/tokens are redacted from the output. The page can be disabled in **Settings**.
+## Local tools and approvals
 
-> ⚠️ The Terminal runs with the privileges of the user running the app. With web auth enabled, only paired devices can open it; with `AI_WEB_AUTH=off` anyone who can reach the page can use the terminal, so only expose it on a trusted network.
+With **Machine access** on (the default) the model can use these tools anywhere on the machine:
 
-### Discord bot
+| Tool | Purpose |
+| --- | --- |
+| `list_files` | List a directory |
+| `read_file` | Read up to 200 KB of a file |
+| `write_file` | Write up to 200 KB to a file |
+| `run_command` | Run a shell command (60-second timeout, 100 KB output cap) |
+| `create_skill` | Create a skill under `skills/` |
+| `create_schedule`, `update_schedule` | Create or change cron-style jobs |
 
-The app can run a Discord bot beside Flask and use the configured provider/model to answer messages.
+Every call — reads included — needs a single-use approval in the chat, bound to the exact tool name and arguments and valid for 15 minutes. Known API keys, tokens, and PEM private keys are redacted from tool output.
+
+Turn **Settings → Machine access** off to restrict tools to the project folder and to the `pwd` / `ls` / `git status|diff|log` allowlist (no shell).
+
+> ⚠️ An approved command runs with the privileges of the user running the app — including `sudo` when that user may use it without a password. Read each command before approving it.
+
+## Terminal
+
+The **Terminal** page runs shell commands on the server as the user running the app. It starts in the project folder, supports `cd` inside the project, has a 60-second timeout and a 100 KB output cap, strips credential-like environment variables, and redacts known secrets. It can be disabled in Settings.
+
+> ⚠️ The terminal runs with the app user's privileges. With pairing enabled only paired devices can open it; with `AI_WEB_AUTH=off` anyone who can reach the page can use it.
+
+## Scheduler
+
+The **Schedule** page stores cron-style jobs (5-field cron) in `scheduled-jobs.json` and runs them while the server is up, using the server's timezone.
+
+- Each job has a name, schedule, prompt, optional model, enable flag, and an optional Discord channel ID for the result.
+- Jobs keep their own conversation in the history, with the last run time, status, and error.
+- `AI_WEB_ENABLE_SCHEDULER=1` enables the scheduler when the app runs under an external WSGI server.
+
+## Logs
+
+The **Logs** page shows recent system events and agent/tool activity: provider calls, tool approvals, schedules, and server actions. It never shows API keys or file content.
+
+- The in-memory window keeps the newest 1000 entries; `logs/app-log.jsonl` keeps the persistent log.
+- Entries can be downloaded as a file or deleted from the page.
+
+## Update and server control
+
+- **Update** shows the installed build and the last run, and can do a dry run (`update.sh --dry-run --no-restart`) or a real update. It runs `update.sh`, which replaces app files only and never touches `.env`, settings, auth state, certificates, history, logs, schedules, or `.venv`.
+- **Server** sends start, stop, or restart to `start_web.sh`, which is the same script the CLI uses. A restart from the page waits two seconds so the response reaches the browser first.
+
+## Discord bot
+
+The app can run a Discord bot beside Flask and answer with the configured provider and model.
 
 1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications).
 2. Enable **Message Content Intent**, then invite the bot with the `bot` scope and permission to send messages.
-3. In the web Settings page, enter the bot token, enable Discord, and save.
-4. Mention the bot or send `!ai your message` in Discord. The prefix can be changed in Settings.
+3. In Settings, enter the bot token, enable Discord, and save.
+4. Mention the bot or send `!ai <message>` (the prefix is configurable).
 
-Supported slash commands: `/ai` to send work to the agent, `/new` to create a new chat and web history immediately, `/models` to change provider/model and show availability, `/model` to show the active model and status, `/clear` to clear channel context, `/thread` to create a topic thread, `/fallback` to set a channel-specific fallback and show its status, `/ping` to check server latency, and `/help` to list commands.
+Slash commands: `/ai` sends work to the agent, `/new` opens a new chat with web history, `/models` changes provider/model, `/model` shows the active model and status, `/status` shows readiness, `/clear` clears the channel context, `/thread` creates a topic thread, `/fallback` sets a channel fallback, `/ping` checks latency, `/invite` builds an Administrator invite link, and `/help` lists everything. Changing the model and setting a fallback require the Discord **Administrator** permission; only a user with server-management rights can open the `/invite` link, because a bot cannot grant permissions to itself.
 
-Changing the provider/model and setting a fallback require server administrator permission. Use `/invite` to generate an invite link with Administrator permission; a user with server management permission must open it because a bot cannot grant permissions to itself.
+**Limit who can use the bot.** Settings has two allowlists: *Allowed channels* and *Allowed users*. A blank list means no limit; when filled, messages and slash commands from any other channel or user are ignored, so only the listed people and rooms can spend your API credit. A DM is allowed by its own DM channel ID — enable Discord **Developer Mode** and use *Copy ID*. The `.env` equivalents are `DISCORD_ALLOWED_CHANNEL_IDS` and `DISCORD_ALLOWED_USER_IDS`. Schedules sent to Discord still need Administrator rights.
 
-The token is stored server-side in `.app-settings.json`, which is ignored by Git. Alternatively, set `DISCORD_BOT_TOKEN` and `DISCORD_BOT_PREFIX` in `.env`.
+## Device pairing
 
-**Limit who can use the bot.** The Settings page has two allowlists: *Allowed channels* (Channel IDs) and *Allowed users* (User IDs). Leave a list blank for no limit. When a list is filled in, messages and slash commands from any other channel or user are ignored, so only the people and rooms you list can spend your API credit. A DM is allowed by its own DM Channel ID; enable Discord **Developer Mode** and use *Copy ID* on a channel or user to get the number. The `.env` equivalents are `DISCORD_ALLOWED_CHANNEL_IDS` and `DISCORD_ALLOWED_USER_IDS` (comma-separated). Administrator rights are still required for `/models`, `/fallback`, `/invite`, and schedule tools.
+The web interface requires a paired device; Pairing Keys are generated only on the server.
 
-### Scheduler
+- Create a key with `python app.py --pairing-key` (or `./start_web.sh --pair`). The first start with no paired device prints one automatically.
+- On the client, open `http://<machine-ip>:5000/pair` and enter the key. A valid key issues an `HttpOnly` session cookie lasting `AI_WEB_SESSION_DAYS` (default 30).
+- Keys are single-use and expire after `AI_WEB_PAIRING_TTL_MINUTES` (default 30). Only SHA-256 hashes are stored, in `.app-auth.json`, which is excluded from Git.
+- Review, revoke, or add devices in **Settings → Security**. `python app.py --revoke-sessions` revokes every device.
+- `AI_WEB_AUTH=off` disables pairing and is meant only for a fully trusted network. Unpaired pages redirect to `/pair`; `/api/auth/status` stays reachable for health checks.
+- Behind a TLS-terminating reverse proxy set `AI_WEB_TRUST_PROXY=1` so `X-Forwarded-Proto` is trusted and the session cookie is marked `Secure`.
 
-Scheduled jobs run while the server is running. Set `AI_WEB_ENABLE_SCHEDULER=1` to enable the scheduler for WSGI deployments.
+## HTTPS
+
+The app can terminate HTTPS itself; `openssl` is the only requirement.
+
+- **From the page:** **Settings → Web and HTTPS**, choose HTTP, HTTPS with certificate files, or HTTPS with an ad-hoc certificate, save, and restart. A page cannot follow a restart that changes the protocol, so it shows the new address instead.
+- Create a self-signed certificate for the LAN IP: `./start_web.sh --make-cert 192.168.0.50` (on Termux install `openssl` with `pkg install openssl-tool`). It writes `certs/cert.pem` and `certs/key.pem`, which are excluded from Git.
+- Set `AI_WEB_TLS_CERT` and `AI_WEB_TLS_KEY` in `.env`, run `./start_web.sh --restart`, then open `https://<machine-ip>:5000`. Session cookies become `Secure` automatically.
+- The page's "certificate files" mode prefers `certs/cert.pem` + `certs/key.pem`; without them it keeps a usable pair already set in `.env` instead of refusing the mode the server is running with.
+- `AI_WEB_TLS_ADHOC=1` (or the ad-hoc mode in the page) creates a self-signed certificate with `openssl`, covering `localhost`, `127.0.0.1`, the hostname, and the LAN address, and reuses `certs/adhoc-cert.pem` / `certs/adhoc-key.pem` on later starts. No Python `cryptography` package is needed.
+- Switching HTTPS → HTTP does not keep the old sign-in: browsers do not send the `Secure` cookie over HTTP, and `ai-web-session-http` is issued only after a new pairing. The separate cookie name is what lets a device pair again over HTTP.
+- A self-signed certificate warns the browser once. Use a certificate from a trusted CA, or install your local CA on each device, to avoid it.
+- Behind a reverse proxy (Caddy, nginx, `tailscale serve`) leave `AI_WEB_TLS_*` empty and set `AI_WEB_TRUST_PROXY=1`; the proxy must overwrite `X-Forwarded-Proto` on every request.
+- `tailscale cert` must run on the node that owns the name. The Tailscale app on Android has no CLI, so a Termux/Android server cannot issue its own Tailscale certificate — run `tailscale serve` on another tailnet node that proxies to it, or use a trusted CA.
+
+## Files and data
+
+| Path | Contents | Committed |
+| --- | --- | --- |
+| `app.py` | Flask server, API, tools, scheduler, Discord bot | yes |
+| `templates/index/` | Chat page HTML, CSS, JS (chat, settings, schedule, logs, terminal, about) | yes |
+| `templates/pair/` | Pairing page HTML, CSS, JS | yes |
+| `skills/` | Skills, one `<name>/SKILL.md` per skill | yes (unless you add your own) |
+| `install.sh`, `start_web.sh`, `update.sh` | Installer, process control, updater | yes |
+| `.env` | Provider keys and runtime configuration | no |
+| `.app-settings.json` | Settings saved from the page | no |
+| `.app-auth.json` | Pairing Key and session hashes | no |
+| `certs/` | TLS certificate, private key, ad-hoc files | no |
+| `history/` | Conversation history | no |
+| `logs/` | Application and server logs | no |
+| `scheduled-jobs.json` | Scheduled jobs | no |
+
+Never commit `.env`, `.app-settings.json`, `.app-auth.json`, `certs/` (especially `key.pem`), `history/`, `logs/`, or `scheduled-jobs.json`, and never copy them between machines.
