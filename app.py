@@ -186,11 +186,7 @@ def skill_dir(name: str) -> Path:
     if not safe_name or safe_name in {".", ".."}:
         raise ValueError("ชื่อสกิลไม่ถูกต้อง")
     root = (PROJECT_ROOT / SKILLS_ROOT).resolve()
-    directory = (root / safe_name).resolve()
-    try:
-        directory.relative_to(root)
-    except ValueError:
-        raise ValueError("ชื่อสกิลอยู่นอกโฟลเดอร์ที่อนุญาต")
+    directory = normalized_path_under(safe_name, root, "ชื่อสกิลอยู่นอกโฟลเดอร์ที่อนุญาต")
     if directory.parent != root:
         raise ValueError("ชื่อสกิลอยู่นอกโฟลเดอร์ที่อนุญาต")
     return directory
@@ -255,7 +251,7 @@ def log_event(event: str, message: str, **details: Any) -> None:
         LOGGER.warning("บันทึก log ถาวรไม่สำเร็จ: %s", exc)
         with APP_LOG_LOCK:
             APP_LOGS.append(record)
-    LOGGER.info("%s: %s", event, message)
+    LOGGER.info("%s: %s", event, redact_secrets(str(message)))
 
 
 load_persisted_logs()
@@ -697,17 +693,33 @@ def start_scheduler() -> None:
     threading.Thread(target=schedule_loop, name="scheduled-ai-jobs", daemon=True).start()
 
 
+def normalized_path_under(raw_path: str, root: Path, message: str, error: type[Exception] = ValueError) -> Path:
+    """Normalize a user path and keep it inside *root*.
+
+    The shape matters: CodeQL's py/path-injection query only treats a path as
+    checked when it passes through os.path.normpath()/realpath() and is then
+    compared with str.startswith(). Path.relative_to() alone is not recognised
+    as a check, so the guard is written the way the query understands.
+    """
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise error(message)
+    root_text = os.path.normpath(os.path.realpath(str(root)))
+    candidate_text = os.path.normpath(
+        os.path.realpath(os.path.join(root_text, os.path.expanduser(raw_path.strip())))
+    )
+    if candidate_text != root_text and not candidate_text.startswith(root_text + os.sep):
+        raise error(message)
+    return Path(candidate_text)
+
+
 def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     """Resolve a user path inside the project while blocking protected files."""
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("ต้องระบุ path ภายในโปรเจกต์")
     project_root = PROJECT_ROOT.resolve()
-    candidate = (project_root / raw_path.strip()).resolve()
-    try:
-        relative_path = candidate.relative_to(project_root)
-    except ValueError as exc:
-        raise ValueError("อนุญาตเฉพาะ path ภายในโฟลเดอร์โปรเจกต์") from exc
-    relative_parts = relative_path.parts
+    candidate = normalized_path_under(raw_path, project_root, "อนุญาตเฉพาะ path ภายในโฟลเดอร์โปรเจกต์")
+    relative_text = os.path.relpath(str(candidate), str(project_root))
+    relative_parts: list[str] = [] if relative_text == os.curdir else relative_text.split(os.sep)
     if any(part in PROTECTED_PARTS for part in relative_parts) or candidate.name in PROTECTED_NAMES:
         raise ValueError("ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
     if must_exist and not candidate.exists():
@@ -732,14 +744,12 @@ def resolve_tool_path(raw_path: str, must_exist: bool = False) -> Path:
     """Resolve a tool path safely for tool execution requests."""
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("ต้องระบุ path")
-    candidate = Path(os.path.expanduser(raw_path.strip()))
-    if not candidate.is_absolute():
-        candidate = PROJECT_ROOT / candidate
-    candidate = candidate.resolve()
-    try:
-        candidate.relative_to(PROJECT_ROOT)
-    except ValueError as exc:
-        raise PermissionError("path อยู่นอกโฟลเดอร์โปรเจกต์และไม่ได้รับอนุญาต") from exc
+    candidate = normalized_path_under(
+        raw_path,
+        PROJECT_ROOT,
+        "path อยู่นอกโฟลเดอร์โปรเจกต์และไม่ได้รับอนุญาต",
+        PermissionError,
+    )
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"ไม่พบ path: {raw_path}")
     return candidate
@@ -1093,10 +1103,6 @@ def terminal_secret_values(extra: list[str] | None = None) -> list[str]:
 
 
 PEM_REDACTED_MARKER = "•••••••• (ซ่อน private key)"
-PEM_BLOCK_PATTERN = re.compile(
-    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
-    re.DOTALL,
-)
 PEM_MARKER_PATTERN = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|-----END [A-Z0-9 ]*PRIVATE KEY-----"
 )
@@ -1137,7 +1143,9 @@ def redact_terminal_output(text: str, secrets_found: list[str]) -> str:
     """Replace known secrets and any private key block in terminal output."""
     for secret in secrets_found:
         text = text.replace(secret, "••••••••")
-    return PEM_BLOCK_PATTERN.sub(PEM_REDACTED_MARKER, text)
+    # mask_unterminated_pem walks the BEGIN/END markers instead of running a
+    # DOTALL regex over the whole capture, so large output cannot go quadratic.
+    return mask_unterminated_pem(text)
 
 
 SHELL_PATH_SEPARATOR_PATTERN = re.compile(r"[;&|<>()`$\s=]+")
@@ -1218,10 +1226,12 @@ def resolve_terminal_cwd(raw_path: Any) -> Path:
     else:
         if value.startswith("~/"):
             value = value[2:]
-        candidate = (PROJECT_ROOT / value).resolve()
-    if candidate != PROJECT_ROOT and PROJECT_ROOT not in candidate.parents:
-        raise ValueError("Terminal ถูกจำกัดให้ทำงานภายในโฟลเดอร์โปรเจกต์")
-    if any(part in PROTECTED_PARTS for part in candidate.relative_to(PROJECT_ROOT).parts):
+        candidate = normalized_path_under(
+            value, PROJECT_ROOT, "Terminal ถูกจำกัดให้ทำงานภายในโฟลเดอร์โปรเจกต์"
+        )
+    relative_text = os.path.relpath(str(candidate), str(PROJECT_ROOT))
+    relative_parts: list[str] = [] if relative_text == os.curdir else relative_text.split(os.sep)
+    if any(part in PROTECTED_PARTS for part in relative_parts):
         raise PermissionError("Terminal ถูกจำกัดไม่ให้เข้าโฟลเดอร์ที่มีข้อมูลลับ")
     if not candidate.exists():
         raise FileNotFoundError(f"ไม่พบโฟลเดอร์: {raw_path}")
@@ -1361,7 +1371,9 @@ def parse_tool_requests(answer: str) -> list[dict[str, Any]]:
     """Parse every tool call so multiple Skill files can be inspected in one turn."""
     if not isinstance(answer, str):
         return []
-    matches = re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", answer, re.IGNORECASE | re.DOTALL)
+    # Every match is stripped below; dropping the surrounding \s* keeps the
+    # scan linear in the length of the answer instead of backtracking.
+    matches = re.findall(r"<tool_call>(.*?)</tool_call>", answer, re.IGNORECASE | re.DOTALL)
     if not matches:
         return []
     requests = []
@@ -1434,8 +1446,14 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
         return _save_history_unlocked(payload)
 
 
+def history_record_path(path: Path) -> Path:
+    """Return *path* normalized and confirmed inside the history folder."""
+    return normalized_path_under(str(path), HISTORY_ROOT, "Invalid history path")
+
+
 def _write_history_record(path: Path, record: dict[str, Any]) -> None:
     """Write one history record atomically so readers never see a partial file."""
+    path = history_record_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -1502,13 +1520,7 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
         # the old record still validate against it.
         record_generation = existing_record.get("generation")
     path = existing or HISTORY_ROOT / now.strftime("%Y-%m-%d") / f"{now.strftime('%H-%M-%S')}_{conversation_id}.json"
-    history_root_resolved = HISTORY_ROOT.resolve()
-    path_resolved = path.resolve(strict=False)
-    try:
-        path_resolved.relative_to(history_root_resolved)
-    except ValueError as exc:
-        raise ValueError("Invalid history path") from exc
-    path = path_resolved
+    path = history_record_path(path)
     raw_title = payload.get("title")
     existing_title = (
         existing_record.get("title") if isinstance(existing_record.get("title"), str) else ""
@@ -1740,9 +1752,18 @@ def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") 
     return len(key) >= 20 if official else True
 
 
+FINGERPRINT_SALT = secrets.token_bytes(32)
+
+
 def key_fingerprint(key: str) -> str:
-    """Return a short stable fingerprint for a secret, safe to compare."""
-    return hashlib.sha256(str(key).encode("utf-8")).hexdigest()[:16]
+    """Return a short fingerprint for a secret, safe to compare in this process.
+
+    The value only has to be stable inside one running server (it keys the status
+    cache and the Discord token check), so it is computed as an HMAC with a
+    random per-process salt instead of a plain hash of the secret.
+    """
+    digest = hmac.new(FINGERPRINT_SALT, str(key).encode("utf-8"), hashlib.sha256)
+    return digest.hexdigest()[:16]
 
 
 STATUS_MESSAGES = {
@@ -2600,7 +2621,7 @@ def tools_execute():
         return jsonify({"ok": True, "result": result})
     except (FileNotFoundError, PermissionError, ValueError, OSError, subprocess.SubprocessError) as exc:
         log_event("tool.error", f"ใช้ {name} ไม่สำเร็จ", tool=name, error=str(exc))
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": False, "error": "ใช้เครื่องมือไม่สำเร็จ กรุณาตรวจสอบพารามิเตอร์แล้วลองใหม่"}), 400
 
 
 @app.get("/api/terminal/info")
@@ -2632,7 +2653,7 @@ def terminal_exec():
         return jsonify({"ok": True, **result})
     except (PermissionError, FileNotFoundError, ValueError, OSError, subprocess.SubprocessError) as exc:
         log_event("tool.terminal_error", "Terminal รันคำสั่งไม่สำเร็จ", error=str(exc))
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": False, "error": "คำสั่ง Terminal ถูกปฏิเสธหรือทำงานไม่สำเร็จ"}), 400
 
 
 @app.get("/api/logs")
@@ -2651,8 +2672,8 @@ def logs_delete():
             deleted = len(APP_LOGS)
             APP_LOGS.clear()
             LOG_FILE.unlink(missing_ok=True)
-    except OSError as exc:
-        return jsonify({"ok": False, "error": f"ลบ log ไม่สำเร็จ: {exc}"}), 500
+    except OSError:
+        return jsonify({"ok": False, "error": "ลบ log ไม่สำเร็จ"}), 500
     return jsonify({"ok": True, "deleted": deleted})
 
 
@@ -2672,8 +2693,8 @@ def schedules_create():
         return jsonify({"error": "กรุณาระบุชื่องานและ prompt"}), 400
     try:
         schedule = validate_cron(body.get("schedule", ""))
-    except (TypeError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
+    except (TypeError, ValueError):
+        return jsonify({"error": "รูปแบบ schedule ไม่ถูกต้อง (ต้องเป็น cron 5 ช่อง)"}), 400
     discord_channel_id = str(body.get("discord_channel_id", "")).strip()[:30]
     if discord_channel_id and not discord_channel_id.isdigit():
         return jsonify({"error": "Discord Channel ID ต้องเป็นตัวเลข"}), 400
@@ -2697,8 +2718,8 @@ def schedules_update(job_id: str):
         if "schedule" in body:
             try:
                 job["schedule"] = validate_cron(body["schedule"])
-            except (TypeError, ValueError) as exc:
-                return jsonify({"error": str(exc)}), 400
+            except (TypeError, ValueError):
+                return jsonify({"error": "รูปแบบ schedule ไม่ถูกต้อง (ต้องเป็น cron 5 ช่อง)"}), 400
         if "name" in body:
             job["name"] = str(body["name"]).strip()[:100] or job["name"]
         if "prompt" in body:
@@ -3330,8 +3351,8 @@ def skill_get(name: str):
         if not path.exists():
             return jsonify({"error": "ไม่พบ Skill"}), 404
         return jsonify({"name": path.parent.name, "content": path.read_text(encoding="utf-8")[:20_000]})
-    except (OSError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
+    except (OSError, ValueError):
+        return jsonify({"error": "อ่าน Skill ไม่สำเร็จ"}), 400
 
 
 @app.post("/api/skills")
@@ -3341,8 +3362,8 @@ def skills_create():
     try:
         result = run_local_tool("create_skill", {"name": body.get("name", ""), "content": body.get("content", "")}, approved=True)
         return jsonify(result), 201
-    except (OSError, PermissionError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
+    except (OSError, PermissionError, ValueError):
+        return jsonify({"error": "สร้าง Skill ไม่สำเร็จ"}), 400
 
 
 @app.put("/api/skills/<name>")
@@ -3358,8 +3379,8 @@ def skills_update(name: str):
             return jsonify({"error": "ไม่พบ Skill"}), 404
         path.write_text(content.strip() + "\n", encoding="utf-8")
         return jsonify({"ok": True, "name": path.parent.name})
-    except (OSError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
+    except (OSError, ValueError):
+        return jsonify({"error": "บันทึก Skill ไม่สำเร็จ"}), 400
 
 
 @app.delete("/api/skills/<name>")
@@ -3371,8 +3392,8 @@ def skills_delete(name: str):
             return jsonify({"error": "ไม่พบ Skill"}), 404
         shutil.rmtree(path.parent)
         return jsonify({"ok": True, "name": path.parent.name})
-    except (OSError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
+    except (OSError, ValueError):
+        return jsonify({"error": "ลบ Skill ไม่สำเร็จ"}), 400
 
 
 @app.get("/api/status")
@@ -3499,8 +3520,8 @@ def history_save():
         return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
     try:
         return jsonify(save_history(body))
-    except HistoryLocked as exc:
-        return jsonify({"error": str(exc)}), 423
+    except HistoryLocked:
+        return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนบันทึกทับ"}), 423
 
 
 def models_response(provider: str, settings: dict[str, Any]):
@@ -3508,10 +3529,9 @@ def models_response(provider: str, settings: dict[str, Any]):
     try:
         models = list_models(provider, settings)
         return jsonify({"provider": provider, "models": models, "source": "api"})
-    except (requests.RequestException, RuntimeError, KeyError, TypeError) as exc:
-        api_key = get_api_key(provider, settings)
+    except (requests.RequestException, RuntimeError, KeyError, TypeError):
         fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
-        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": redact_secrets(str(exc), api_key=api_key)}), 502
+        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": "ดึงรายการโมเดลจาก API ไม่สำเร็จ ใช้รายการสำรองแทน"}), 502
 
 
 @app.get("/api/models")
@@ -3607,8 +3627,8 @@ def apply_settings_update():
     if isinstance(custom_key, dict):
         try:
             custom_name = normalize_custom_key_name(custom_key.get("name"))
-        except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+        except ValueError:
+            return jsonify({"error": "ชื่อ Custom API key ไม่ถูกต้อง"}), 400
         custom_value = custom_key.get("value")
         custom_value = custom_key.get("value")
         if isinstance(custom_value, str) and "\x00" in custom_value:
@@ -3678,11 +3698,10 @@ def settings_test():
                 detail = exc.response.text
             detail = detail[:300]
         api_key = get_api_key(provider, settings)
-        message = redact_secrets(detail or str(exc), api_key=api_key)
+        message = redact_secrets(detail, api_key=api_key) if detail else "ตรวจสอบ API key, โมเดล และ Base URL อีกครั้ง"
         return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: {message}"}), 502
-    except (requests.RequestException, KeyError, IndexError, RuntimeError) as exc:
-        api_key = get_api_key(provider, settings)
-        return jsonify({"ok": False, "provider": provider, "error": redact_secrets(str(exc), api_key=api_key)}), 502
+    except (requests.RequestException, KeyError, IndexError, RuntimeError):
+        return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"}), 502
 
 
 @app.post("/api/settings/reset")
@@ -4104,8 +4123,8 @@ def update_run():
                     start_new_session=True,
                     env={**os.environ, "AI_WEB_UPDATE_FROM_WEB": "1"},
                 )
-        except OSError as exc:
-            return jsonify({"ok": False, "error": f"เริ่มอัปเดตไม่สำเร็จ: {exc}"}), 500
+        except OSError:
+            return jsonify({"ok": False, "error": "เริ่มอัปเดตไม่สำเร็จ กรุณาดู log ของระบบ"}), 500
         started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         UPDATE_JOB.clear()
         UPDATE_JOB.update({
@@ -4247,12 +4266,12 @@ def chat():
         if exc.response is not None and exc.response.status_code in {429, 503}:
             provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "ผู้ให้บริการ")
             return jsonify({"error": f"{provider_label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น"}), 503
-        detail = redact_secrets(exc.response.text if exc.response is not None else str(exc), api_key=api_key)[:500]
+        fallback_detail = "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล"
+        detail = redact_secrets(exc.response.text if exc.response is not None else fallback_detail, api_key=api_key)[:500]
         return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
-        api_key = safe_stored_api_key(provider, settings)
         log_event("chat.error", "ประมวลผลข้อความไม่สำเร็จ", error=str(exc))
-        return jsonify({"error": redact_secrets(str(exc), api_key=api_key)}), 500
+        return jsonify({"error": "ประมวลผลข้อความไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"}), 500
 
 
 def tls_configuration() -> Any:
