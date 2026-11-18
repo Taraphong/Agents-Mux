@@ -1769,9 +1769,10 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
 
 
 MODEL_LIST_CACHE_TTL = 600
-# Discord closes an autocomplete request after about three seconds, so the live
-# API call inside an autocomplete gets a short timeout instead of the web one.
-MODEL_LIST_AUTOCOMPLETE_TIMEOUT = 2
+# Discord closes an autocomplete request after about three seconds, and a requests
+# timeout applies to the connect and to each read separately, so 1.5s keeps the
+# worst case inside that window. The web endpoints keep the 30s timeout.
+MODEL_LIST_AUTOCOMPLETE_TIMEOUT = 1.5
 MODEL_LIST_CACHE: dict[str, tuple[float, list[str]]] = {}
 MODEL_LIST_ERROR_LOGGED: dict[str, float] = {}
 
@@ -1780,7 +1781,7 @@ def remember_model_names(provider: str, names: list[str]) -> None:
     """Cache a provider's model ids so Discord autocomplete can answer instantly."""
     names = [name for name in names if name]
     if names:
-        MODEL_LIST_CACHE[normalize_provider(provider)] = (time.time(), names)
+        MODEL_LIST_CACHE[normalize_provider(provider)] = (time.time(), list(names))
 
 
 def model_names_for_autocomplete(provider: str, settings: dict[str, Any]) -> list[str]:
@@ -3956,6 +3957,8 @@ def settings_reset():
     if SETTINGS_FILE.exists():
         SETTINGS_FILE.unlink()
     STATUS_CACHE.clear()
+    MODEL_LIST_CACHE.clear()
+    MODEL_LIST_ERROR_LOGGED.clear()
     return jsonify({"ok": True})
 
 
