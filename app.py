@@ -467,6 +467,9 @@ def save_settings(settings: dict[str, Any]) -> None:
     finally:
         if temp_path.exists():
             temp_path.unlink(missing_ok=True)
+    # A changed API key or base URL can change the model list, so drop the cached
+    # ids Discord autocomplete answers from.
+    MODEL_LIST_CACHE.clear()
 
 
 def load_schedules() -> list[dict[str, Any]]:
@@ -1727,14 +1730,14 @@ def schedule_conversation_id(job: dict[str, Any]) -> str:
     return conversation_id
 
 
-def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]:
+def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) -> list[dict[str, str]]:
     """Fetch the available models for a provider, using its API key."""
     provider = normalize_provider(provider)
     key = get_api_key(provider, settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key จึงดึงรายการโมเดลไม่ได้")
     if provider == "gemini":
-        response = requests.get(f"{get_base_url('gemini', settings)}/models", params={"key": key}, timeout=30)
+        response = requests.get(f"{get_base_url('gemini', settings)}/models", params={"key": key}, timeout=timeout)
         response.raise_for_status()
         models = response.json().get("models", [])
         return [{"id": item["name"].removeprefix("models/"), "name": item.get("displayName", item["name"])} for item in models if "generateContent" in item.get("supportedGenerationMethods", [])]
@@ -1743,7 +1746,7 @@ def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]
             response = requests.get(
                 f"{get_base_url('anthropic', settings)}/models",
                 headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
-                timeout=30,
+                timeout=timeout,
             )
             response.raise_for_status()
         except requests.HTTPError as exc:
@@ -1759,10 +1762,63 @@ def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]
             return models
         raise RuntimeError("Anthropic ไม่ส่งรายการโมเดลกลับมา")
     base_url = get_base_url(provider, settings)
-    response = requests.get(f"{base_url}/models", headers={"Authorization": f"Bearer {key}"}, timeout=30)
+    response = requests.get(f"{base_url}/models", headers={"Authorization": f"Bearer {key}"}, timeout=timeout)
     response.raise_for_status()
     models = response.json().get("data", [])
     return [{"id": item["id"], "name": item["id"]} for item in sorted(models, key=lambda item: item.get("id", ""))]
+
+
+MODEL_LIST_CACHE_TTL = 600
+# Discord closes an autocomplete request after about three seconds, so the live
+# API call inside an autocomplete gets a short timeout instead of the web one.
+MODEL_LIST_AUTOCOMPLETE_TIMEOUT = 2
+MODEL_LIST_CACHE: dict[str, tuple[float, list[str]]] = {}
+MODEL_LIST_ERROR_LOGGED: dict[str, float] = {}
+
+
+def remember_model_names(provider: str, names: list[str]) -> None:
+    """Cache a provider's model ids so Discord autocomplete can answer instantly."""
+    names = [name for name in names if name]
+    if names:
+        MODEL_LIST_CACHE[normalize_provider(provider)] = (time.time(), names)
+
+
+def model_names_for_autocomplete(provider: str, settings: dict[str, Any]) -> list[str]:
+    """Return model ids for a slash-command autocomplete within Discord's time limit.
+
+    The cached list is answered immediately, so typing in Discord never waits on
+    the provider API. A cold cache gets one short live fetch, and a provider
+    without a key or a failed request falls back to the static list, so the
+    autocomplete is never empty.
+    """
+    provider = normalize_provider(provider)
+    cached = MODEL_LIST_CACHE.get(provider)
+    if cached and time.time() - cached[0] < MODEL_LIST_CACHE_TTL:
+        return list(cached[1])
+    names: list[str] = []
+    try:
+        names = [
+            str(item.get("id", ""))
+            for item in list_models(provider, settings, timeout=MODEL_LIST_AUTOCOMPLETE_TIMEOUT)
+            if item.get("id")
+        ]
+    except (requests.RequestException, RuntimeError, KeyError, TypeError, ValueError) as exc:
+        last_logged = MODEL_LIST_ERROR_LOGGED.get(provider, 0)
+        if time.time() - last_logged > 60:
+            MODEL_LIST_ERROR_LOGGED[provider] = time.time()
+            log_event(
+                "discord.models",
+                "ดึงรายการโมเดลสำหรับ autocomplete ไม่สำเร็จ ใช้รายการสำรองแทน",
+                provider=provider,
+                error=str(exc)[:200],
+            )
+    if names:
+        remember_model_names(provider, names)
+        return names
+    if cached:
+        # A stale list still beats an empty dropdown while the API is unreachable.
+        return list(cached[1])
+    return list(FALLBACK_MODELS.get(provider, []))
 
 
 def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
@@ -2508,14 +2564,15 @@ def start_discord_bot() -> None:
     async def model_autocomplete(interaction: Any, current_text: str) -> list[Any]:
         """Provide model id autocomplete choices for Discord commands."""
         settings = load_settings()
-        selected = getattr(getattr(interaction, "namespace", None), "provider", settings.get("provider", "openai"))
-        selected_provider = selected.value if hasattr(selected, "value") else selected
-        selected_provider = normalize_provider(selected_provider)
+        selected = getattr(getattr(interaction, "namespace", None), "provider", None)
+        # Namespace returns None for an option the user has not filled in yet.
+        selected = getattr(selected, "value", selected) or settings.get("provider", "openai")
+        selected_provider = normalize_provider(selected)
         try:
-            models = await asyncio.to_thread(list_models, selected_provider, settings)
-            names = [str(item.get("id", "")) for item in models if item.get("id")]
-        except Exception:
-            names = FALLBACK_MODELS.get(selected_provider, [])
+            names = await asyncio.to_thread(model_names_for_autocomplete, selected_provider, settings)
+        except Exception as exc:
+            log_event("discord.models", "autocomplete ของ model ล้มเหลว", error=str(exc)[:200])
+            names = list(FALLBACK_MODELS.get(selected_provider, []))
         query = str(current_text or "").strip().lower()
         return [
             discord.app_commands.Choice(name=name[:100], value=name[:100])
@@ -2543,6 +2600,7 @@ def start_discord_bot() -> None:
             try:
                 current = load_settings()
                 available = await asyncio.to_thread(list_models, selected_provider, current)
+                remember_model_names(selected_provider, [item["id"] for item in available])
                 current_model = current.get("model") if current.get("provider") == selected_provider else ""
                 names = [item["id"] for item in available[:25]]
                 listing = "\n".join(
@@ -3715,6 +3773,7 @@ def models_response(provider: str, settings: dict[str, Any]):
     """Build the model list response shared by the GET and POST model endpoints."""
     try:
         models = list_models(provider, settings)
+        remember_model_names(provider, [str(item.get("id", "")) for item in models])
         return jsonify({"provider": provider, "models": models, "source": "api"})
     except (requests.RequestException, RuntimeError, KeyError, TypeError):
         fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
