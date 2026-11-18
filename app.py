@@ -322,7 +322,9 @@ PROVIDER_BASE_URLS = {
     "groq": "https://api.groq.com/openai/v1",
 }
 STATUS_CACHE_TTL = 300
-STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+# Each entry keeps the checked key so a result is only reused for the same key;
+# the key stays in memory, where the loaded settings already hold it.
+STATUS_CACHE: dict[str, tuple[float, str, dict[str, Any]]] = {}
 
 DISCORD_CONTEXTS: dict[str, deque[dict[str, str]]] = {}
 DISCORD_CONVERSATION_IDS: dict[str, str] = {}
@@ -330,7 +332,7 @@ DISCORD_CONTEXT_LOCK = threading.Lock()
 DISCORD_BOT: Any = None
 DISCORD_THREAD: threading.Thread | None = None
 DISCORD_LOOP: Any = None
-DISCORD_TOKEN_FINGERPRINT = ""
+DISCORD_ACTIVE_TOKEN = ""
 SETTINGS_LOCK = threading.Lock()
 
 
@@ -1784,21 +1786,15 @@ def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") 
     return len(key) >= 20 if official else True
 
 
-FINGERPRINT_KEY = secrets.token_bytes(32)
+def same_secret(left: str, right: str) -> bool:
+    """Compare two secrets in constant time.
 
-
-def key_fingerprint(key: str) -> str:
-    """Return a short per-process identifier for a secret, safe to compare.
-
-    The value only has to be stable inside one running server (it keys the status
-    cache and the Discord token check). It is an HMAC keyed with a per-process
-    random value, so it stays identical for the same secret for the lifetime of
-    the server, keeps no copy of the secret, and does not depend on a bounded
-    cache that could evict an entry.
+    The comparison uses the value itself instead of a hash: a hash of an API
+    key or token would be a weak password-style digest, and a derived
+    identifier would have to be cached, which can lose its identity when the
+    cache is trimmed.
     """
-    return hmac.new(
-        FINGERPRINT_KEY, str(key).encode("utf-8"), hashlib.sha256
-    ).hexdigest()[:16]
+    return secrets.compare_digest(str(left).encode("utf-8"), str(right).encode("utf-8"))
 
 
 STATUS_MESSAGES = {
@@ -1860,10 +1856,10 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
     key = get_api_key(provider, settings)
     base_url = get_base_url(provider, settings)
     model = str(settings.get("model") or "").strip()
-    cache_key = f"{provider}|{base_url}|{model}|{key_fingerprint(key)}|{language}"
+    cache_key = f"{provider}|{base_url}|{model}|{language}"
     cached = STATUS_CACHE.get(cache_key)
-    if cached and time.time() - cached[0] < STATUS_CACHE_TTL:
-        return {**cached[1], "cached": True}
+    if cached and time.time() - cached[0] < STATUS_CACHE_TTL and same_secret(cached[1], key):
+        return {**cached[2], "cached": True}
     result: dict[str, Any]
     try:
         if provider == "gemini":
@@ -1917,7 +1913,7 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
             result = {"ready": False, "reason": status_message(language, "http_error", label=label, status=response.status_code), "status": response.status_code}
     except requests.RequestException as exc:
         result = {"ready": False, "reason": status_message(language, "connection_failed", label=label, error=exc.__class__.__name__), "status": None}
-    STATUS_CACHE[cache_key] = (time.time(), result)
+    STATUS_CACHE[cache_key] = (time.time(), key, result)
     return {**result, "cached": False}
 
 
@@ -2140,12 +2136,12 @@ def stop_discord_bot() -> None:
 
 def start_discord_bot() -> None:
     """Run the optional Discord client in a daemon thread beside Flask."""
-    global DISCORD_BOT, DISCORD_THREAD, DISCORD_LOOP, DISCORD_TOKEN_FINGERPRINT
+    global DISCORD_BOT, DISCORD_THREAD, DISCORD_LOOP, DISCORD_ACTIVE_TOKEN
     settings = load_settings()
     token = get_discord_token(settings)
     if not settings.get("discord_enabled") or not token:
         return
-    if DISCORD_THREAD and DISCORD_THREAD.is_alive() and DISCORD_TOKEN_FINGERPRINT == key_fingerprint(token):
+    if DISCORD_THREAD and DISCORD_THREAD.is_alive() and same_secret(DISCORD_ACTIVE_TOKEN, token):
         return
     if DISCORD_THREAD and DISCORD_THREAD.is_alive():
         stop_discord_bot()
@@ -2593,7 +2589,7 @@ def start_discord_bot() -> None:
         )
 
     DISCORD_BOT = client
-    DISCORD_TOKEN_FINGERPRINT = key_fingerprint(token)
+    DISCORD_ACTIVE_TOKEN = token
 
     def run_client() -> None:
         """Run the Discord client in its own event loop for the bot thread."""
