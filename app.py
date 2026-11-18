@@ -1370,14 +1370,22 @@ def parse_tool_request(answer: str) -> dict[str, Any] | None:
     return requests[0] if requests else None
 
 
+ASCII_LOWERCASE_TABLE = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+)
+
+
 def tool_call_bodies(answer: str) -> list[str]:
     """Return the body of every <tool_call> block in *answer*.
 
     Plain marker scanning keeps the work linear, so a reply that repeats
-    "<tool_call>" many times cannot make the parser backtrack.
+    "<tool_call>" many times cannot make the parser backtrack. Only ASCII
+    letters are lowercased: str.lower() can lengthen a character (for example
+    U+0130 becomes two characters), which would shift the marker offsets that
+    slice *answer*.
     """
     bodies: list[str] = []
-    lowered = answer.lower()
+    lowered = answer.translate(ASCII_LOWERCASE_TABLE)
     start = 0
     while True:
         open_at = lowered.find("<tool_call>", start)
@@ -1776,27 +1784,21 @@ def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") 
     return len(key) >= 20 if official else True
 
 
-FINGERPRINT_CACHE: dict[str, str] = {}
-FINGERPRINT_LOCK = threading.Lock()
-MAX_FINGERPRINTS = 64
+FINGERPRINT_KEY = secrets.token_bytes(32)
 
 
 def key_fingerprint(key: str) -> str:
     """Return a short per-process identifier for a secret, safe to compare.
 
     The value only has to be stable inside one running server (it keys the status
-    cache and the Discord token check), so the first time a secret is seen it is
-    given a random identifier instead of being run through a hash function.
+    cache and the Discord token check). It is an HMAC keyed with a per-process
+    random value, so it stays identical for the same secret for the lifetime of
+    the server, keeps no copy of the secret, and does not depend on a bounded
+    cache that could evict an entry.
     """
-    value = str(key)
-    with FINGERPRINT_LOCK:
-        fingerprint = FINGERPRINT_CACHE.get(value)
-        if fingerprint is None:
-            if len(FINGERPRINT_CACHE) >= MAX_FINGERPRINTS:
-                FINGERPRINT_CACHE.clear()
-            fingerprint = secrets.token_hex(8)
-            FINGERPRINT_CACHE[value] = fingerprint
-        return fingerprint
+    return hmac.new(
+        FINGERPRINT_KEY, str(key).encode("utf-8"), hashlib.sha256
+    ).hexdigest()[:16]
 
 
 STATUS_MESSAGES = {
