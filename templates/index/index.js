@@ -478,6 +478,8 @@ const I18N = {
     "attachment.binaryTooLarge": "ไฟล์ใหญ่เกิน 6 MB",
     "attachment.readFailed": "อ่านไฟล์ไม่สำเร็จ",
     "attachment.unsupported": "ไม่รองรับไฟล์ชนิดนี้",
+    "attachment.providerUnsupported":
+      "ไฟล์ {name} ({mime}) ส่งให้ผู้ให้บริการนี้ไม่ได้ — ไฟล์เสียงและวิดีโอใช้ได้กับ Gemini ส่วน PDF ใช้ได้กับ Gemini หรือ Anthropic",
     "attachment.clear": "ยกเลิกไฟล์แนบ",
     "common.close": "ปิด",
     "gemini.title": "ความสามารถของคีย์ Gemini",
@@ -1048,6 +1050,8 @@ const I18N = {
     "attachment.binaryTooLarge": "File is larger than 6 MB",
     "attachment.readFailed": "Could not read the file",
     "attachment.unsupported": "This file type is not supported",
+    "attachment.providerUnsupported":
+      "{name} ({mime}) cannot be sent to this provider — audio and video files work with Gemini, and PDF files work with Gemini or Anthropic",
     "attachment.clear": "Remove attachment",
     "common.close": "Close",
     "gemini.title": "Gemini key capabilities",
@@ -2796,6 +2800,18 @@ const TEXT_EXTENSION_TYPES = {
   ".py": "text/plain",
   ".ts": "text/plain",
 };
+// Only known text types are read as text, so a ZIP reported as
+// application/zip is not decoded into a text attachment.
+const TEXT_MIME_TYPES = new Set([
+  "application/json",
+  "application/xml",
+  "application/javascript",
+  "application/x-yaml",
+  "application/yaml",
+]);
+function isTextMimeType(type) {
+  return type.startsWith("text/") || TEXT_MIME_TYPES.has(type);
+}
 function fileMimeType(file) {
   const reported = (file.type || "").toLowerCase();
   if (reported) return reported;
@@ -2818,7 +2834,7 @@ $("file-input").addEventListener("change", async (event) => {
     type.startsWith("audio/") ||
     type.startsWith("video/") ||
     type === "application/pdf";
-  if (!isBinary && !type) {
+  if (!isBinary && !isTextMimeType(type)) {
     pendingAttachment = null;
     $("attachment-name").textContent = t("attachment.unsupported");
     $("attachment-chip").hidden = false;
@@ -3057,7 +3073,28 @@ async function appendAssistantToHistory(
   queuePendingAppend(id, [assistantMessage], generation);
   return false;
 }
+function attachmentProviderUnsupported() {
+  // An OpenAI-compatible payload only carries images, so a turn holding audio,
+  // video or a PDF would be saved and then rejected on every later turn.
+  if (!pendingAttachment?.mime_type) return null;
+  const provider = $("provider").value || activeProvider;
+  if (provider === "gemini" || provider === "anthropic") return null;
+  return pendingAttachment.mime_type.startsWith("image/")
+    ? null
+    : pendingAttachment;
+}
 async function sendChatMessage(content, requestedSkills = null) {
+  const blockedAttachment = attachmentProviderUnsupported();
+  if (blockedAttachment) {
+    showNotice(
+      t("attachment.providerUnsupported", {
+        name: blockedAttachment.name,
+        mime: blockedAttachment.mime_type,
+      }),
+      true,
+    );
+    return;
+  }
   const sessionToken = chatSessionToken;
   // A previous send recorded its message but could not persist it. Retry that
   // save first, reusing the recorded message_id, so this submission does not add
@@ -5552,6 +5589,7 @@ function handleLiveMessage(data, attempt) {
 // A backlog this large means the link cannot keep up with live audio, so new
 // frames are dropped instead of queueing stale speech.
 const LIVE_MAX_BUFFERED_BYTES = 1024 * 1024;
+const LIVE_OPEN_TIMEOUT_MS = 15000;
 async function startLiveMicrophone(attempt) {
   const mic = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
@@ -5624,6 +5662,9 @@ function stopGeminiLive(silent = false) {
     // Settle a pending setup wait so the start flow unwinds instead of
     // leaving a half-open session behind.
     attempt.rejectSetup?.(new Error("stopped"));
+    // Settle a socket that is still CONNECTING too; teardown clears its
+    // handlers, so the open wait needs its own cancellation.
+    attempt.rejectOpen?.(new Error("stopped"));
   }
   const ws = liveState.ws;
   liveState.ws = null;
@@ -5660,8 +5701,24 @@ async function openLiveSocket(token, attempt) {
   attempt.ws = ws;
   liveState.ws = ws;
   await new Promise((resolve, reject) => {
-    ws.onopen = resolve;
-    ws.onerror = () => reject(new Error(t("gemini.liveError")));
+    // Stop can run while the socket is CONNECTING and clears the handlers, so
+    // this wait owns a cancellation callback and a deadline of its own.
+    let timer = null;
+    const finish = (error) => {
+      if (timer === null) return; // already settled
+      clearTimeout(timer);
+      timer = null;
+      attempt.rejectOpen = null;
+      if (error) reject(error);
+      else resolve();
+    };
+    timer = setTimeout(
+      () => finish(new Error(t("gemini.liveError"))),
+      LIVE_OPEN_TIMEOUT_MS,
+    );
+    attempt.rejectOpen = (error) => finish(error);
+    ws.onopen = () => finish();
+    ws.onerror = () => finish(new Error(t("gemini.liveError")));
   });
   if (!liveAttemptActive(attempt)) {
     try {
@@ -5682,6 +5739,9 @@ async function openLiveSocket(token, attempt) {
     } catch (error) {
       return; // ignore non-JSON frames
     }
+    // Stop may have run while a binary frame was being decoded, so drop any
+    // transcript or audio this stopped attempt would still produce.
+    if (!liveAttemptActive(attempt)) return;
     handleLiveMessage(data, attempt);
   };
   ws.onclose = () => {

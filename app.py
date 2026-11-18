@@ -1763,7 +1763,12 @@ ALLOW_INSECURE_PROVIDER_HTTP = os.getenv("AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP", 
 
 def ensure_secure_model_endpoint(url: str) -> None:
     """Refuse a model request that would send the provider key over plain HTTP."""
-    parsed = urlsplit(url)
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        # An unmatched IPv6 bracket makes urlsplit raise; report a configuration
+        # error the endpoint can localize instead of an opaque HTTP 500.
+        raise RuntimeError("ที่อยู่ Base URL ของ provider ไม่ถูกต้อง — ตรวจสอบค่าใน Settings") from None
     scheme = parsed.scheme.lower()
     if scheme == "https":
         return
@@ -2040,7 +2045,7 @@ STATUS_MESSAGES = {
         "gemini_live_failed": "สร้าง Live API token ไม่สำเร็จ: {detail}",
         "gemini_request_failed": "เรียก Gemini API ไม่สำเร็จ: {detail}",
         "invalid_body": "รูปแบบข้อมูลไม่ถูกต้อง: ต้องเป็น JSON object",
-        "attachment_unsupported": "ไฟล์ {name} ({mime}) เป็นชนิดที่ผู้ให้บริการนี้ส่งไม่ได้ — ไฟล์เสียง วิดีโอ และ PDF ใช้ได้กับ Gemini หรือ Anthropic",
+        "attachment_unsupported": "ไฟล์ {name} ({mime}) เป็นชนิดที่ผู้ให้บริการนี้ส่งไม่ได้ — ไฟล์เสียงและวิดีโอใช้ได้กับ Gemini ส่วน PDF ใช้ได้กับ Gemini หรือ Anthropic",
     },
     "en": {
         "invalid_key": "{label} API key is invalid or unauthorized",
@@ -2066,7 +2071,7 @@ STATUS_MESSAGES = {
         "gemini_live_failed": "Could not create a Live API token: {detail}",
         "gemini_request_failed": "Gemini API request failed: {detail}",
         "invalid_body": "Invalid request body: expected a JSON object",
-        "attachment_unsupported": "{name} ({mime}) cannot be sent to this provider — audio, video, and PDF files work with Gemini or Anthropic",
+        "attachment_unsupported": "{name} ({mime}) cannot be sent to this provider — audio and video files work with Gemini, and PDF files work with Gemini or Anthropic",
     },
 }
 
@@ -2311,6 +2316,15 @@ def gemini_capabilities(settings: dict[str, Any], language: str = "en", force: b
             and now - cached[0] < GEMINI_CAPABILITY_CACHE_TTL
             and same_secret(cached[1], key)
         ):
+            # The probe runs once in one language, so a cached failure is
+            # re-rendered for this request instead of showing the other one.
+            if cached[2].get("error_key"):
+                return {
+                    **cached[2],
+                    "error": status_message(
+                        language, cached[2]["error_key"], error=cached[2].get("error_arg", "")
+                    ),
+                }
             return cached[2]
         # Claim the probe so a slow, older probe cannot publish over this one.
         GEMINI_CAPABILITY_PROBE += 1
@@ -2321,6 +2335,8 @@ def gemini_capabilities(settings: dict[str, Any], language: str = "en", force: b
         result = {
             "ready": False,
             "error": status_message(language, "gemini_capability_failed", error=exc.__class__.__name__),
+            "error_key": "gemini_capability_failed",
+            "error_arg": exc.__class__.__name__,
             "groups": {},
         }
         with GEMINI_CAPABILITY_LOCK:
@@ -4560,6 +4576,21 @@ def gemini_decisions_create():
             }
         elif question["type"] == "score":
             item["criteria"] = [str(value)[:2000] for value in criteria[:255]]
+        elif criteria is not None:
+            # A yes/no question takes an optional rubric describing what true
+            # and false mean; dropping it silently changes the answer.
+            wanted = ("true_description", "false_description")
+            if not isinstance(criteria, dict) or any(
+                criteria.get(key) is not None and not isinstance(criteria.get(key), str)
+                for key in wanted
+            ):
+                return jsonify({"error": status_message(language, "gemini_decisions_invalid")}), 400
+            forwarded = {
+                key: criteria[key][:2000] for key in wanted
+                if isinstance(criteria.get(key), str) and criteria[key].strip()
+            }
+            if forwarded:
+                item["criteria"] = forwarded
         cleaned[question_id] = item
     model = str(body.get("model") or settings.get("gemini_decision_model") or GEMINI_DECISION_MODEL)[:100]
     payload = {"model": model, "input": input_text, "questions": cleaned}
