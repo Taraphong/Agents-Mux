@@ -467,6 +467,9 @@ def save_settings(settings: dict[str, Any]) -> None:
     finally:
         if temp_path.exists():
             temp_path.unlink(missing_ok=True)
+    # A changed API key or base URL can change the model list, so drop the cached
+    # ids Discord autocomplete answers from.
+    forget_model_names()
 
 
 def load_schedules() -> list[dict[str, Any]]:
@@ -1727,25 +1730,89 @@ def schedule_conversation_id(job: dict[str, Any]) -> str:
     return conversation_id
 
 
-def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]:
+# A provider key must not travel in clear text to a remote host. Loopback stays
+# allowed for local OpenAI-compatible servers, and an operator can opt in to
+# plain HTTP for the rest of a self-hosted network.
+ALLOW_INSECURE_PROVIDER_HTTP = os.getenv("AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP", "").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+
+
+def ensure_secure_model_endpoint(url: str) -> None:
+    """Refuse a model request that would send the provider key over plain HTTP."""
+    parsed = urlsplit(url)
+    scheme = parsed.scheme.lower()
+    if scheme == "https":
+        return
+    if scheme != "http":
+        raise RuntimeError(f"ปลายทางของ provider ต้องเป็น http/https (พบ {scheme or 'ไม่มี scheme'})")
+    host = (parsed.hostname or "").strip().lower()
+    if host == "localhost":
+        return
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            return
+    except ValueError:
+        pass
+    if ALLOW_INSECURE_PROVIDER_HTTP:
+        log_event("provider.insecure_http", "ยอมส่ง API key ผ่าน http ตาม AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP", host=host)
+        return
+    raise RuntimeError(
+        f"ปฏิเสธการส่ง API key ผ่าน http ไปยัง {host or 'host ที่ไม่รู้จัก'} "
+        "— ใช้ https หรือตั้ง AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP=1 สำหรับเซิร์ฟเวอร์ที่เชื่อถือได้"
+    )
+
+
+def provider_models_get(
+    url: str,
+    *,
+    timeout: float,
+    headers: dict[str, str] | None = None,
+    params: dict[str, str] | None = None,
+) -> requests.Response:
+    """GET a provider model list without following redirects.
+
+    requests drops the Authorization header on a cross-host redirect but keeps
+    custom headers such as x-api-key, so a redirecting endpoint could hand the
+    key to another origin. A 3xx answer is treated as a failed fetch instead.
+    """
+    ensure_secure_model_endpoint(url)
+    response = requests.get(
+        url,
+        headers=headers,
+        params=params,
+        timeout=timeout,
+        allow_redirects=False,
+    )
+    if 300 <= response.status_code < 400:
+        raise RuntimeError(
+            f"ปลายทางตอบกลับ HTTP {response.status_code} (redirect) — ไม่ส่งต่อ API key ตาม redirect"
+        )
+    response.raise_for_status()
+    return response
+
+
+def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) -> list[dict[str, str]]:
     """Fetch the available models for a provider, using its API key."""
     provider = normalize_provider(provider)
     key = get_api_key(provider, settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า API key จึงดึงรายการโมเดลไม่ได้")
     if provider == "gemini":
-        response = requests.get(f"{get_base_url('gemini', settings)}/models", params={"key": key}, timeout=30)
-        response.raise_for_status()
+        response = provider_models_get(
+            f"{get_base_url('gemini', settings)}/models",
+            params={"key": key},
+            timeout=timeout,
+        )
         models = response.json().get("models", [])
         return [{"id": item["name"].removeprefix("models/"), "name": item.get("displayName", item["name"])} for item in models if "generateContent" in item.get("supportedGenerationMethods", [])]
     if provider == "anthropic":
         try:
-            response = requests.get(
+            response = provider_models_get(
                 f"{get_base_url('anthropic', settings)}/models",
                 headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
-                timeout=30,
+                timeout=timeout,
             )
-            response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "?"
             raise RuntimeError(f"Anthropic ตอบกลับ HTTP {status} — ตรวจสอบ API key อีกครั้ง") from exc
@@ -1759,10 +1826,112 @@ def list_models(provider: str, settings: dict[str, Any]) -> list[dict[str, str]]
             return models
         raise RuntimeError("Anthropic ไม่ส่งรายการโมเดลกลับมา")
     base_url = get_base_url(provider, settings)
-    response = requests.get(f"{base_url}/models", headers={"Authorization": f"Bearer {key}"}, timeout=30)
-    response.raise_for_status()
+    response = provider_models_get(
+        f"{base_url}/models",
+        headers={"Authorization": f"Bearer {key}"},
+        timeout=timeout,
+    )
     models = response.json().get("data", [])
     return [{"id": item["id"], "name": item["id"]} for item in sorted(models, key=lambda item: item.get("id", ""))]
+
+
+MODEL_LIST_CACHE_TTL = 600
+MODEL_LIST_CACHE: dict[str, tuple[float, list[str]]] = {}
+MODEL_LIST_ERROR_LOGGED: dict[str, float] = {}
+# An autocomplete never waits on the provider API: it answers from the cache or
+# the static list and lets a daemon thread refresh the real list.
+MODEL_LIST_REFRESH_TIMEOUT = 8
+MODEL_LIST_REFRESH_INTERVAL = 15
+MODEL_LIST_REFRESH_LOCK = threading.Lock()
+MODEL_LIST_REFRESH_STARTED: dict[str, float] = {}
+
+
+def remember_model_names(provider: str, names: list[str]) -> None:
+    """Cache a provider's model ids so Discord autocomplete can answer instantly."""
+    names = [name for name in names if name]
+    if names:
+        MODEL_LIST_CACHE[normalize_provider(provider)] = (time.time(), list(names))
+
+
+def forget_model_names() -> None:
+    """Drop the cached model ids and the refresh throttle for every provider.
+
+    Clearing the throttle too lets the first autocomplete after a settings
+    change refresh at once instead of waiting out the interval.
+    """
+    with MODEL_LIST_REFRESH_LOCK:
+        MODEL_LIST_CACHE.clear()
+        MODEL_LIST_REFRESH_STARTED.clear()
+
+
+def static_model_names(provider: str, settings: dict[str, Any]) -> list[str]:
+    """Return the fallback model ids, with the model in use listed first."""
+    names = list(FALLBACK_MODELS.get(provider, []))
+    active_provider = normalize_provider(settings.get("provider", "openai"))
+    active_model = str(settings.get("model") or "").strip()
+    if active_provider == provider and active_model and active_model not in names:
+        names.insert(0, active_model)
+    return names
+
+
+def refresh_model_names(provider: str, settings: dict[str, Any]) -> None:
+    """Fetch a provider's model ids so the next autocomplete has the real list."""
+    provider = normalize_provider(provider)
+    names: list[str] = []
+    try:
+        names = [
+            str(item.get("id", ""))
+            for item in list_models(provider, settings, timeout=MODEL_LIST_REFRESH_TIMEOUT)
+            if item.get("id")
+        ]
+    except (requests.RequestException, RuntimeError, KeyError, TypeError, ValueError) as exc:
+        last_logged = MODEL_LIST_ERROR_LOGGED.get(provider, 0)
+        if time.time() - last_logged > 60:
+            MODEL_LIST_ERROR_LOGGED[provider] = time.time()
+            log_event(
+                "discord.models",
+                "ดึงรายการโมเดลใน background ไม่สำเร็จ ใช้รายการสำรองแทน",
+                provider=provider,
+                error=str(exc)[:200],
+            )
+    if names:
+        remember_model_names(provider, names)
+
+
+def schedule_model_list_refresh(provider: str, settings: dict[str, Any]) -> None:
+    """Refresh one provider's model ids in a daemon thread, at most every 15s."""
+    provider = normalize_provider(provider)
+    now = time.time()
+    with MODEL_LIST_REFRESH_LOCK:
+        started = MODEL_LIST_REFRESH_STARTED.get(provider)
+        if started is not None and now - started < MODEL_LIST_REFRESH_INTERVAL:
+            return
+        MODEL_LIST_REFRESH_STARTED[provider] = now
+    threading.Thread(
+        target=refresh_model_names,
+        args=(provider, settings),
+        name=f"model-refresh-{provider}",
+        daemon=True,
+    ).start()
+
+
+def model_names_for_autocomplete(provider: str, settings: dict[str, Any]) -> list[str]:
+    """Return model ids immediately, refreshing a missing or stale list in the background.
+
+    Discord closes an autocomplete request after about three seconds, so this
+    never calls the provider API itself: it answers from the cache, then from a
+    stale cache, then from the static list, and the real list arrives through
+    :func:`schedule_model_list_refresh` for the next keystroke.
+    """
+    provider = normalize_provider(provider)
+    cached = MODEL_LIST_CACHE.get(provider)
+    if cached and time.time() - cached[0] < MODEL_LIST_CACHE_TTL:
+        return list(cached[1])
+    schedule_model_list_refresh(provider, settings)
+    if cached:
+        # A stale list still beats the static one while the refresh runs.
+        return list(cached[1])
+    return static_model_names(provider, settings)
 
 
 def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
@@ -2269,6 +2438,11 @@ def start_discord_bot() -> None:
     intents.message_content = True
     prefix = str(settings.get("discord_prefix") or "!ai").strip() or "!ai"
     commands_synced = False
+    # A reconnect fires READY again, so the pass is serialised and records each
+    # guild only after its own sync returned.
+    sync_state_lock = asyncio.Lock()
+    synced_guilds: set[int] = set()
+    GUILD_SYNC_ATTEMPTS = 3
 
     class AccessControlledCommandTree(discord.app_commands.CommandTree):
         """Reject slash commands from channels or users outside the allowlists."""
@@ -2290,13 +2464,54 @@ def start_discord_bot() -> None:
         async def on_ready(self) -> None:
             """Sync slash commands once and log the successful connection."""
             nonlocal commands_synced
-            if not commands_synced:
-                try:
-                    await command_tree.sync()
-                    commands_synced = True
-                    log_event("discord.commands", "ลงทะเบียน Discord slash commands แล้ว")
-                except Exception as exc:
-                    log_event("discord.error", "ลงทะเบียน Discord slash commands ไม่สำเร็จ", error=str(exc))
+            unsynced = 0
+            # Overlapping READY events must not write the same guild twice, so
+            # the whole pass runs under one lock and rechecks the per-guild state.
+            async with sync_state_lock:
+                if not commands_synced:
+                    try:
+                        await command_tree.sync()
+                        commands_synced = True
+                        log_event("discord.commands", "ลงทะเบียน Discord slash commands แล้ว")
+                    except Exception as exc:
+                        log_event("discord.error", "ลงทะเบียน Discord slash commands ไม่สำเร็จ", error=str(exc))
+                # Global commands can take up to an hour to reach a client, while a
+                # guild sync shows up immediately, so every guild gets its own copy.
+                pending = [guild for guild in self.guilds if guild.id not in synced_guilds]
+                failures: list[str] = []
+                for guild in pending:
+                    server = discord.Object(id=guild.id)
+                    last_error = ""
+                    for attempt in range(1, GUILD_SYNC_ATTEMPTS + 1):
+                        try:
+                            # sync(guild=...) only sends guild-scoped commands, so
+                            # the global ones have to be copied there first.
+                            command_tree.copy_global_to(guild=server)
+                            await command_tree.sync(guild=server)
+                        except Exception as exc:
+                            last_error = f"{guild.id}: {exc}"
+                            if attempt < GUILD_SYNC_ATTEMPTS:
+                                await asyncio.sleep(2 ** (attempt - 1))
+                        else:
+                            synced_guilds.add(guild.id)
+                            break
+                    else:
+                        failures.append(last_error)
+                if pending:
+                    details: dict[str, Any] = {"servers": len(self.guilds), "synced": len(synced_guilds)}
+                    if failures:
+                        details["failed"] = "; ".join(failures)[:300]
+                    log_event("discord.commands", "ลงทะเบียน slash commands ระดับ server แล้ว", **details)
+                # A guild that never succeeded is retried on the next READY event.
+                unsynced = len(self.guilds) - len(synced_guilds)
+            if unsynced:
+                log_event(
+                    "discord.error",
+                    "ลงทะเบียน slash commands บาง server ไม่สำเร็จ จะลองใหม่เมื่อเชื่อมต่อครั้งถัดไป",
+                    unsynced=unsynced,
+                )
+            settings = load_settings()
+            schedule_model_list_refresh(settings.get("provider", "openai"), settings)
             log_event("discord.connected", "เชื่อมต่อ Discord bot แล้ว", user=str(self.user))
 
         async def on_message(self, message: Any) -> None:
@@ -2508,14 +2723,16 @@ def start_discord_bot() -> None:
     async def model_autocomplete(interaction: Any, current_text: str) -> list[Any]:
         """Provide model id autocomplete choices for Discord commands."""
         settings = load_settings()
-        selected = getattr(getattr(interaction, "namespace", None), "provider", settings.get("provider", "openai"))
-        selected_provider = selected.value if hasattr(selected, "value") else selected
-        selected_provider = normalize_provider(selected_provider)
+        selected = getattr(getattr(interaction, "namespace", None), "provider", None)
+        # Namespace returns None for an option the user has not filled in yet.
+        selected = getattr(selected, "value", selected) or settings.get("provider", "openai")
+        selected_provider = normalize_provider(selected)
         try:
-            models = await asyncio.to_thread(list_models, selected_provider, settings)
-            names = [str(item.get("id", "")) for item in models if item.get("id")]
-        except Exception:
-            names = FALLBACK_MODELS.get(selected_provider, [])
+            # Answers from memory: a provider fetch would risk Discord's 3s limit.
+            names = model_names_for_autocomplete(selected_provider, settings)
+        except Exception as exc:
+            log_event("discord.models", "autocomplete ของ model ล้มเหลว", error=str(exc)[:200])
+            names = list(FALLBACK_MODELS.get(selected_provider, []))
         query = str(current_text or "").strip().lower()
         return [
             discord.app_commands.Choice(name=name[:100], value=name[:100])
@@ -2543,6 +2760,7 @@ def start_discord_bot() -> None:
             try:
                 current = load_settings()
                 available = await asyncio.to_thread(list_models, selected_provider, current)
+                remember_model_names(selected_provider, [item["id"] for item in available])
                 current_model = current.get("model") if current.get("provider") == selected_provider else ""
                 names = [item["id"] for item in available[:25]]
                 listing = "\n".join(
@@ -3715,6 +3933,7 @@ def models_response(provider: str, settings: dict[str, Any]):
     """Build the model list response shared by the GET and POST model endpoints."""
     try:
         models = list_models(provider, settings)
+        remember_model_names(provider, [str(item.get("id", "")) for item in models])
         return jsonify({"provider": provider, "models": models, "source": "api"})
     except (requests.RequestException, RuntimeError, KeyError, TypeError):
         fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
@@ -3897,6 +4116,8 @@ def settings_reset():
     if SETTINGS_FILE.exists():
         SETTINGS_FILE.unlink()
     STATUS_CACHE.clear()
+    forget_model_names()
+    MODEL_LIST_ERROR_LOGGED.clear()
     return jsonify({"ok": True})
 
 
