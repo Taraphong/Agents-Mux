@@ -477,6 +477,7 @@ const I18N = {
     "attachment.tooLarge": "ไฟล์ใหญ่เกิน 1 MB",
     "attachment.binaryTooLarge": "ไฟล์ใหญ่เกิน 6 MB",
     "attachment.readFailed": "อ่านไฟล์ไม่สำเร็จ",
+    "attachment.unsupported": "ไม่รองรับไฟล์ชนิดนี้",
     "attachment.clear": "ยกเลิกไฟล์แนบ",
     "common.close": "ปิด",
     "gemini.title": "ความสามารถของคีย์ Gemini",
@@ -518,6 +519,7 @@ const I18N = {
     "gemini.badQuestions": "Questions ต้องเป็น JSON ที่ถูกต้อง",
     "gemini.loadFailed": "ตรวจสอบไม่สำเร็จ",
     "gemini.ready": "พร้อมใช้",
+    "gemini.unverified": "ยังไม่ได้ยืนยัน",
     "gemini.unavailable": "ไม่พบ",
     "gemini.group.multimodal": "Multi-modal generative models",
     "gemini.group.live": "Live API",
@@ -1045,6 +1047,7 @@ const I18N = {
     "attachment.tooLarge": "File is larger than 1 MB",
     "attachment.binaryTooLarge": "File is larger than 6 MB",
     "attachment.readFailed": "Could not read the file",
+    "attachment.unsupported": "This file type is not supported",
     "attachment.clear": "Remove attachment",
     "common.close": "Close",
     "gemini.title": "Gemini key capabilities",
@@ -1086,6 +1089,7 @@ const I18N = {
     "gemini.badQuestions": "Questions must be valid JSON",
     "gemini.loadFailed": "Could not check the key",
     "gemini.ready": "Ready",
+    "gemini.unverified": "Unverified",
     "gemini.unavailable": "Not found",
     "gemini.group.multimodal": "Multi-modal generative models",
     "gemini.group.live": "Live API",
@@ -1223,6 +1227,7 @@ let pendingAttachment = null;
 const geminiSettings = { liveModel: "", agent: "", decisionModel: "" };
 let geminiCapabilityReport = null;
 let geminiCapabilityLoading = false;
+let geminiCapabilityRequest = 0;
 const liveState = {
   ws: null,
   mic: null,
@@ -1232,6 +1237,12 @@ const liveState = {
   playAt: 0,
   inputLine: null,
   outputLine: null,
+  // The reserved attempt covers the token request and the permission prompt,
+  // so Stop can cancel a session that does not own a socket yet.
+  attempt: null,
+  // Translated phase (starting/listening/idle) kept apart from the socket.
+  phase: "idle",
+  sources: [],
 };
 let typingIndicator = null;
 let typingTicker = null;
@@ -2752,12 +2763,54 @@ function readFileAsDataUrl(file) {
     reader.readAsDataURL(file);
   });
 }
+// Browsers do not always report a MIME type, so a known extension supplies one
+// and an unknown type is rejected instead of being decoded as text.
+const BINARY_EXTENSION_TYPES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".heic": "image/heic",
+  ".mp3": "audio/mpeg",
+  ".m4a": "audio/mp4",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".pdf": "application/pdf",
+};
+const TEXT_EXTENSION_TYPES = {
+  ".txt": "text/plain",
+  ".md": "text/plain",
+  ".log": "text/plain",
+  ".json": "application/json",
+  ".csv": "text/plain",
+  ".yaml": "text/plain",
+  ".yml": "text/plain",
+  ".xml": "text/plain",
+  ".html": "text/plain",
+  ".css": "text/plain",
+  ".js": "text/plain",
+  ".py": "text/plain",
+  ".ts": "text/plain",
+};
+function fileMimeType(file) {
+  const reported = (file.type || "").toLowerCase();
+  if (reported) return reported;
+  const name = String(file.name || "").toLowerCase();
+  const dot = name.lastIndexOf(".");
+  if (dot === -1) return "";
+  const extension = name.slice(dot);
+  return BINARY_EXTENSION_TYPES[extension] || TEXT_EXTENSION_TYPES[extension] || "";
+}
 $("file-input").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   attachmentRequestToken += 1;
   const requestToken = attachmentRequestToken;
-  const type = (file.type || "").toLowerCase();
+  const type = fileMimeType(file);
   // Images, audio, video and PDFs travel inline as multimodal parts; text
   // files keep the older plain-text attachment path.
   const isBinary =
@@ -2765,6 +2818,13 @@ $("file-input").addEventListener("change", async (event) => {
     type.startsWith("audio/") ||
     type.startsWith("video/") ||
     type === "application/pdf";
+  if (!isBinary && !type) {
+    pendingAttachment = null;
+    $("attachment-name").textContent = t("attachment.unsupported");
+    $("attachment-chip").hidden = false;
+    event.target.value = "";
+    return;
+  }
   const maxBytes = isBinary ? 6 * 1024 * 1024 : 1024 * 1024;
   if (file.size > maxBytes) {
     $("attachment-name").textContent = t(
@@ -3073,6 +3133,7 @@ async function sendChatMessage(content, requestedSkills = null) {
       thinking_level: $("chat-thinking-level").value,
       command_mode: $("chat-command-mode").value,
       model: $("chat-model-select").value,
+      lang: currentLanguage,
     };
     if (skills?.length) payload.skills = skills;
     const r = await fetch("/api/chat", {
@@ -5081,6 +5142,10 @@ function applyStaticTranslations() {
   $("language-display").textContent =
     currentLanguage === "th" ? "TH" : "EN";
 }
+function isConversationalLiveModel(name) {
+  // Transcription and translation Live models cannot hold a voice chat.
+  return Boolean(name) && !/transcribe|translate/i.test(name);
+}
 function renderGeminiLiveModels(models = [], defaultModel = "") {
   const select = $("gemini-live-model");
   if (!select) return;
@@ -5091,12 +5156,14 @@ function renderGeminiLiveModels(models = [], defaultModel = "") {
   automatic.textContent = t("gemini.defaultModel");
   select.appendChild(automatic);
   const names = (Array.isArray(models) ? models : []).filter(
-    (name) =>
-      name &&
-      !name.toLowerCase().includes("transcribe") &&
-      !name.toLowerCase().includes("translate"),
+    isConversationalLiveModel,
   );
-  if (defaultModel && !names.includes(defaultModel)) names.unshift(defaultModel);
+  if (
+    isConversationalLiveModel(defaultModel) &&
+    !names.includes(defaultModel)
+  ) {
+    names.unshift(defaultModel);
+  }
   if (current && !names.includes(current)) names.unshift(current);
   for (const name of names) {
     if (!name) continue;
@@ -5105,12 +5172,9 @@ function renderGeminiLiveModels(models = [], defaultModel = "") {
     option.textContent = name;
     select.appendChild(option);
   }
-  select.value =
-    current && names.includes(current)
-      ? current
-      : defaultModel && names.includes(defaultModel)
-        ? defaultModel
-        : "";
+  // A blank saved model keeps Automatic selected; the server resolves the
+  // discovered default when a session starts.
+  select.value = current && names.includes(current) ? current : "";
 }
 function renderGeminiCapabilities(report = geminiCapabilityReport) {
   const host = $("gemini-capabilities");
@@ -5143,8 +5207,17 @@ function renderGeminiCapabilities(report = geminiCapabilityReport) {
     label.className = "gemini-group-label";
     label.textContent = t(`gemini.group.${groupKey}`);
     const state = document.createElement("span");
-    state.className = `gemini-status ${group.ready ? "ready" : "missing"}`;
-    state.textContent = group.ready ? t("gemini.ready") : t("gemini.unavailable");
+    // Preset agent ids are suggestions until discovery proves the key can
+    // reach them, so they are not shown as available on their own.
+    const unverified = groupKey === "agents" && !group.verified;
+    state.className = `gemini-status ${
+      unverified ? "unknown" : group.ready ? "ready" : "missing"
+    }`;
+    state.textContent = unverified
+      ? t("gemini.unverified")
+      : group.ready
+        ? t("gemini.ready")
+        : t("gemini.unavailable");
     const detail = document.createElement("small");
     detail.textContent = (group.models || []).slice(0, 4).join(", ");
     row.append(label, state, detail);
@@ -5156,7 +5229,9 @@ function renderGeminiCapabilities(report = geminiCapabilityReport) {
   );
 }
 async function loadGeminiCapabilities(force = false) {
-  if (geminiCapabilityLoading) return;
+  // A newer request supersedes a pending one, so a probe started for the
+  // previous key can never render its result against the saved settings.
+  const request = ++geminiCapabilityRequest;
   geminiCapabilityLoading = true;
   const host = $("gemini-capabilities");
   if (host) {
@@ -5170,16 +5245,65 @@ async function loadGeminiCapabilities(force = false) {
     const response = await fetch(
       `/api/gemini/capabilities?lang=${currentLanguage}${force ? "&refresh=1" : ""}`,
     );
-    geminiCapabilityReport = await response.json();
+    const report = await response.json();
+    if (request !== geminiCapabilityRequest) return;
+    geminiCapabilityReport = report;
   } catch (error) {
+    if (request !== geminiCapabilityRequest) return;
     geminiCapabilityReport = { error: t("gemini.loadFailed") };
   } finally {
-    geminiCapabilityLoading = false;
-    renderGeminiCapabilities(geminiCapabilityReport);
+    if (request === geminiCapabilityRequest) {
+      geminiCapabilityLoading = false;
+      renderGeminiCapabilities(geminiCapabilityReport);
+    }
+  }
+}
+let geminiToolsReturnFocus = null;
+function geminiToolsFocusable() {
+  const modal = $("gemini-modal");
+  return Array.from(
+    modal.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => element.offsetParent !== null);
+}
+function trapGeminiToolsFocus(event) {
+  const modal = $("gemini-modal");
+  if (!modal.classList.contains("open")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeGeminiTools();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const items = geminiToolsFocusable();
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (!modal.contains(document.activeElement)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  } else if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
   }
 }
 function openGeminiTools() {
-  $("gemini-modal").classList.add("open");
+  const modal = $("gemini-modal");
+  geminiToolsReturnFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : $("gemini-tools-button");
+  modal.classList.add("open");
+  document.addEventListener("keydown", trapGeminiToolsFocus);
+  const title = $("gemini-modal-title");
+  if (title) {
+    title.tabIndex = -1;
+    title.focus();
+  }
   if (!$("gemini-agent-id").value) {
     $("gemini-agent-id").value = "antigravity-preview-09-2026";
   }
@@ -5207,7 +5331,17 @@ function openGeminiTools() {
   if (!geminiCapabilityReport) loadGeminiCapabilities();
 }
 function closeGeminiTools() {
-  $("gemini-modal").classList.remove("open");
+  const modal = $("gemini-modal");
+  if (!modal.classList.contains("open")) return;
+  // The dialog holds the only Stop control, so closing it must not leave the
+  // microphone capturing audio.
+  stopGeminiLive(true);
+  liveSetStatus("");
+  modal.classList.remove("open");
+  document.removeEventListener("keydown", trapGeminiToolsFocus);
+  const target = geminiToolsReturnFocus || $("gemini-tools-button");
+  geminiToolsReturnFocus = null;
+  if (target && typeof target.focus === "function") target.focus();
 }
 async function runGeminiDecisions() {
   const button = $("gemini-decision-run");
@@ -5286,6 +5420,35 @@ function liveSetStatus(text) {
   const status = $("gemini-live-status");
   if (status) status.textContent = text;
 }
+function liveSetPhase(phase) {
+  // Keep the phase itself translatable so a language switch never shows
+  // Listening while the microphone permission is still pending.
+  liveState.phase = phase;
+  const toggle = $("gemini-live-toggle");
+  const status = $("gemini-live-status");
+  if (phase === "listening") {
+    if (toggle) toggle.textContent = t("gemini.liveStop");
+    if (status) status.textContent = t("gemini.liveListening");
+  } else if (phase === "starting") {
+    if (toggle) toggle.textContent = t("gemini.liveStarting");
+    if (status) status.textContent = t("gemini.liveStarting");
+  } else if (toggle) {
+    toggle.textContent = t("gemini.liveStart");
+  }
+}
+function liveAttemptActive(attempt) {
+  return Boolean(attempt) && liveState.attempt === attempt && !attempt.cancelled;
+}
+function stopLivePlayback() {
+  for (const source of liveState.sources.splice(0)) {
+    try {
+      source.stop();
+    } catch (error) {
+      /* already stopped */
+    }
+  }
+  liveState.playAt = 0;
+}
 function liveTranscriptLine(which) {
   const box = $("gemini-live-transcript");
   box.hidden = false;
@@ -5315,6 +5478,11 @@ function playLiveAudio(encoded, mimeType) {
     if (!AudioCtor) return;
     if (!liveState.outCtx) liveState.outCtx = new AudioCtor();
     const context = liveState.outCtx;
+    if (context.state === "suspended") {
+      // Playback starts after the click that opened the dialog, so the context
+      // can still be suspended; resume it rather than dropping the audio.
+      context.resume().catch(() => {});
+    }
     const buffer = context.createBuffer(1, samples.length, rate || 24000);
     const channel = buffer.getChannelData(0);
     for (let index = 0; index < samples.length; index += 1) {
@@ -5323,16 +5491,46 @@ function playLiveAudio(encoded, mimeType) {
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.connect(context.destination);
+    source.onended = () => {
+      const index = liveState.sources.indexOf(source);
+      if (index !== -1) liveState.sources.splice(index, 1);
+    };
     const startAt = Math.max(context.currentTime + 0.02, liveState.playAt);
     source.start(startAt);
+    liveState.sources.push(source);
     liveState.playAt = startAt + buffer.duration;
   } catch (error) {
     console.warn("live audio", error);
   }
 }
-function handleLiveMessage(data) {
+function waitForLiveSetup(attempt) {
+  // The Live protocol requires waiting for setupComplete before any input.
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(t("gemini.liveError")));
+    }, 15000);
+    attempt.resolveSetup = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    attempt.rejectSetup = (error) => {
+      clearTimeout(timer);
+      reject(error);
+    };
+  });
+}
+function handleLiveMessage(data, attempt) {
+  if (data?.setupComplete) {
+    attempt.setupComplete = true;
+    attempt.resolveSetup?.();
+  }
   const content = data?.serverContent;
   if (!content) return;
+  if (content.interrupted) {
+    // The user interrupted the reply, so queued audio must not keep playing
+    // behind the new turn.
+    stopLivePlayback();
+  }
   if (content.inputTranscription?.text) {
     liveTranscriptLine("input").textContent += content.inputTranscription.text;
   }
@@ -5351,10 +5549,20 @@ function handleLiveMessage(data) {
     liveState.outputLine = null;
   }
 }
-async function startLiveMicrophone(ws) {
+// A backlog this large means the link cannot keep up with live audio, so new
+// frames are dropped instead of queueing stale speech.
+const LIVE_MAX_BUFFERED_BYTES = 1024 * 1024;
+async function startLiveMicrophone(attempt) {
   const mic = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   });
+  if (!liveAttemptActive(attempt)) {
+    // Stop was pressed while the permission prompt was open, so this stream
+    // belongs to a finished session and must not hold the microphone open.
+    mic.getTracks().forEach((track) => track.stop());
+    return;
+  }
+  attempt.mic = mic;
   liveState.mic = mic;
   const AudioCtor = window.AudioContext || window.webkitAudioContext;
   let context;
@@ -5363,19 +5571,36 @@ async function startLiveMicrophone(ws) {
   } catch (error) {
     context = new AudioCtor();
   }
+  attempt.micCtx = context;
   liveState.micCtx = context;
+  if (context.state === "suspended") {
+    // The context is created after the click and after the permission prompt,
+    // so it can start suspended and would deliver no microphone audio.
+    try {
+      await context.resume();
+    } catch (error) {
+      /* the active check below still reports the session */
+    }
+  }
+  const socket = attempt.ws;
+  if (!liveAttemptActive(attempt) || !socket) {
+    mic.getTracks().forEach((track) => track.stop());
+    return;
+  }
   const source = context.createMediaStreamSource(mic);
   const node = context.createScriptProcessor(4096, 1, 1);
   const rate = Math.round(context.sampleRate || 16000);
   node.onaudioprocess = (event) => {
-    if (!liveState.ws || liveState.ws.readyState !== WebSocket.OPEN) return;
+    if (!liveAttemptActive(attempt) || !attempt.setupComplete) return;
+    if (socket.readyState !== WebSocket.OPEN) return;
+    if (socket.bufferedAmount > LIVE_MAX_BUFFERED_BYTES) return;
     const input = event.inputBuffer.getChannelData(0);
     const pcm = new Int16Array(input.length);
     for (let index = 0; index < input.length; index += 1) {
       const value = Math.max(-1, Math.min(1, input[index]));
       pcm[index] = value < 0 ? value * 0x8000 : value * 0x7fff;
     }
-    liveState.ws.send(
+    socket.send(
       JSON.stringify({
         realtimeInput: {
           audio: {
@@ -5388,13 +5613,24 @@ async function startLiveMicrophone(ws) {
   };
   source.connect(node);
   node.connect(context.destination);
+  attempt.node = node;
   liveState.node = node;
 }
 function stopGeminiLive(silent = false) {
+  const attempt = liveState.attempt;
+  liveState.attempt = null;
+  if (attempt) {
+    attempt.cancelled = true;
+    // Settle a pending setup wait so the start flow unwinds instead of
+    // leaving a half-open session behind.
+    attempt.rejectSetup?.(new Error("stopped"));
+  }
   const ws = liveState.ws;
   liveState.ws = null;
   if (ws) {
     ws.onclose = null;
+    ws.onmessage = null;
+    ws.onerror = null;
     try {
       ws.close();
     } catch (error) {
@@ -5407,36 +5643,56 @@ function stopGeminiLive(silent = false) {
   liveState.mic = null;
   liveState.micCtx?.close();
   liveState.micCtx = null;
+  stopLivePlayback();
   liveState.outCtx?.close();
   liveState.outCtx = null;
-  liveState.playAt = 0;
   liveState.inputLine = null;
   liveState.outputLine = null;
+  liveState.phase = "idle";
   const toggle = $("gemini-live-toggle");
   if (toggle) toggle.textContent = t("gemini.liveStart");
   if (!silent) liveSetStatus(t("gemini.liveStopped"));
 }
-async function openLiveSocket(token) {
+async function openLiveSocket(token, attempt) {
   const ws = new WebSocket(
     `${token.ws_url}?access_token=${encodeURIComponent(token.token)}`,
   );
+  attempt.ws = ws;
   liveState.ws = ws;
   await new Promise((resolve, reject) => {
     ws.onopen = resolve;
     ws.onerror = () => reject(new Error(t("gemini.liveError")));
   });
+  if (!liveAttemptActive(attempt)) {
+    try {
+      ws.close();
+    } catch (error) {
+      /* already closed */
+    }
+    return;
+  }
   // Attach the handlers before sending setup so an early server message or a
   // close during setup still reaches the transcript and stops the microphone.
   ws.onmessage = async (event) => {
     const text =
       typeof event.data === "string" ? event.data : await event.data.text();
+    let data;
     try {
-      handleLiveMessage(JSON.parse(text));
+      data = JSON.parse(text);
     } catch (error) {
-      /* ignore non-JSON frames */
+      return; // ignore non-JSON frames
     }
+    handleLiveMessage(data, attempt);
   };
-  ws.onclose = () => stopGeminiLive();
+  ws.onclose = () => {
+    if (liveAttemptActive(attempt)) stopGeminiLive();
+  };
+  ws.onerror = () => {
+    if (!liveAttemptActive(attempt)) return;
+    liveSetStatus(t("gemini.liveError"));
+    stopGeminiLive(true);
+  };
+  const ready = waitForLiveSetup(attempt);
   ws.send(
     JSON.stringify({
       setup: {
@@ -5455,12 +5711,15 @@ async function openLiveSocket(token) {
       },
     }),
   );
-  await startLiveMicrophone(ws);
-  $("gemini-live-toggle").textContent = t("gemini.liveStop");
-  liveSetStatus(t("gemini.liveListening"));
+  // Audio must not start before Gemini acknowledges the setup message.
+  await ready;
+  if (!liveAttemptActive(attempt)) return;
+  await startLiveMicrophone(attempt);
+  if (!liveAttemptActive(attempt)) return;
+  liveSetPhase("listening");
 }
 async function startGeminiLive() {
-  if (liveState.ws) {
+  if (liveState.attempt) {
     stopGeminiLive();
     return;
   }
@@ -5468,8 +5727,12 @@ async function startGeminiLive() {
     liveSetStatus(t("gemini.liveUnsupported"));
     return;
   }
-  liveSetStatus(t("gemini.liveStarting"));
-  $("gemini-live-toggle").textContent = t("gemini.liveStarting");
+  // Reserve the attempt before the first await: a second click during the
+  // token request would otherwise open a second socket, and Stop would have
+  // nothing to cancel while the permission prompt is open.
+  const attempt = { cancelled: false, ws: null, setupComplete: false };
+  liveState.attempt = attempt;
+  liveSetPhase("starting");
   try {
     const response = await fetch("/api/gemini/live-token", {
       method: "POST",
@@ -5480,9 +5743,11 @@ async function startGeminiLive() {
       }),
     });
     const token = await response.json();
+    if (!liveAttemptActive(attempt)) return;
     if (!response.ok) throw new Error(token.error || t("gemini.liveError"));
-    await openLiveSocket(token);
+    await openLiveSocket(token, attempt);
   } catch (error) {
+    if (!liveAttemptActive(attempt)) return;
     liveSetStatus(error.message || t("gemini.liveError"));
     stopGeminiLive(true);
   }
@@ -5526,9 +5791,8 @@ function applyTranslations() {
   updateDiscordTokenHint();
   renderCustomApiKeys();
   renderGeminiCapabilities(geminiCapabilityReport);
-  if (liveState.ws) {
-    $("gemini-live-toggle").textContent = t("gemini.liveStop");
-    $("gemini-live-status").textContent = t("gemini.liveListening");
+  if (liveState.phase === "starting" || liveState.phase === "listening") {
+    liveSetPhase(liveState.phase);
   }
   if (connectionState.known) updateConnectionUi();
   renderMessages(true);

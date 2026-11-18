@@ -42,8 +42,6 @@ from werkzeug.serving import (
 
 load_dotenv()
 
-CACHE_KEY_SECRET = secrets.token_bytes(32)
-
 
 def env_int(name: str, default: int, minimum: int) -> int:
     """Read an integer environment variable, clamping invalid input to safe bounds."""
@@ -340,7 +338,10 @@ GEMINI_DEFAULT_AGENT = "antigravity-preview-09-2026"
 GEMINI_LIVE_FALLBACK_MODEL = "gemini-2.0-flash-live-001"
 GEMINI_AGENT_PRESETS = (GEMINI_DEFAULT_AGENT, "deep-research")
 GEMINI_CAPABILITY_CACHE_TTL = 300
-GEMINI_CAPABILITY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+# Each entry keeps the checked key beside the report, so a result is only reused
+# for the same key without deriving an identifier from the secret itself.
+GEMINI_CAPABILITY_CACHE: dict[str, tuple[float, str, dict[str, Any]]] = {}
+GEMINI_CAPABILITY_PROBE = 0
 GEMINI_CAPABILITY_LOCK = threading.Lock()
 # Inline multimodal parts travel in the JSON body, so a single attachment is
 # capped well below the provider limits and checked before it is forwarded.
@@ -2038,6 +2039,8 @@ STATUS_MESSAGES = {
         "gemini_agents_invalid": "ข้อมูล Agents ไม่ถูกต้อง: ต้องระบุ agent และ input",
         "gemini_live_failed": "สร้าง Live API token ไม่สำเร็จ: {detail}",
         "gemini_request_failed": "เรียก Gemini API ไม่สำเร็จ: {detail}",
+        "invalid_body": "รูปแบบข้อมูลไม่ถูกต้อง: ต้องเป็น JSON object",
+        "attachment_unsupported": "ไฟล์ {name} ({mime}) เป็นชนิดที่ผู้ให้บริการนี้ส่งไม่ได้ — ไฟล์เสียง วิดีโอ และ PDF ใช้ได้กับ Gemini หรือ Anthropic",
     },
     "en": {
         "invalid_key": "{label} API key is invalid or unauthorized",
@@ -2062,6 +2065,8 @@ STATUS_MESSAGES = {
         "gemini_agents_invalid": "Invalid Agents payload: agent and input are required",
         "gemini_live_failed": "Could not create a Live API token: {detail}",
         "gemini_request_failed": "Gemini API request failed: {detail}",
+        "invalid_body": "Invalid request body: expected a JSON object",
+        "attachment_unsupported": "{name} ({mime}) cannot be sent to this provider — audio, video, and PDF files work with Gemini or Anthropic",
     },
 }
 
@@ -2163,19 +2168,75 @@ def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[s
     return {**base, "ready": check["ready"], "reason": check["reason"], "checked": "api", "cached": check.get("cached", False)}
 
 
+def gemini_base_url(settings: dict[str, Any]) -> str:
+    """Return the Gemini endpoint used by discovery and the Gemini tools.
+
+    ``base_url`` belongs to the active chat provider, so it is only reused when
+    Gemini itself is that provider. Otherwise the saved Gemini key would travel
+    to an unrelated OpenAI-compatible endpoint.
+    """
+    stored = str(settings.get("base_url") or "").strip().rstrip("/")
+    if stored and normalize_provider(settings.get("provider")) == "gemini":
+        return stored
+    return PROVIDER_BASE_URLS["gemini"].rstrip("/")
+
+
+def gemini_post(
+    path: str,
+    settings: dict[str, Any],
+    key: str,
+    payload: dict[str, Any],
+    timeout: float,
+) -> requests.Response:
+    """POST to the Gemini API without handing the key to a redirect target.
+
+    The key travels in ``x-goog-api-key``, which requests keeps on a
+    cross-origin redirect, so the call must be HTTPS and a 3xx answer is a
+    failure instead of a new destination.
+    """
+    url = f"{gemini_base_url(settings)}{path}"
+    ensure_secure_model_endpoint(url)
+    response = requests.post(
+        url,
+        headers={"x-goog-api-key": key},
+        json=payload,
+        timeout=timeout,
+        allow_redirects=False,
+    )
+    if 300 <= response.status_code < 400:
+        raise RuntimeError(
+            f"ปลายทางตอบกลับ HTTP {response.status_code} (redirect) — ไม่ส่งต่อ API key ตาม redirect"
+        )
+    response.raise_for_status()
+    return response
+
+
 def gemini_model_metadata(settings: dict[str, Any], timeout: float = 30) -> list[dict[str, Any]]:
     """Fetch full Gemini model metadata, including supported generation methods."""
     key = get_api_key("gemini", settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า Gemini API key")
-    response = provider_models_get(
-        f"{get_base_url('gemini', settings)}/models",
-        params={"key": key, "pageSize": "1000"},
-        timeout=timeout,
-    )
-    payload = response.json()
-    models = payload.get("models") if isinstance(payload, dict) else None
-    return [item for item in models if isinstance(item, dict)] if isinstance(models, list) else []
+    models: list[dict[str, Any]] = []
+    params = {"key": key, "pageSize": "1000"}
+    seen_tokens: set[str] = set()
+    # pageSize only bounds a single page, so follow nextPageToken until the
+    # catalog ends; a repeated token would otherwise loop forever.
+    for _ in range(20):
+        response = provider_models_get(
+            f"{gemini_base_url(settings)}/models",
+            params=params,
+            timeout=timeout,
+        )
+        payload = response.json()
+        page = payload.get("models") if isinstance(payload, dict) else None
+        if isinstance(page, list):
+            models.extend(item for item in page if isinstance(item, dict))
+        token = payload.get("nextPageToken") if isinstance(payload, dict) else None
+        if not isinstance(token, str) or not token or token in seen_tokens:
+            break
+        seen_tokens.add(token)
+        params = {**params, "pageToken": token}
+    return models
 
 
 def gemini_feature_groups(models: list[dict[str, Any]]) -> dict[str, list[str]]:
@@ -2213,7 +2274,7 @@ def gemini_agent_presets(settings: dict[str, Any]) -> tuple[list[str], bool]:
         return names, False
     try:
         response = provider_models_get(
-            f"{get_base_url('gemini', settings)}/agents",
+            f"{gemini_base_url(settings)}/agents",
             headers={"x-goog-api-key": key},
             timeout=15,
         )
@@ -2227,23 +2288,33 @@ def gemini_agent_presets(settings: dict[str, Any]) -> tuple[list[str], bool]:
             if isinstance(item, dict)
         ]
         listed = [name for name in listed if name]
-        return (listed or names), True
+        # Presets stay suggestions: only a non-empty /agents answer proves the
+        # key can reach managed agents.
+        return (listed or names), bool(listed)
     except (requests.RequestException, RuntimeError, ValueError, KeyError):
         return names, False
 
 
 def gemini_capabilities(settings: dict[str, Any], language: str = "en", force: bool = False) -> dict[str, Any]:
     """Report which Gemini feature groups the configured key can reach."""
+    global GEMINI_CAPABILITY_PROBE
     key = get_api_key("gemini", settings)
     if not key:
         return {"ready": False, "error": status_message(language, "gemini_key_missing"), "groups": {}}
-    cache_message = f"gemini|{get_base_url('gemini', settings)}|{key}".encode("utf-8")
-    cache_key = hmac.new(CACHE_KEY_SECRET, cache_message, hashlib.sha256).hexdigest()
+    cache_key = gemini_base_url(settings)
     now = time.time()
     with GEMINI_CAPABILITY_LOCK:
         cached = GEMINI_CAPABILITY_CACHE.get(cache_key)
-        if cached and not force and now - cached[0] < GEMINI_CAPABILITY_CACHE_TTL:
-            return cached[1]
+        if (
+            cached
+            and not force
+            and now - cached[0] < GEMINI_CAPABILITY_CACHE_TTL
+            and same_secret(cached[1], key)
+        ):
+            return cached[2]
+        # Claim the probe so a slow, older probe cannot publish over this one.
+        GEMINI_CAPABILITY_PROBE += 1
+        probe_id = GEMINI_CAPABILITY_PROBE
     try:
         models = gemini_model_metadata(settings)
     except (requests.RequestException, RuntimeError, ValueError, KeyError) as exc:
@@ -2253,7 +2324,8 @@ def gemini_capabilities(settings: dict[str, Any], language: str = "en", force: b
             "groups": {},
         }
         with GEMINI_CAPABILITY_LOCK:
-            GEMINI_CAPABILITY_CACHE[cache_key] = (now, result)
+            if probe_id == GEMINI_CAPABILITY_PROBE:
+                GEMINI_CAPABILITY_CACHE[cache_key] = (now, key, result)
         return result
     raw_groups = gemini_feature_groups(models)
     agent_names, agents_verified = gemini_agent_presets(settings)
@@ -2284,10 +2356,13 @@ def gemini_capabilities(settings: dict[str, Any], language: str = "en", force: b
         (name for name in conversation_live if name.lower().endswith("-live")),
         next(
             (name for name in conversation_live if "native-audio" in name.lower()),
-            conversation_live[0] if conversation_live
-            else (live_models[0] if live_models else GEMINI_LIVE_FALLBACK_MODEL),
+            conversation_live[0] if conversation_live else "",
         ),
     )
+    if live_models and not conversation_live:
+        # Only transcription/translation Live models are reachable, so voice
+        # chat is unavailable instead of silently using one of them.
+        groups["live"] = {"ready": False, "models": [], "count": 0}
     result = {
         "ready": bool(models),
         "groups": groups,
@@ -2298,7 +2373,8 @@ def gemini_capabilities(settings: dict[str, Any], language: str = "en", force: b
         ),
     }
     with GEMINI_CAPABILITY_LOCK:
-        GEMINI_CAPABILITY_CACHE[cache_key] = (now, result)
+        if probe_id == GEMINI_CAPABILITY_PROBE:
+            GEMINI_CAPABILITY_CACHE[cache_key] = (now, key, result)
     return result
 
 
@@ -4396,8 +4472,34 @@ def gemini_error_detail(response: Any, api_key: str) -> str:
                 detail = str(payload.get("message") or "")
         if not detail:
             detail = str(getattr(response, "text", "") or "")
-    detail = detail[:400]
-    return redact_secrets(detail, api_key=api_key) if detail else "unknown error"
+    if not detail:
+        return "unknown error"
+    # Redact the full text first: a truncated fragment of the key would slip
+    # past the exact-match redactor and still reach the browser.
+    return redact_secrets(detail, api_key=api_key)[:400]
+
+
+def gemini_agent_answer(steps: Any) -> str:
+    """Collect the visible reply from a REST interaction's model-output steps.
+
+    ``output_text`` is an SDK convenience field; the REST payload returns the
+    answer as content on ``model_output`` steps, so tool and thought steps stay
+    out of the text shown to the user.
+    """
+    if not isinstance(steps, list):
+        return ""
+    chunks: list[str] = []
+    for step in steps:
+        if not isinstance(step, dict) or str(step.get("type") or "") != "model_output":
+            continue
+        content = step.get("content")
+        if isinstance(content, str):
+            chunks.append(content)
+            continue
+        for part in content if isinstance(content, list) else []:
+            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                chunks.append(part["text"])
+    return "".join(chunks)
 
 
 @app.get("/api/gemini/capabilities")
@@ -4412,9 +4514,11 @@ def gemini_capabilities_get():
 @app.post("/api/gemini/decisions")
 def gemini_decisions_create():
     """Evaluate structured decision questions with the Gemini Decisions API."""
-    body = request.get_json(silent=True) or {}
+    body = request.get_json(silent=True)
+    language = normalize_language(body.get("lang") if isinstance(body, dict) else None)
+    if not isinstance(body, dict):
+        return jsonify({"error": status_message(language, "invalid_body")}), 400
     settings = load_settings()
-    language = normalize_language(body.get("lang"))
     key = get_api_key("gemini", settings)
     if not key:
         return jsonify({"error": status_message(language, "gemini_key_missing")}), 400
@@ -4432,39 +4536,42 @@ def gemini_decisions_create():
     for question_id, question in questions.items():
         if not isinstance(question_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", question_id):
             return jsonify({"error": status_message(language, "gemini_decisions_invalid")}), 400
-        if not isinstance(question, dict) or question.get("type") not in {"noul", "choice", "score"}:
+        if (
+            not isinstance(question, dict)
+            or not isinstance(question.get("type"), str)
+            or question["type"] not in {"noul", "choice", "score"}
+        ):
             return jsonify({"error": status_message(language, "gemini_decisions_invalid")}), 400
         instructions = question.get("instructions")
         if not isinstance(instructions, str) or not instructions.strip():
             return jsonify({"error": status_message(language, "gemini_decisions_invalid")}), 400
         criteria = question.get("criteria")
-        if question["type"] != "noul" and not criteria:
-            return jsonify({"error": status_message(language, "gemini_decisions_invalid")}), 400
+        if question["type"] == "choice":
+            if not isinstance(criteria, dict) or not 2 <= len(criteria) <= 255:
+                return jsonify({"error": status_message(language, "gemini_decisions_invalid")}), 400
+        elif question["type"] == "score":
+            if not isinstance(criteria, list) or not 2 <= len(criteria) <= 255:
+                return jsonify({"error": status_message(language, "gemini_decisions_invalid")}), 400
         item: dict[str, Any] = {"type": question["type"], "instructions": instructions[:8000]}
-        if isinstance(criteria, dict):
+        if question["type"] == "choice":
             item["criteria"] = {
                 str(name)[:128]: str(value)[:2000]
                 for name, value in list(criteria.items())[:255]
             }
-        elif isinstance(criteria, list):
+        elif question["type"] == "score":
             item["criteria"] = [str(value)[:2000] for value in criteria[:255]]
         cleaned[question_id] = item
     model = str(body.get("model") or settings.get("gemini_decision_model") or GEMINI_DECISION_MODEL)[:100]
     payload = {"model": model, "input": input_text, "questions": cleaned}
     try:
-        response = requests.post(
-            f"{get_base_url('gemini', settings)}/decisions",
-            headers={"x-goog-api-key": key},
-            json=payload,
-            timeout=90,
-        )
-        response.raise_for_status()
+        response = gemini_post("/decisions", settings, key, payload, timeout=90)
         data = response.json()
     except requests.HTTPError as exc:
         detail = gemini_error_detail(exc.response, key)
         return jsonify({"error": status_message(language, "gemini_request_failed", detail=detail)}), 502
-    except requests.RequestException as exc:
-        return jsonify({"error": status_message(language, "gemini_request_failed", detail=exc.__class__.__name__)}), 502
+    except (requests.RequestException, RuntimeError) as exc:
+        detail = str(exc) if isinstance(exc, RuntimeError) else exc.__class__.__name__
+        return jsonify({"error": status_message(language, "gemini_request_failed", detail=redact_secrets(detail, api_key=key)[:400])}), 502
     return jsonify({
         "model": model,
         "answers": data.get("answers") if isinstance(data, dict) else {},
@@ -4475,9 +4582,11 @@ def gemini_decisions_create():
 @app.post("/api/gemini/agents")
 def gemini_agents_create():
     """Run one managed agent interaction through the Gemini Interactions API."""
-    body = request.get_json(silent=True) or {}
+    body = request.get_json(silent=True)
+    language = normalize_language(body.get("lang") if isinstance(body, dict) else None)
+    if not isinstance(body, dict):
+        return jsonify({"error": status_message(language, "invalid_body")}), 400
     settings = load_settings()
-    language = normalize_language(body.get("lang"))
     key = get_api_key("gemini", settings)
     if not key:
         return jsonify({"error": status_message(language, "gemini_key_missing")}), 400
@@ -4495,24 +4604,22 @@ def gemini_agents_create():
     if isinstance(previous, str) and previous.strip():
         payload["previous_interaction_id"] = previous.strip()[:200]
     try:
-        response = requests.post(
-            f"{get_base_url('gemini', settings)}/interactions",
-            headers={"x-goog-api-key": key},
-            json=payload,
-            timeout=300,
-        )
-        response.raise_for_status()
+        response = gemini_post("/interactions", settings, key, payload, timeout=300)
         data = response.json()
     except requests.HTTPError as exc:
         detail = gemini_error_detail(exc.response, key)
         return jsonify({"error": status_message(language, "gemini_request_failed", detail=detail)}), 502
-    except requests.RequestException as exc:
-        return jsonify({"error": status_message(language, "gemini_request_failed", detail=exc.__class__.__name__)}), 502
+    except (requests.RequestException, RuntimeError) as exc:
+        detail = str(exc) if isinstance(exc, RuntimeError) else exc.__class__.__name__
+        return jsonify({"error": status_message(language, "gemini_request_failed", detail=redact_secrets(detail, api_key=key)[:400])}), 502
     if not isinstance(data, dict):
         return jsonify({"error": status_message(language, "gemini_request_failed", detail="empty response")}), 502
     steps = data.get("steps")
+    answer = gemini_agent_answer(steps)
+    if not answer and isinstance(data.get("output_text"), str):
+        answer = data["output_text"]
     return jsonify({
-        "answer": data.get("output_text") if isinstance(data.get("output_text"), str) else "",
+        "answer": answer,
         "interaction_id": data.get("id"),
         "environment_id": data.get("environment_id"),
         "steps": steps if isinstance(steps, list) else [],
@@ -4522,9 +4629,11 @@ def gemini_agents_create():
 @app.post("/api/gemini/live-token")
 def gemini_live_token():
     """Mint a short-lived Live API token so the browser never sees the API key."""
-    body = request.get_json(silent=True) or {}
+    body = request.get_json(silent=True)
+    language = normalize_language(body.get("lang") if isinstance(body, dict) else None)
+    if not isinstance(body, dict):
+        return jsonify({"error": status_message(language, "invalid_body")}), 400
     settings = load_settings()
-    language = normalize_language(body.get("lang"))
     key = get_api_key("gemini", settings)
     if not key:
         return jsonify({"error": status_message(language, "gemini_key_missing")}), 400
@@ -4545,19 +4654,14 @@ def gemini_live_token():
         "newSessionExpireTime": (now + timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     try:
-        response = requests.post(
-            f"{get_base_url('gemini', settings)}/auth_tokens",
-            headers={"x-goog-api-key": key},
-            json=payload,
-            timeout=30,
-        )
-        response.raise_for_status()
+        response = gemini_post("/auth_tokens", settings, key, payload, timeout=30)
         data = response.json()
     except requests.HTTPError as exc:
         detail = gemini_error_detail(exc.response, key)
         return jsonify({"error": status_message(language, "gemini_live_failed", detail=detail)}), 502
-    except requests.RequestException as exc:
-        return jsonify({"error": status_message(language, "gemini_live_failed", detail=exc.__class__.__name__)}), 502
+    except (requests.RequestException, RuntimeError) as exc:
+        detail = str(exc) if isinstance(exc, RuntimeError) else exc.__class__.__name__
+        return jsonify({"error": status_message(language, "gemini_live_failed", detail=redact_secrets(detail, api_key=key)[:400])}), 502
     token = data.get("name") if isinstance(data, dict) else None
     if not isinstance(token, str) or not token.strip():
         return jsonify({"error": status_message(language, "gemini_live_failed", detail="missing token")}), 502
@@ -5056,6 +5160,28 @@ def chat():
         )
         provider = str(settings.get("provider", "openai")).lower()
         messages = clean_messages(messages, settings)
+        unsupported = None
+        if normalize_provider(provider) in {"openai", "hf", "or", "groq"}:
+            unsupported = next(
+                (
+                    item["attachment"]
+                    for item in messages
+                    if isinstance(item.get("attachment"), dict)
+                    and not str(item["attachment"].get("mime_type") or "").startswith("image/")
+                ),
+                None,
+            )
+        if unsupported:
+            # An OpenAI-compatible payload only maps images, so say the file
+            # cannot be sent instead of quietly dropping it from the prompt.
+            return jsonify({
+                "error": status_message(
+                    normalize_language(body.get("lang")),
+                    "attachment_unsupported",
+                    name=unsupported.get("name", ""),
+                    mime=unsupported.get("mime_type", ""),
+                )
+            }), 400
         started_at = time.perf_counter()
         fallback_used = None
         try:

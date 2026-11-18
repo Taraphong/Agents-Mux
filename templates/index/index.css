@@ -4981,3 +4981,10 @@ body.light-theme .gemini-result {
 body.light-theme .gemini-group small {
   color: #5b6b82;
 }
+body.light-theme .gemini-transcript p {
+  color: #26324a;
+}
+body.light-theme .gemini-status.missing {
+  color: #8a1f1f;
+  border-color: #b04a4a;
+}
