@@ -1156,6 +1156,22 @@ function getSavedLanguage() {
   return SUPPORTED_LANGUAGES.includes(saved) ? saved : "en";
 }
 let currentLanguage = getSavedLanguage();
+// Tell the server which interface language an API error should be reported in.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const url =
+    typeof input === "string"
+      ? input
+      : input instanceof Request
+        ? input.url
+        : "";
+  if (!url.includes("/api/")) return nativeFetch(input, init);
+  const options = { ...(init || {}) };
+  const headers = new Headers(options.headers || {});
+  headers.set("X-Interface-Language", currentLanguage);
+  options.headers = headers;
+  return nativeFetch(input, options);
+};
 function t(key, vars = {}) {
   const dictionary = I18N[currentLanguage] || I18N.en;
   const template = dictionary[key] ?? I18N.en[key] ?? key;
@@ -1629,7 +1645,7 @@ async function runSlashCommand(raw) {
           );
           return { handled: true };
         }
-        const disable = ["off", "none", "ปิด"].includes(
+        const disable = ["off", "none", "disabled"].includes(
           rest.toLowerCase(),
         );
         const response = await fetch("/api/settings", {
@@ -3268,8 +3284,8 @@ async function sendChatMessage(content, requestedSkills = null) {
 function scheduleStatusText(value) {
   const status = String(value || "").trim();
   if (!status) return t("schedule.neverRun");
-  if (status === "สำเร็จ") return t("schedule.success");
-  if (status === "ล้มเหลว") return t("schedule.failed");
+  if (status === "success") return t("schedule.success");
+  if (status === "failed") return t("schedule.failed");
   return status;
 }
 function renderSchedules(items) {

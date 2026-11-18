@@ -151,13 +151,13 @@ if AUTH_TRUST_PROXY:
     # request.is_secure (and the Secure session cookie) reflects the client.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 TOOL_INSTRUCTIONS = """
-คุณใช้เครื่องมือกับเครื่องนี้ได้เต็มรูปแบบ: path แบบ absolute หรือ ~/... เข้าถึงได้ทุกที่ในเครื่อง และ run_command รันผ่าน shell จริง (รวมถึง sudo ถ้าผู้ใช้ที่รันแอปมีสิทธิ์) โดยเริ่มในโฟลเดอร์โปรเจกต์
-ทุกครั้งที่เรียกเครื่องมือ ระบบจะหยุดรอให้ผู้ใช้อนุมัติในแชตก่อนเสมอ และอนุมัติได้ครั้งเดียวต่อหนึ่งคำขอ ห้ามถือว่าอนุมัติแล้วหรือข้ามการขออนุมัติ
-รูปแบบการเรียก: <tool_call>{"name":"read_file","arguments":{"path":"/etc/hostname"}}</tool_call> หรือ <tool_call>{"name":"list_files","arguments":{"path":"~"}}</tool_call>
-ใช้ write_file สำหรับเขียนไฟล์, run_command (ชื่อเดิม execute_command ก็ได้) สำหรับรันคำสั่ง, list_files/read_file สำหรับสำรวจเครื่อง
-ระบบจะปิดบัง API key และ private key ที่รู้จักในผลลัพธ์ให้อัตโนมัติ
-หากต้องสร้างหรือปรับปรุงสกิล ให้ใช้เครื่องมือ create_skill พร้อมชื่อไฟล์ .md และเนื้อหาสกิลที่ชัดเจน ระบบจะจำกัดการเขียนไว้ในโฟลเดอร์ skills เท่านั้น
-เมื่อผู้ใช้สั่งให้สร้างหรือแก้ไขงานตามเวลา/Cron อย่างชัดเจน ให้ใช้ create_schedule หรือ update_schedule โดย create_schedule รับ arguments: name, schedule (Cron 5 ช่อง), prompt, model (ไม่บังคับ), enabled (ไม่บังคับ) และ discord_channel_id (ไม่บังคับ เป็น Channel ID ของ Discord); ส่วน update_schedule รับ job_id และฟิลด์ที่ต้องการแก้ไข โดยใช้ timezone ของ Server
+You have full tool access to this machine: absolute paths and ~/... reach anywhere on the machine, and run_command runs through a real shell (including sudo when the user running the app has permission), starting in the project folder.
+Every tool call pauses and waits for the user to approve it in the chat, and one approval covers a single request. Never assume approval or skip asking for it.
+Call format: <tool_call>{"name":"read_file","arguments":{"path":"/etc/hostname"}}</tool_call> or <tool_call>{"name":"list_files","arguments":{"path":"~"}}</tool_call>
+Use write_file to write files, run_command (the older name execute_command also works) to run commands, and list_files/read_file to explore the machine.
+Known API keys and private keys in the results are redacted automatically.
+To create or improve a skill, use the create_skill tool with a .md file name and clear skill content; writes are limited to the skills folder.
+When the user explicitly asks to create or change a scheduled job/Cron, use create_schedule or update_schedule; create_schedule takes the arguments name, schedule (5-field Cron), prompt, model (optional), enabled (optional) and discord_channel_id (optional, a Discord Channel ID), while update_schedule takes job_id and the fields to change, using the server timezone.
 """.strip()
 
 TOOL_ALIASES = {"execute_command": "run_command"}
@@ -178,18 +178,18 @@ def load_persisted_logs() -> None:
                 if isinstance(record, dict):
                     APP_LOGS.append(record)
     except OSError as exc:
-        LOGGER.warning("อ่านไฟล์ log ถาวรไม่สำเร็จ: %s", exc)
+        LOGGER.warning("Could not read the persisted log file: %s", exc)
 
 
 def skill_dir(name: str) -> Path:
     """Resolve a skill name to its directory inside the skills root."""
     safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(name).strip().lower()).strip("-")
     if not safe_name or safe_name in {".", ".."}:
-        raise ValueError("ชื่อสกิลไม่ถูกต้อง")
+        raise ValueError("Invalid skill name")
     root = (PROJECT_ROOT / SKILLS_ROOT).resolve()
-    directory = normalized_path_under(safe_name, root, "ชื่อสกิลอยู่นอกโฟลเดอร์ที่อนุญาต")
+    directory = normalized_path_under(safe_name, root, "Skill name is outside the allowed folder")
     if directory.parent != root:
-        raise ValueError("ชื่อสกิลอยู่นอกโฟลเดอร์ที่อนุญาต")
+        raise ValueError("Skill name is outside the allowed folder")
     return directory
 
 
@@ -225,7 +225,7 @@ def selected_skill_prompt(settings: dict[str, Any]) -> str:
         return ""
     by_name = {item["name"]: item["content"] for item in list_skills()}
     blocks = [f"## Skill: {name}\n{by_name[name]}" for name in selected if name in by_name]
-    return "แนวทางจาก Skills ที่เลือก:\n\n" + "\n\n".join(blocks) if blocks else ""
+    return "Guidance from the selected Skills:\n\n" + "\n\n".join(blocks) if blocks else ""
 
 
 def log_event(event: str, message: str, **details: Any) -> None:
@@ -249,7 +249,7 @@ def log_event(event: str, message: str, **details: Any) -> None:
                 handle.write(serialized)
             APP_LOGS.append(record)
     except OSError as exc:
-        LOGGER.warning("บันทึก log ถาวรไม่สำเร็จ: %s", exc)
+        LOGGER.warning("Could not write the persisted log: %s", exc)
         with APP_LOG_LOCK:
             APP_LOGS.append(record)
     # Only the event name reaches the plain-text console log. The message and its
@@ -429,7 +429,7 @@ def normalize_custom_key_name(value: Any) -> str:
     """Validate a user-chosen name for an extra API key (used as an env var)."""
     name = re.sub(r"[\s-]+", "_", str(value or "").strip()).upper()
     if not CUSTOM_KEY_NAME_PATTERN.fullmatch(name):
-        raise ValueError("ชื่อคีย์ต้องเริ่มด้วยตัวอักษร A-Z และใช้ได้เฉพาะ A-Z, 0-9 และ _ (ไม่เกิน 64 ตัว)")
+        raise ValueError("The key name must start with A-Z and use only A-Z, 0-9 and _ (64 characters max)")
     return name
 
 
@@ -521,18 +521,18 @@ def cron_values(field: str, minimum: int, maximum: int, alias_max: int | None = 
     for part in str(field).split(","):
         match = re.fullmatch(r"(\*|\d+(?:-\d+)?)(?:/(\d+))?", part.strip())
         if not match:
-            raise ValueError(f"รูปแบบ cron ไม่ถูกต้อง: {part}")
+            raise ValueError(f"Invalid cron field: {part}")
         base, step_text = match.group(1), match.group(2)
         step = int(step_text) if step_text else 1
         if step < 1:
-            raise ValueError("ค่า step ของ cron ต้องมากกว่า 0")
+            raise ValueError("A cron step must be greater than 0")
         if base == "*":
             start, end = minimum, upper
         elif "-" in base:
             start_text, end_text = base.split("-", 1)
             start, end = int(start_text), int(end_text)
             if start > end:
-                raise ValueError("ช่วงค่า cron ไม่ถูกต้อง (ค่าแรกต้องไม่มากกว่าค่าสุดท้าย)")
+                raise ValueError("Invalid cron range (the first value must not exceed the last)")
         else:
             start = int(base)
             # "N/step" (e.g. 0/5) starts at N and repeats every step, while a
@@ -540,17 +540,17 @@ def cron_values(field: str, minimum: int, maximum: int, alias_max: int | None = 
             # "0/5" into "minute 0 only".
             end = upper if step_text else start
         if start > end:
-            raise ValueError("ช่วงค่า cron ไม่ถูกต้อง (ค่าแรกต้องไม่มากกว่าค่าสุดท้าย)")
+            raise ValueError("Invalid cron range (the first value must not exceed the last)")
         if start < minimum or end > upper:
-            raise ValueError(f"ค่า cron ต้องอยู่ระหว่าง {minimum} ถึง {upper}")
+            raise ValueError(f"The cron value must be between {minimum} and {upper}")
         values.update(range(start, end + 1, step))
     if not values:
-        raise ValueError("ค่า cron ว่างเปล่า")
+        raise ValueError("Empty cron value")
     if alias_max is not None:
         # Cron accepts both 0 and 7 for Sunday.
         values = {minimum if value == alias_max else value for value in values}
     if min(values) < minimum or max(values) > maximum:
-        raise ValueError(f"ค่า cron ต้องอยู่ระหว่าง {minimum} ถึง {maximum}")
+        raise ValueError(f"The cron value must be between {minimum} and {maximum}")
     return values
 
 
@@ -560,7 +560,7 @@ def validate_cron(expression: str) -> str:
     expression = aliases.get(str(expression).strip().lower(), str(expression).strip())
     fields = expression.split()
     if len(fields) != 5:
-        raise ValueError("cron ต้องมี 5 ช่อง เช่น */5 * * * * หรือ 0 9 * * 1-5")
+        raise ValueError("A cron expression needs 5 fields, for example */5 * * * * or 0 9 * * 1-5")
     for field, minimum, maximum, alias_max in zip(
         fields, (0, 0, 1, 1, 0), (59, 23, 31, 12, 6), (None, None, None, None, 7)
     ):
@@ -636,12 +636,12 @@ def execute_schedule(job: dict[str, Any]) -> None:
         except Exception as exc:
             # The answer is already saved in history, so a Discord delivery
             # problem must not mark the AI run itself as failed.
-            log_event("schedule.discord_error", f"ส่งผลงานตามเวลา {job['name']} ไป Discord ไม่สำเร็จ", job=job["id"], error=str(exc))
-        update_schedule(job["id"], last_status="สำเร็จ", last_error="", last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
-        log_event("schedule.success", f"งานตามเวลา {job['name']} สำเร็จ", job=job["id"], duration_ms=duration_ms)
+            log_event("schedule.discord_error", f"Could not send scheduled job {job['name']} to Discord", job=job["id"], error=str(exc))
+        update_schedule(job["id"], last_status="success", last_error="", last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+        log_event("schedule.success", f"Scheduled job {job['name']} succeeded", job=job["id"], duration_ms=duration_ms)
     except Exception as exc:
-        log_event("schedule.error", f"งานตามเวลา {job.get('name', job.get('id', ''))} ล้มเหลว", error=str(exc))
-        update_schedule(job["id"], last_status="ล้มเหลว", last_error=redact_secrets(str(exc))[:500], last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+        log_event("schedule.error", f"Scheduled job {job.get('name', job.get('id', ''))} failed", error=str(exc))
+        update_schedule(job["id"], last_status="failed", last_error=redact_secrets(str(exc))[:500], last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
     finally:
         job_id = job.get("id") if isinstance(job, dict) else None
         if job_id:
@@ -667,7 +667,7 @@ def schedule_loop() -> None:
                         job_id = job["id"]
                         with SCHEDULE_RUNNING_LOCK:
                             if job_id in SCHEDULE_RUNNING:
-                                log_event("schedule.skipped", "ข้ามงานที่ยังทำงานอยู่", job=job_id)
+                                log_event("schedule.skipped", "Skipped a job that is still running", job=job_id)
                                 continue
                             SCHEDULE_RUNNING.add(job_id)
                         try:
@@ -678,9 +678,9 @@ def schedule_loop() -> None:
                                 SCHEDULE_RUNNING.discard(job_id)
                             raise
                     except (KeyError, TypeError, ValueError):
-                        update_schedule(job.get("id", ""), last_status="ล้มเหลว", last_error="cron ไม่ถูกต้อง")
+                        update_schedule(job.get("id", ""), last_status="failed", last_error="invalid cron")
             except OSError as exc:
-                log_event("schedule.error", "อ่านหรือบันทึกงานตามเวลาไม่สำเร็จ", error=str(exc))
+                log_event("schedule.error", "Could not read or save the scheduled jobs", error=str(exc))
         time.sleep(15)
 
 
@@ -690,9 +690,9 @@ def send_discord_schedule_result(job: dict[str, Any], answer: str) -> None:
     if not channel_id:
         return
     if not channel_id.isdigit():
-        raise ValueError("Discord Channel ID ต้องเป็นตัวเลข")
+        raise ValueError("The Discord Channel ID must be a number")
     if DISCORD_BOT is None or DISCORD_LOOP is None or DISCORD_LOOP.is_closed():
-        raise RuntimeError("Discord bot ยังไม่ได้เชื่อมต่อ")
+        raise RuntimeError("The Discord bot is not connected yet")
 
     async def deliver() -> None:
         """Send the scheduled result chunks to the Discord channel."""
@@ -715,7 +715,7 @@ def start_scheduler() -> None:
         try:
             handle = open(SCHEDULE_LOCK_FILE, "a+", encoding="utf-8")
         except OSError as exc:
-            log_event("schedule.error", "เปิดไฟล์ lock ของ scheduler ไม่สำเร็จ", error=str(exc))
+            log_event("schedule.error", "Could not open the scheduler lock file", error=str(exc))
             return
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -749,15 +749,15 @@ def normalized_path_under(raw_path: str, root: Path, message: str, error: type[E
 def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     """Resolve a user path inside the project while blocking protected files."""
     if not isinstance(raw_path, str) or not raw_path.strip():
-        raise ValueError("ต้องระบุ path ภายในโปรเจกต์")
+        raise ValueError("A path inside the project is required")
     project_root = PROJECT_ROOT.resolve()
-    candidate = normalized_path_under(raw_path, project_root, "อนุญาตเฉพาะ path ภายในโฟลเดอร์โปรเจกต์")
+    candidate = normalized_path_under(raw_path, project_root, "Only paths inside the project folder are allowed")
     relative_text = os.path.relpath(str(candidate), str(project_root))
     relative_parts: list[str] = [] if relative_text == os.curdir else relative_text.split(os.sep)
     if any(part in PROTECTED_PARTS for part in relative_parts) or candidate.name in PROTECTED_NAMES:
-        raise ValueError("ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
+        raise ValueError("Access to files or folders holding secrets is not allowed")
     if must_exist and not candidate.exists():
-        raise FileNotFoundError(f"ไม่พบ path: {raw_path}")
+        raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
 
 
@@ -777,15 +777,15 @@ def approval_required_tools(settings: dict[str, Any] | None = None) -> set[str]:
 def resolve_tool_path(raw_path: str, must_exist: bool = False) -> Path:
     """Resolve a tool path safely for tool execution requests."""
     if not isinstance(raw_path, str) or not raw_path.strip():
-        raise ValueError("ต้องระบุ path")
+        raise ValueError("A path is required")
     candidate = normalized_path_under(
         raw_path,
         PROJECT_ROOT,
-        "path อยู่นอกโฟลเดอร์โปรเจกต์และไม่ได้รับอนุญาต",
+        "The path is outside the project folder and is not allowed",
         PermissionError,
     )
     if must_exist and not candidate.exists():
-        raise FileNotFoundError(f"ไม่พบ path: {raw_path}")
+        raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
 
 
@@ -804,9 +804,9 @@ def ensure_safe_command_token(token: str) -> None:
         return
     parts = [part for part in normalized.split("/") if part not in {"", "."}]
     if normalized.startswith(("/", "~")) or ".." in parts:
-        raise ValueError("คำสั่งต้องอ้างอิงเฉพาะ path ภายในโปรเจกต์")
+        raise ValueError("The command must reference paths inside the project only")
     if any(part in PROTECTED_PARTS or part in PROTECTED_NAMES for part in parts):
-        raise ValueError("ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
+        raise ValueError("Access to files or folders holding secrets is not allowed")
 
 
 SAFE_GIT_SUBCOMMANDS = {"status", "diff", "log"}
@@ -820,31 +820,31 @@ SAFE_LS_OPTIONS = {"-a", "-l", "-la", "-al", "-lh", "-lah", "-R", "-t", "-r", "-
 def parse_command(command: str) -> list[str]:
     """Parse one whitelisted command into argv without ever invoking a shell."""
     if any(character in command for character in ("\n", "\r", ";", "|", "&", ">", "<", "`", "$(")):
-        raise ValueError("คำสั่งมี syntax ที่ไม่อนุญาต")
+        raise ValueError("The command uses syntax that is not allowed")
     try:
         argv = shlex.split(command)
     except ValueError as exc:
-        raise ValueError("รูปแบบคำสั่งไม่ถูกต้อง") from exc
+        raise ValueError("Invalid command format") from exc
     if not argv:
-        raise ValueError("ต้องระบุคำสั่ง")
+        raise ValueError("A command is required")
     binary, rest = argv[0], argv[1:]
     if binary == "pwd":
         if rest:
-            raise ValueError("pwd ไม่รับ argument")
+            raise ValueError("pwd takes no arguments")
     elif binary == "ls":
         for token in rest:
             if token.startswith("-"):
                 if token not in SAFE_LS_OPTIONS:
-                    raise ValueError(f"ไม่อนุญาต ls option {token}")
+                    raise ValueError(f"ls option {token} is not allowed")
             else:
                 ensure_safe_command_token(token)
     elif binary == "git":
         if not rest or rest[0] not in SAFE_GIT_SUBCOMMANDS:
-            raise ValueError("อนุญาตเฉพาะ git status, git diff และ git log")
+            raise ValueError("Only git status, git diff and git log are allowed")
         for token in rest[1:]:
             if token.startswith("-"):
                 if token not in SAFE_GIT_OPTIONS and not token.lstrip("-").isdigit():
-                    raise ValueError(f"ไม่อนุญาต git option {token}")
+                    raise ValueError(f"git option {token} is not allowed")
             else:
                 ensure_safe_command_token(token)
         # .git/config and .gitattributes can point at external programs or
@@ -854,9 +854,9 @@ def parse_command(command: str) -> list[str]:
             argv.extend(["--no-ext-diff", "--no-textconv"])
     elif binary in {"python", "python3"}:
         if rest != ["-m", "py_compile", "app.py"]:
-            raise ValueError("อนุญาตเฉพาะการตรวจ syntax ของ app.py")
+            raise ValueError("Only the app.py syntax check is allowed")
     else:
-        raise ValueError("อนุญาตเฉพาะคำสั่งตรวจสอบโปรเจกต์ที่กำหนดไว้")
+        raise ValueError("Only the defined project check commands are allowed")
     return argv
 
 
@@ -899,15 +899,15 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
     requested_name = name
     name = TOOL_ALIASES.get(name, name)
     if requested_name != name:
-        log_event("tool.alias", f"แปลงชื่อ tool {requested_name} เป็น {name}", requested=requested_name, tool=name)
-    log_event("tool.start", f"เริ่มใช้ {name}", tool=name, approved=approved)
+        log_event("tool.alias", f"Mapped tool name {requested_name} to {name}", requested=requested_name, tool=name)
+    log_event("tool.start", f"Starting {name}", tool=name, approved=approved)
     if name == "create_skill":
         if not approved:
-            raise PermissionError("การสร้างสกิลต้องได้รับการอนุมัติก่อน")
+            raise PermissionError("Creating a skill needs approval first")
         skill_name = arguments.get("name", "")
         content = arguments.get("content", "")
         if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
-            raise ValueError("เนื้อหาสกิลไม่ถูกต้องหรือใหญ่เกินขนาดที่อนุญาต")
+            raise ValueError("The skill content is invalid or larger than allowed")
         path = skill_path(skill_name)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content.strip() + "\n", encoding="utf-8")
@@ -917,19 +917,19 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             # AI_WEB_SKILLS_DIR may point outside the project; report it as is.
             display_path = str(path)
         result = {"tool": name, "name": path.parent.name, "path": display_path}
-        log_event("tool.success", f"สร้างสกิล {path.parent.name} สำเร็จ", tool=name, path=result["path"])
+        log_event("tool.success", f"Created skill {path.parent.name}", tool=name, path=result["path"])
         return result
     if name == "create_schedule":
         if not approved:
-            raise PermissionError("การสร้างงานตามเวลาต้องได้รับการอนุมัติก่อน")
+            raise PermissionError("Creating a scheduled job needs approval first")
         job_name = str(arguments.get("name", "")).strip()
         prompt = str(arguments.get("prompt", "")).strip()
         if not job_name or not prompt:
-            raise ValueError("ต้องระบุชื่องานและ prompt")
+            raise ValueError("A job name and prompt are required")
         schedule = validate_cron(arguments.get("schedule", ""))
         discord_channel_id = str(arguments.get("discord_channel_id", "")).strip()[:30]
         if discord_channel_id and not discord_channel_id.isdigit():
-            raise ValueError("Discord Channel ID ต้องเป็นตัวเลข")
+            raise ValueError("The Discord Channel ID must be a number")
         job = {
             "id": str(uuid.uuid4()),
             "conversation_id": str(uuid.uuid4()),
@@ -948,19 +948,19 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             jobs = load_schedules()
             jobs.append(job)
             save_schedules(jobs)
-        log_event("schedule.created", f"สร้างงานตามเวลา {job['name']} สำเร็จ", job=job["id"], schedule=schedule)
+        log_event("schedule.created", f"Created scheduled job {job['name']}", job=job["id"], schedule=schedule)
         return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
     if name == "update_schedule":
         if not approved:
-            raise PermissionError("การแก้ไขงานตามเวลาต้องได้รับการอนุมัติก่อน")
+            raise PermissionError("Editing a scheduled job needs approval first")
         job_id = str(arguments.get("job_id", "")).strip()
         if not job_id:
-            raise ValueError("ต้องระบุ job_id")
+            raise ValueError("job_id is required")
         with SCHEDULE_LOCK:
             jobs = load_schedules()
             job = next((item for item in jobs if item.get("id") == job_id), None)
             if not job:
-                raise ValueError("ไม่พบงานตามเวลา")
+                raise ValueError("Scheduled job not found")
             if "schedule" in arguments:
                 job["schedule"] = validate_cron(arguments["schedule"])
             if "name" in arguments:
@@ -972,18 +972,18 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             if "discord_channel_id" in arguments:
                 channel_id = str(arguments["discord_channel_id"]).strip()[:30]
                 if channel_id and not channel_id.isdigit():
-                    raise ValueError("Discord Channel ID ต้องเป็นตัวเลข")
+                    raise ValueError("The Discord Channel ID must be a number")
                 job["discord_channel_id"] = channel_id
             if "enabled" in arguments:
                 job["enabled"] = bool(arguments["enabled"])
             save_schedules(jobs)
-        log_event("schedule.updated", f"แก้ไขงานตามเวลา {job['name']} สำเร็จ", job=job_id)
+        log_event("schedule.updated", f"Updated scheduled job {job['name']}", job=job_id)
         return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
     if name == "list_files":
         machine_access = machine_access_enabled()
         root = resolve_tool_path(arguments.get("path", "."), must_exist=True)
         if not root.is_dir():
-            raise ValueError("path นี้ไม่ใช่โฟลเดอร์")
+            raise ValueError("This path is not a folder")
         files: list[str] = []
         truncated = False
         for dirpath, dirnames, filenames in os.walk(root):
@@ -999,7 +999,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             if truncated:
                 break
         result = {"tool": name, "files": files, "truncated": truncated, "scope": "machine" if machine_access else "project"}
-        log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, count=len(files))
+        log_event("tool.success", f"Used {name}", tool=name, count=len(files))
         return result
 
     if name == "read_file":
@@ -1008,40 +1008,40 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         if not machine_access:
             path = resolve_project_path(str(path), must_exist=True)
         if not path.is_file():
-            raise ValueError("path นี้ไม่ใช่ไฟล์")
+            raise ValueError("This path is not a file")
         if path.stat().st_size > TOOL_MAX_READ_BYTES:
-            raise ValueError("ไฟล์ใหญ่เกินขนาดที่อนุญาตให้อ่าน")
+            raise ValueError("The file is larger than the allowed read size")
         content = path.read_text(encoding="utf-8", errors="replace")
         if machine_access:
             # Whole-machine reads must not copy stored credentials into the chat
             # transcript or the saved conversation history.
             content = redact_secrets(content)
         result = {"tool": name, "path": display_tool_path(path), "content": content, "scope": "machine" if machine_access else "project"}
-        log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, path=result["path"])
+        log_event("tool.success", f"Used {name}", tool=name, path=result["path"])
         return result
 
     if name == "write_file":
         if not approved:
-            raise PermissionError("การเขียนไฟล์ต้องได้รับการอนุมัติก่อน")
+            raise PermissionError("Writing a file needs approval first")
         path = resolve_tool_path(arguments.get("path", ""))
         content = arguments.get("content", "")
         if not isinstance(content, str) or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
-            raise ValueError("เนื้อหาไฟล์ใหญ่เกินขนาดที่อนุญาต")
+            raise ValueError("The file content is larger than allowed")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         result = {"tool": name, "path": display_tool_path(path), "bytes": len(content.encode("utf-8"))}
-        log_event("tool.success", f"ใช้ {name} สำเร็จ", tool=name, path=result["path"], bytes=result["bytes"])
+        log_event("tool.success", f"Used {name}", tool=name, path=result["path"], bytes=result["bytes"])
         return result
 
     if name == "run_command":
         if not approved:
-            raise PermissionError("การรันคำสั่งต้องได้รับการอนุมัติก่อน")
+            raise PermissionError("Running a command needs approval first")
         command = arguments.get("command", "")
         if not isinstance(command, str) or not command.strip():
-            raise ValueError("ต้องระบุคำสั่ง")
+            raise ValueError("A command is required")
         command = command.strip()
         if len(command) > 4000:
-            raise ValueError("คำสั่งยาวเกินไป (สูงสุด 4000 ตัวอักษร)")
+            raise ValueError("The command is too long (4000 characters max)")
         if machine_access_enabled():
             # A real shell with the app user's privileges: any binary, pipes,
             # sudo (when the user may run it without a password prompt), and
@@ -1063,7 +1063,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             }
             log_event(
                 "tool.success" if returncode == 0 else "tool.failed",
-                f"รันคำสั่งเสร็จ ({returncode})",
+                f"Command finished ({returncode})",
                 tool=name,
                 command=redact_terminal_output(command, secrets_found)[:300],
                 duration_ms=duration_ms,
@@ -1072,10 +1072,10 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         argv = parse_command(command)
         completed = subprocess.run(argv, cwd=PROJECT_ROOT, shell=False, capture_output=True, text=True, timeout=30)
         result = {"tool": name, "command": command, "returncode": completed.returncode, "stdout": completed.stdout[-20_000:], "stderr": completed.stderr[-20_000:], "scope": "project"}
-        log_event("tool.success" if completed.returncode == 0 else "tool.failed", f"รันคำสั่งเสร็จ ({completed.returncode})", tool=name, command=command)
+        log_event("tool.success" if completed.returncode == 0 else "tool.failed", f"Command finished ({completed.returncode})", tool=name, command=command)
         return result
 
-    raise ValueError("ไม่รู้จักเครื่องมือนี้")
+    raise ValueError("Unknown tool")
 
 
 def terminal_settings() -> dict[str, Any]:
@@ -1142,7 +1142,7 @@ def terminal_secret_values(extra: list[str] | None = None) -> list[str]:
     return sorted(values, key=len, reverse=True)
 
 
-PEM_REDACTED_MARKER = "•••••••• (ซ่อน private key)"
+PEM_REDACTED_MARKER = "•••••••• (private key hidden)"
 PEM_MARKER_PATTERN = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|-----END [A-Z0-9 ]*PRIVATE KEY-----"
 )
@@ -1213,7 +1213,7 @@ def ensure_terminal_paths_allowed(command: str) -> None:
                 continue
             parts = [part for part in candidate.split("/") if part not in {"", "."}]
             if any(part in PROTECTED_PARTS or part in PROTECTED_NAMES for part in parts):
-                raise PermissionError("Terminal ไม่อนุญาตให้เข้าถึงไฟล์หรือโฟลเดอร์ที่มีข้อมูลลับ")
+                raise PermissionError("The terminal does not allow access to files or folders holding secrets")
 
 
 SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
@@ -1254,7 +1254,7 @@ def read_terminal_capture(handle: Any) -> tuple[str, bool]:
         handle.read().decode("utf-8", errors="replace"), starts_inside
     )
     if cut:
-        text = "… (ตัดข้อความส่วนต้นออก เนื่องจากมีผลลัพธ์จำนวนมาก)\n" + text
+        text = "… (start of the output trimmed because there is a lot of it)\n" + text
     return text, cut
 
 
@@ -1267,16 +1267,16 @@ def resolve_terminal_cwd(raw_path: Any) -> Path:
         if value.startswith("~/"):
             value = value[2:]
         candidate = normalized_path_under(
-            value, PROJECT_ROOT, "Terminal ถูกจำกัดให้ทำงานภายในโฟลเดอร์โปรเจกต์"
+            value, PROJECT_ROOT, "The terminal is restricted to the project folder"
         )
     relative_text = os.path.relpath(str(candidate), str(PROJECT_ROOT))
     relative_parts: list[str] = [] if relative_text == os.curdir else relative_text.split(os.sep)
     if any(part in PROTECTED_PARTS for part in relative_parts):
-        raise PermissionError("Terminal ถูกจำกัดไม่ให้เข้าโฟลเดอร์ที่มีข้อมูลลับ")
+        raise PermissionError("The terminal may not enter folders holding secrets")
     if not candidate.exists():
-        raise FileNotFoundError(f"ไม่พบโฟลเดอร์: {raw_path}")
+        raise FileNotFoundError(f"Folder not found: {raw_path}")
     if not candidate.is_dir():
-        raise ValueError("path นี้ไม่ใช่โฟลเดอร์")
+        raise ValueError("This path is not a folder")
     return candidate
 
 
@@ -1307,9 +1307,9 @@ def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, 
     try:
         argv = shlex.split(command, posix=True)
     except ValueError as exc:
-        raise ValueError(f"รูปแบบคำสั่งไม่ถูกต้อง: {exc}") from exc
+        raise ValueError(f"Invalid command format: {exc}") from exc
     if not argv:
-        raise ValueError("กรุณาพิมพ์คำสั่ง")
+        raise ValueError("Type a command")
     with tempfile.TemporaryFile() as out_file, tempfile.TemporaryFile() as err_file:
         process = subprocess.Popen(
             argv,
@@ -1339,12 +1339,12 @@ def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
     """Run one web terminal command and return its output and new cwd."""
     settings = terminal_settings()
     if not terminal_is_enabled(settings):
-        raise PermissionError("หน้า Terminal ถูกปิดใช้งานอยู่ใน Settings")
+        raise PermissionError("The terminal is disabled in Settings")
     stripped = command.strip()
     if not stripped:
-        raise ValueError("กรุณาพิมพ์คำสั่ง")
+        raise ValueError("Type a command")
     if len(stripped) > 4000:
-        raise ValueError("คำสั่งยาวเกินไป (สูงสุด 4000 ตัวอักษร)")
+        raise ValueError("The command is too long (4000 characters max)")
     ensure_terminal_paths_allowed(stripped)
 
     changed_directory = False
@@ -1357,9 +1357,9 @@ def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
             try:
                 tokens = shlex.split(target)
             except ValueError as exc:
-                raise ValueError("รูปแบบ path ของ cd ไม่ถูกต้อง") from exc
+                raise ValueError("Invalid path format for cd") from exc
             if len(tokens) != 1:
-                raise ValueError("cd รับ path ได้ครั้งละหนึ่งรายการ")
+                raise ValueError("cd accepts one path at a time")
             new_cwd = resolve_terminal_cwd(tokens[0])
         cwd = new_cwd
         changed_directory = True
@@ -1392,7 +1392,7 @@ def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
         }
         log_event(
             "tool.terminal",
-            f"Terminal รันคำสั่งเสร็จ ({returncode})",
+            f"Terminal command finished ({returncode})",
             command=redact_terminal_output(stripped, secrets_found)[:300],
             returncode=returncode,
             duration_ms=duration_ms,
@@ -1450,12 +1450,12 @@ def parse_tool_requests(answer: str) -> list[dict[str, Any]]:
         try:
             request = json.loads(raw_request.strip())
         except json.JSONDecodeError as exc:
-            log_event("tool.parse_failed", "อ่าน tool_call ไม่สำเร็จ", error=str(exc))
-            raise ValueError("รูปแบบ tool_call ไม่ถูกต้อง") from exc
+            log_event("tool.parse_failed", "Could not parse the tool_call", error=str(exc))
+            raise ValueError("Invalid tool_call format") from exc
         if not isinstance(request, dict) or not isinstance(request.get("name"), str) or not isinstance(request.get("arguments", {}), dict):
-            raise ValueError("ข้อมูล tool_call ไม่ถูกต้อง")
+            raise ValueError("Invalid tool_call payload")
         tool_request = {"name": request["name"], "arguments": request.get("arguments", {})}
-        log_event("tool.request", f"AI ขอใช้ {tool_request['name']}", tool=tool_request["name"])
+        log_event("tool.request", f"The AI requested {tool_request['name']}", tool=tool_request["name"])
         requests.append(tool_request)
     return requests
 
@@ -1504,7 +1504,7 @@ def history_mutation_lock():
         except OSError as exc:
             # Without the cross-process lock a mutation could race another
             # writer, so fail the request instead of proceeding unlocked.
-            log_event("history.error", "เปิดไฟล์ lock ของประวัติไม่สำเร็จ", error=str(exc))
+            log_event("history.error", "Could not open the history lock file", error=str(exc))
             raise
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
@@ -1569,7 +1569,7 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
             existing_record = {}
     if existing_record.get("locked"):
         # The lock must protect the stored messages too, not only rename/delete.
-        raise HistoryLocked("ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนบันทึกทับ")
+        raise HistoryLocked("This conversation is locked; unlock it before saving over it")
     messages = list(payload.get("messages") or [])
     existing_messages = existing_record.get("messages") if isinstance(existing_record.get("messages"), list) else []
     base_count = payload.get("base_message_count")
@@ -1617,7 +1617,7 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
     title = (
         raw_title.strip()[:100]
         if isinstance(raw_title, str) and raw_title.strip()
-        else existing_title.strip()[:100] or "บทสนทนาใหม่"
+        else existing_title.strip()[:100] or "New conversation"
     )
     record = {
         "id": conversation_id,
@@ -1715,7 +1715,7 @@ def read_history_file(path: Path) -> dict[str, Any] | None:
         record = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeError) as exc:
         # Only the file name is logged: conversation content must stay private.
-        LOGGER.warning("อ่านไฟล์ประวัติไม่สำเร็จ (%s): %s", path.name, exc)
+        LOGGER.warning("Could not read a history file (%s): %s", path.name, exc)
         return None
     return record if isinstance(record, dict) else None
 
@@ -1771,12 +1771,12 @@ def ensure_secure_model_endpoint(url: str) -> None:
     except ValueError:
         # An unmatched IPv6 bracket makes urlsplit raise; report a configuration
         # error the endpoint can localize instead of an opaque HTTP 500.
-        raise RuntimeError("ที่อยู่ Base URL ของ provider ไม่ถูกต้อง — ตรวจสอบค่าใน Settings") from None
+        raise RuntimeError("The provider Base URL is invalid — check the value in Settings") from None
     scheme = parsed.scheme.lower()
     if scheme == "https":
         return
     if scheme != "http":
-        raise RuntimeError(f"ปลายทางของ provider ต้องเป็น http/https (พบ {scheme or 'ไม่มี scheme'})")
+        raise RuntimeError(f"The provider endpoint must be http/https (found {scheme or 'no scheme'})")
     host = (parsed.hostname or "").strip().lower()
     if host == "localhost":
         return
@@ -1786,11 +1786,11 @@ def ensure_secure_model_endpoint(url: str) -> None:
     except ValueError:
         pass
     if ALLOW_INSECURE_PROVIDER_HTTP:
-        log_event("provider.insecure_http", "ยอมส่ง API key ผ่าน http ตาม AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP", host=host)
+        log_event("provider.insecure_http", "Sending the API key over http because AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP is set", host=host)
         return
     raise RuntimeError(
-        f"ปฏิเสธการส่ง API key ผ่าน http ไปยัง {host or 'host ที่ไม่รู้จัก'} "
-        "— ใช้ https หรือตั้ง AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP=1 สำหรับเซิร์ฟเวอร์ที่เชื่อถือได้"
+        f"Refused to send the API key over http to {host or 'an unknown host'} "
+        "— use https, or set AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP=1 for a trusted server"
     )
 
 
@@ -1817,7 +1817,7 @@ def provider_models_get(
     )
     if 300 <= response.status_code < 400:
         raise RuntimeError(
-            f"ปลายทางตอบกลับ HTTP {response.status_code} (redirect) — ไม่ส่งต่อ API key ตาม redirect"
+            f"The endpoint answered HTTP {response.status_code} (redirect) — the API key is not forwarded across the redirect"
         )
     response.raise_for_status()
     return response
@@ -1828,7 +1828,7 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
     provider = normalize_provider(provider)
     key = get_api_key(provider, settings)
     if not key:
-        raise RuntimeError("ยังไม่ได้ตั้งค่า API key จึงดึงรายการโมเดลไม่ได้")
+        raise RuntimeError("No API key is configured, so the model list cannot be fetched")
     if provider == "gemini":
         response = provider_models_get(
             f"{get_base_url('gemini', settings)}/models",
@@ -1846,7 +1846,7 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
             )
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "?"
-            raise RuntimeError(f"Anthropic ตอบกลับ HTTP {status} — ตรวจสอบ API key อีกครั้ง") from exc
+            raise RuntimeError(f"Anthropic answered HTTP {status} — check the API key again") from exc
         data = response.json().get("data", [])
         models = [
             {"id": item["id"], "name": item.get("display_name") or item["id"]}
@@ -1855,7 +1855,7 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
         ]
         if models:
             return models
-        raise RuntimeError("Anthropic ไม่ส่งรายการโมเดลกลับมา")
+        raise RuntimeError("Anthropic returned no model list")
     base_url = get_base_url(provider, settings)
     response = provider_models_get(
         f"{base_url}/models",
@@ -1921,7 +1921,7 @@ def refresh_model_names(provider: str, settings: dict[str, Any]) -> None:
             MODEL_LIST_ERROR_LOGGED[provider] = time.time()
             log_event(
                 "discord.models",
-                "ดึงรายการโมเดลใน background ไม่สำเร็จ ใช้รายการสำรองแทน",
+                "Could not fetch the model list in the background; using the fallback list",
                 provider=provider,
                 error=str(exc)[:200],
             )
@@ -2049,6 +2049,56 @@ STATUS_MESSAGES = {
         "gemini_request_failed": "เรียก Gemini API ไม่สำเร็จ: {detail}",
         "invalid_body": "รูปแบบข้อมูลไม่ถูกต้อง: ต้องเป็น JSON object",
         "attachment_unsupported": "ไฟล์ {name} ({mime}) เป็นชนิดที่ผู้ให้บริการนี้ส่งไม่ได้ — ไฟล์เสียงและวิดีโอใช้ได้กับ Gemini ส่วน PDF ใช้ได้กับ Gemini หรือ Anthropic",
+        "pairing_required": "อุปกรณ์นี้ยังไม่ได้จับคู่ — กรุณาใส่ Pairing Key",
+        "pairing_rate_limited": "พยายามจับคู่มากเกินไป กรุณารอสักครู่แล้วลองใหม่",
+        "pairing_key_invalid": "Pairing Key นี้ไม่ถูกต้อง หมดอายุ หรือถูกใช้ไปแล้ว",
+        "auth_disabled": "ระบบจับคู่อุปกรณ์ปิดอยู่ — ตั้ง AI_WEB_AUTH=on เพื่อใช้ Pairing Key",
+        "device_not_found": "ไม่พบอุปกรณ์",
+        "cross_origin": "คำขอจากเว็บอื่นถูกปฏิเสธ",
+        "body_too_large": "ข้อมูลที่ส่งมีขนาดใหญ่เกินกว่าที่อนุญาต",
+        "tool_invalid_payload": "ข้อมูลเครื่องมือไม่ถูกต้อง",
+        "tool_approval_invalid": "คำขออนุมัติไม่ถูกต้องหรือหมดอายุ กรุณาขอใหม่อีกครั้ง",
+        "tool_failed": "ใช้เครื่องมือไม่สำเร็จ กรุณาตรวจสอบพารามิเตอร์แล้วลองใหม่",
+        "command_required": "ต้องระบุคำสั่ง",
+        "terminal_failed": "คำสั่ง Terminal ถูกปฏิเสธหรือทำงานไม่สำเร็จ",
+        "log_clear_failed": "ลบ log ไม่สำเร็จ",
+        "schedule_name_required": "กรุณาระบุชื่องานและ prompt",
+        "schedule_invalid": "รูปแบบ schedule ไม่ถูกต้อง (ต้องเป็น cron 5 ช่อง)",
+        "schedule_channel_invalid": "Discord Channel ID ต้องเป็นตัวเลข",
+        "schedule_not_found": "ไม่พบงานตามเวลา",
+        "schedule_running": "งานนี้กำลังทำงานอยู่",
+        "skill_not_found": "ไม่พบ Skill",
+        "skill_read_failed": "อ่าน Skill ไม่สำเร็จ",
+        "skill_create_failed": "สร้าง Skill ไม่สำเร็จ",
+        "skill_content_invalid": "เนื้อหา Skill ไม่ถูกต้องหรือใหญ่เกินขนาดที่อนุญาต",
+        "skill_save_failed": "บันทึก Skill ไม่สำเร็จ",
+        "skill_delete_failed": "ลบ Skill ไม่สำเร็จ",
+        "history_not_found": "ไม่พบประวัติการสนทนา",
+        "history_corrupt": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history",
+        "history_message_id_required": "ต้องระบุ message_id",
+        "history_locked_edit": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนแก้ไข",
+        "history_invalid": "รูปแบบประวัติไม่ถูกต้อง",
+        "history_too_many_messages": "จำนวนข้อความมากเกินไป",
+        "history_invalid_message": "รูปแบบข้อความไม่ถูกต้อง",
+        "history_unsupported_role": "พบ role ที่ไม่อนุญาตในประวัติ",
+        "history_locked_delete": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนลบ",
+        "history_conflict": "เกิดความขัดแย้งข้อมูล: บันทึกถูกปรับปรุงโดยผู้อื่น กรุณาโหลดใหม่",
+        "history_locked_save": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนบันทึกทับ",
+        "models_fallback": "ดึงรายการโมเดลจาก API ไม่สำเร็จ ใช้รายการสำรองแทน",
+        "discord_ids_invalid": "Discord ID ต้องเป็นตัวเลขเท่านั้น: {ids}",
+        "custom_key_name_invalid": "ชื่อ Custom API key ไม่ถูกต้อง",
+        "custom_key_nul": "ค่า Custom API key ต้องไม่มีอักขระ NUL",
+        "update_mode_invalid": "โหมดอัปเดตไม่ถูกต้อง",
+        "update_script_missing": "ไม่พบสคริปต์ update.sh ที่รันได้ในโฟลเดอร์โปรเจกต์",
+        "update_busy": "มีการอัปเดตกำลังทำงานอยู่",
+        "update_start_failed": "เริ่มอัปเดตไม่สำเร็จ กรุณาดู log ของระบบ",
+        "chat_message_required": "กรุณาส่งข้อความ",
+        "chat_failed": "ประมวลผลข้อความไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+        "test_connection_failed": "{label}: เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+        "test_connection_hint": "ตรวจสอบ API key, โมเดล และ Base URL อีกครั้ง",
+        "chat_busy": "{label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น",
+        "chat_provider_error": "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล",
+        "chat_api_failed": "เรียก API ไม่สำเร็จ: {detail}",
     },
     "en": {
         "invalid_key": "{label} API key is invalid or unauthorized",
@@ -2075,6 +2125,56 @@ STATUS_MESSAGES = {
         "gemini_request_failed": "Gemini API request failed: {detail}",
         "invalid_body": "Invalid request body: expected a JSON object",
         "attachment_unsupported": "{name} ({mime}) cannot be sent to this provider — audio and video files work with Gemini, and PDF files work with Gemini or Anthropic",
+        "pairing_required": "This device is not paired yet. Enter a Pairing Key.",
+        "pairing_rate_limited": "Too many pairing attempts. Please wait a few minutes and try again.",
+        "pairing_key_invalid": "This Pairing Key is invalid, expired, or already used.",
+        "auth_disabled": "Web auth is disabled. Set AI_WEB_AUTH=on to use pairing keys.",
+        "device_not_found": "Device not found",
+        "cross_origin": "A request from another origin was rejected",
+        "body_too_large": "The request body is larger than allowed",
+        "tool_invalid_payload": "Invalid tool payload",
+        "tool_approval_invalid": "The approval request is invalid or expired; request it again",
+        "tool_failed": "The tool could not run; check the parameters and try again",
+        "command_required": "A command is required",
+        "terminal_failed": "The terminal command was refused or failed",
+        "log_clear_failed": "Could not clear the log",
+        "schedule_name_required": "Provide a job name and prompt",
+        "schedule_invalid": "Invalid schedule (a 5-field cron expression is required)",
+        "schedule_channel_invalid": "The Discord Channel ID must be a number",
+        "schedule_not_found": "Scheduled job not found",
+        "schedule_running": "This job is already running",
+        "skill_not_found": "Skill not found",
+        "skill_read_failed": "Could not read the skill",
+        "skill_create_failed": "Could not create the skill",
+        "skill_content_invalid": "The skill content is invalid or larger than allowed",
+        "skill_save_failed": "Could not save the skill",
+        "skill_delete_failed": "Could not delete the skill",
+        "history_not_found": "Conversation not found",
+        "history_corrupt": "The history file is corrupt or unreadable; check the files in the history folder",
+        "history_message_id_required": "message_id is required",
+        "history_locked_edit": "This conversation is locked; unlock it before editing",
+        "history_invalid": "Invalid conversation payload",
+        "history_too_many_messages": "Too many messages",
+        "history_invalid_message": "Invalid message format",
+        "history_unsupported_role": "An unsupported role was found in the history",
+        "history_locked_delete": "This conversation is locked; unlock it before deleting",
+        "history_conflict": "Conflict: the record was updated elsewhere; reload it",
+        "history_locked_save": "This conversation is locked; unlock it before saving over it",
+        "models_fallback": "Could not fetch the model list from the API; using the fallback list",
+        "discord_ids_invalid": "Discord IDs must be numbers only: {ids}",
+        "custom_key_name_invalid": "Invalid Custom API key name",
+        "custom_key_nul": "A Custom API key value must not contain NUL characters",
+        "update_mode_invalid": "Invalid update mode",
+        "update_script_missing": "No runnable update.sh script was found in the project folder",
+        "update_busy": "An update is already running",
+        "update_start_failed": "Could not start the update; check the system log",
+        "chat_message_required": "Send a message",
+        "chat_failed": "Could not process the message; try again",
+        "test_connection_failed": "{label}: connection failed; try again",
+        "test_connection_hint": "Check the API key, the model and the Base URL again",
+        "chat_busy": "{label} is busy or rate-limited; try again or choose another model",
+        "chat_provider_error": "The provider returned an error; check the API key and the model",
+        "chat_api_failed": "API request failed: {detail}",
     },
 }
 
@@ -2089,6 +2189,18 @@ def status_message(language: str, key: str, **kwargs: Any) -> str:
     messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["en"]
     template = messages.get(key) or STATUS_MESSAGES["en"].get(key, key)
     return template.format(**kwargs)
+
+
+def request_language() -> str:
+    """Pick the response language the current page asked for."""
+    value = request.headers.get("X-Interface-Language")
+    if not value:
+        value = request.args.get("lang")
+    if not value:
+        body = request.get_json(silent=True)
+        if isinstance(body, dict):
+            value = body.get("lang")
+    return normalize_language(value)
 
 
 def provider_key_check(provider: str, settings: dict[str, Any], language: str = "en") -> dict[str, Any]:
@@ -2213,7 +2325,7 @@ def gemini_post(
     )
     if 300 <= response.status_code < 400:
         raise RuntimeError(
-            f"ปลายทางตอบกลับ HTTP {response.status_code} (redirect) — ไม่ส่งต่อ API key ตาม redirect"
+            f"The endpoint answered HTTP {response.status_code} (redirect) — the API key is not forwarded across the redirect"
         )
     response.raise_for_status()
     return response
@@ -2223,7 +2335,7 @@ def gemini_model_metadata(settings: dict[str, Any], timeout: float = 30) -> list
     """Fetch full Gemini model metadata, including supported generation methods."""
     key = get_api_key("gemini", settings)
     if not key:
-        raise RuntimeError("ยังไม่ได้ตั้งค่า Gemini API key")
+        raise RuntimeError("No Gemini API key is configured")
     models: list[dict[str, Any]] = []
     params = {"key": key, "pageSize": "1000"}
     seen_tokens: set[str] = set()
@@ -2430,7 +2542,7 @@ def clean_messages(messages: list[dict[str, Any]], settings: dict[str, Any]) -> 
             continue
         legacy = item.get("attachment")
         if isinstance(legacy, dict) and legacy.get("name") and legacy.get("content"):
-            content = f"{content}\n\n[ไฟล์แนบ: {legacy['name']}]\n```\n{legacy['content']}\n```"
+            content = f"{content}\n\n[Attachment: {legacy['name']}]\n```\n{legacy['content']}\n```"
         result.append({"role": item.get("role", "user"), "content": content})
     return result
 
@@ -2444,7 +2556,7 @@ def gemini_parts(message: dict[str, Any]) -> list[dict[str, Any]]:
         parts.append({"text": text})
     if isinstance(attachment, dict) and attachment.get("data"):
         if not text:
-            parts.append({"text": f"[ไฟล์แนบ: {attachment['name']}]"})
+            parts.append({"text": f"[Attachment: {attachment['name']}]"})
         parts.append({"inlineData": {"mimeType": attachment["mime_type"], "data": attachment["data"]}})
     return parts or [{"text": ""}]
 
@@ -2474,7 +2586,7 @@ def anthropic_content(message: dict[str, Any]) -> Any:
     elif mime_type == "application/pdf":
         block = {"type": "document", "source": {"type": "base64", "media_type": mime_type, "data": attachment["data"]}}
     else:
-        return f"{text}\n\n[ไฟล์แนบ: {attachment['name']}]\n(ไฟล์ชนิด {mime_type} ใช้ได้กับ Gemini เท่านั้น)"
+        return f"{text}\n\n[Attachment: {attachment['name']}]\n({mime_type} files work with Gemini only)"
     blocks: list[dict[str, Any]] = [block]
     if text:
         blocks.append({"type": "text", "text": text})
@@ -2483,14 +2595,14 @@ def anthropic_content(message: dict[str, Any]) -> Any:
 
 def agent_profile_prompt(settings: dict[str, Any]) -> str:
     """Turn the user-configured agent profile into stable runtime guidance."""
-    language = {"auto": "ตอบตามภาษาของผู้ใช้", "th": "ตอบเป็นภาษาไทย", "en": "ตอบเป็นภาษาอังกฤษ"}.get(str(settings.get("response_language", "auto")), "ตอบตามภาษาของผู้ใช้")
-    questions = "ถามกลับเมื่อข้อมูลไม่พอหรือคำสั่งกำกวม" if settings.get("ask_clarifying_questions", True) else "หลีกเลี่ยงการถามกลับและระบุสมมติฐานที่ใช้"
-    markdown = "ใช้ Markdown เมื่อช่วยให้อ่านง่าย" if settings.get("use_markdown", True) else "ไม่ใช้ Markdown ที่ซับซ้อน"
-    return "แนวทางโปรไฟล์ Agent:\n" + "\n".join((
-        f"- ชื่อที่ใช้แนะนำตัว: {str(settings.get('agent_name') or 'Mux')[:80]}",
-        f"- บทบาท: {str(settings.get('agent_role') or '')[:500]}",
-        f"- โทนการตอบ: {str(settings.get('response_style') or '')[:500]}",
-        f"- ภาษา: {language}", f"- รูปแบบ: {markdown}", f"- การขอข้อมูลเพิ่ม: {questions}",
+    language = {"auto": "Reply in the user's language", "th": "Reply in Thai", "en": "Reply in English"}.get(str(settings.get("response_language", "auto")), "Reply in the user's language")
+    questions = "Ask back when the information is missing or the request is ambiguous" if settings.get("ask_clarifying_questions", True) else "Avoid asking back and state the assumptions used"
+    markdown = "Use Markdown when it improves readability" if settings.get("use_markdown", True) else "Do not use complex Markdown"
+    return "Agent profile guidance:\n" + "\n".join((
+        f"- Name to introduce yourself with: {str(settings.get('agent_name') or 'Mux')[:80]}",
+        f"- Role: {str(settings.get('agent_role') or '')[:500]}",
+        f"- Response tone: {str(settings.get('response_style') or '')[:500]}",
+        f"- Language: {language}", f"- Format: {markdown}", f"- Asking for more information: {questions}",
     ))
 
 
@@ -2548,7 +2660,7 @@ def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
     """Send one chat completion request to an OpenAI-compatible endpoint."""
     key = get_api_key(settings["provider"], settings)
     if not key:
-        raise RuntimeError("ยังไม่ได้ตั้งค่า API key")
+        raise RuntimeError("No API key is configured")
 
     base_url = get_base_url(settings["provider"], settings)
     model = str(settings["model"])
@@ -2588,7 +2700,7 @@ def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
     """Send one generateContent request to Gemini with thinking options."""
     key = get_api_key("gemini", settings)
     if not key:
-        raise RuntimeError("ยังไม่ได้ตั้งค่า Gemini API key")
+        raise RuntimeError("No Gemini API key is configured")
 
     contents: list[dict[str, Any]] = []
     for message in messages:
@@ -2681,7 +2793,7 @@ def call_anthropic(messages: list[dict[str, Any]], settings: dict[str, Any]) -> 
     """Send one messages request to Anthropic with the configured settings."""
     key = get_api_key("anthropic", settings)
     if not key:
-        raise RuntimeError("ยังไม่ได้ตั้งค่า Anthropic API key")
+        raise RuntimeError("No Anthropic API key is configured")
     system = next((m["content"] for m in messages if m["role"] == "system"), "")
     payload: dict[str, Any] = {
         "model": settings["model"],
@@ -2765,7 +2877,7 @@ def discord_status() -> dict[str, Any]:
 def split_discord_message(text: str, limit: int = 2000) -> list[str]:
     """Split a long reply into Discord-sized message chunks."""
     text = str(text or "")
-    return [text[index:index + limit] for index in range(0, len(text), limit)] or ["(ไม่มีข้อความตอบกลับ)"]
+    return [text[index:index + limit] for index in range(0, len(text), limit)] or ["(No response text)"]
 
 
 def stop_discord_bot() -> None:
@@ -2791,7 +2903,7 @@ def start_discord_bot() -> None:
     try:
         import discord
     except ImportError:
-        log_event("discord.error", "ยังไม่ได้ติดตั้ง discord.py")
+        log_event("discord.error", "discord.py is not installed")
         return
 
     intents = discord.Intents.default()
@@ -2815,7 +2927,7 @@ def start_discord_bot() -> None:
             ):
                 return True
             await interaction.response.send_message(
-                "บอทนี้ถูกจำกัดสิทธิ์ให้ใช้ได้เฉพาะบางผู้ใช้หรือบางช่องเท่านั้นครับ",
+                "This bot is limited to specific users or channels.",
                 ephemeral=True,
             )
             return False
@@ -2832,9 +2944,9 @@ def start_discord_bot() -> None:
                     try:
                         await command_tree.sync()
                         commands_synced = True
-                        log_event("discord.commands", "ลงทะเบียน Discord slash commands แล้ว")
+                        log_event("discord.commands", "Registered the Discord slash commands")
                     except Exception as exc:
-                        log_event("discord.error", "ลงทะเบียน Discord slash commands ไม่สำเร็จ", error=str(exc))
+                        log_event("discord.error", "Could not register the Discord slash commands", error=str(exc))
                 # Global commands can take up to an hour to reach a client, while a
                 # guild sync shows up immediately, so every guild gets its own copy.
                 pending = [guild for guild in self.guilds if guild.id not in synced_guilds]
@@ -2861,18 +2973,18 @@ def start_discord_bot() -> None:
                     details: dict[str, Any] = {"servers": len(self.guilds), "synced": len(synced_guilds)}
                     if failures:
                         details["failed"] = "; ".join(failures)[:300]
-                    log_event("discord.commands", "ลงทะเบียน slash commands ระดับ server แล้ว", **details)
+                    log_event("discord.commands", "Registered the guild slash commands", **details)
                 # A guild that never succeeded is retried on the next READY event.
                 unsynced = len(self.guilds) - len(synced_guilds)
             if unsynced:
                 log_event(
                     "discord.error",
-                    "ลงทะเบียน slash commands บาง server ไม่สำเร็จ จะลองใหม่เมื่อเชื่อมต่อครั้งถัดไป",
+                    "Could not register slash commands on some guilds; retrying on the next connection",
                     unsynced=unsynced,
                 )
             settings = load_settings()
             schedule_model_list_refresh(settings.get("provider", "openai"), settings)
-            log_event("discord.connected", "เชื่อมต่อ Discord bot แล้ว", user=str(self.user))
+            log_event("discord.connected", "Discord bot connected", user=str(self.user))
 
         async def on_message(self, message: Any) -> None:
             """Reply to mentions, prefixed messages, and DMs through the agent."""
@@ -2885,7 +2997,7 @@ def start_discord_bot() -> None:
             ):
                 log_event(
                     "discord.ignored",
-                    "ไม่ตอบข้อความ Discord ที่อยู่นอกรายการผู้ใช้หรือช่องที่อนุญาต",
+                    "Ignored a Discord message outside the allowed users or channels",
                     channel=str(getattr(message.channel, "id", "")),
                     user=str(getattr(message.author, "id", "")),
                 )
@@ -2899,7 +3011,7 @@ def start_discord_bot() -> None:
             elif message.guild is not None:
                 return
             if not content:
-                await message.reply(f"พิมพ์ข้อความหลัง {prefix} หรือ mention bot เพื่อเริ่มคุยได้เลยครับ")
+                await message.reply(f"Type a message after {prefix} or mention the bot to start chatting.")
                 return
 
             answer = await ask_agent(
@@ -2927,7 +3039,7 @@ def start_discord_bot() -> None:
         """Reject an interaction unless the author is a server administrator."""
         if is_server_admin(interaction):
             return True
-        await interaction.response.send_message("คำสั่งนี้ใช้ได้เฉพาะผู้ดูแล server เท่านั้นครับ", ephemeral=True)
+        await interaction.response.send_message("This command is available to server administrators only.", ephemeral=True)
         return False
 
     async def check_model_availability(provider: str, model: str, settings: dict[str, Any]) -> dict[str, Any]:
@@ -3003,11 +3115,11 @@ def start_discord_bot() -> None:
                 if not allow_schedule_tools:
                     log_event(
                         "discord.schedule_denied",
-                        "ปฏิเสธการสร้างงานตามเวลาจากผู้ใช้ที่ไม่มีสิทธิ์ผู้ดูแล",
+                        "Rejected a scheduled job created by a user without administrator rights",
                         channel=context_key,
                     )
                     stripped = TOOL_CALL_BLOCK_PATTERN.sub("", answer).strip()
-                    answer = stripped or "การสร้างหรือแก้ไขงานตามเวลาใช้ได้เฉพาะผู้ดูแล server เท่านั้นครับ"
+                    answer = stripped or "Creating or editing scheduled jobs is available to server administrators only."
                     break
                 result = await asyncio.to_thread(
                     run_local_tool,
@@ -3017,7 +3129,7 @@ def start_discord_bot() -> None:
                 )
                 messages.extend([
                     {"role": "assistant", "content": answer},
-                    {"role": "user", "content": f"ผลการสร้างงานตามเวลา:\n{json.dumps(result, ensure_ascii=False)}\n\nตอบเป็นข้อความธรรมดา ยืนยันชื่อ งาน เวลา Cron และสิ่งที่จะให้ AI ทำ ห้ามแสดง tool_call หรือ JSON"},
+                    {"role": "user", "content": f"Scheduled job result:\n{json.dumps(result, ensure_ascii=False)}\n\nReply in plain text, confirming the name, the time, the Cron expression and what the AI will do. Never show a tool_call or JSON."},
                 ])
                 answer, _usage = await asyncio.to_thread(call_provider, messages, settings_for_chat)
             with DISCORD_CONTEXT_LOCK:
@@ -3033,15 +3145,15 @@ def start_discord_bot() -> None:
                 f"Discord · {channel_title}"[:100],
                 history_messages,
             )
-            log_event("discord.message", "ตอบข้อความจาก Discord แล้ว", channel=context_key)
+            log_event("discord.message", "Replied to a Discord message", channel=context_key)
             if fallback_used:
-                log_event("discord.fallback", "ใช้ fallback model สำหรับ Discord", model=fallback_used, channel=context_key)
+                log_event("discord.fallback", "Used the fallback model for Discord", model=fallback_used, channel=context_key)
             return answer
         except Exception as exc:
-            log_event("discord.error", "ตอบข้อความจาก Discord ไม่สำเร็จ", error=str(exc))
-            return "ขออภัยครับ ตอนนี้เรียก AI ไม่สำเร็จ กรุณาตรวจสอบการตั้งค่าในเว็บ"
+            log_event("discord.error", "Could not reply to the Discord message", error=str(exc))
+            return "Sorry, the AI could not be reached right now. Check the settings on the web page."
 
-    @command_tree.command(name="ai", description="ส่งงานหรือพูดคุยกับ AI agent")
+    @command_tree.command(name="ai", description="Send a task to or chat with the AI agent")
     async def ai_command(interaction: Any, prompt: str) -> None:
         """Handle the /ai slash command."""
         await interaction.response.defer()
@@ -3054,15 +3166,15 @@ def start_discord_bot() -> None:
         for chunk in split_discord_message(answer):
             await interaction.followup.send(chunk)
 
-    @command_tree.command(name="clear", description="ล้างบริบทการสนทนาของห้องนี้")
+    @command_tree.command(name="clear", description="Clear this channel's conversation context")
     async def clear_command(interaction: Any) -> None:
         """Handle the /clear slash command."""
         with DISCORD_CONTEXT_LOCK:
             DISCORD_CONTEXTS.pop(str(interaction.channel_id), None)
             DISCORD_CONVERSATION_IDS.pop(str(interaction.channel_id), None)
-        await interaction.response.send_message("ล้างบริบทการสนทนาของห้องนี้แล้วครับ")
+        await interaction.response.send_message("This channel's conversation context has been cleared.")
 
-    @command_tree.command(name="new", description="เปิดแชทใหม่และสร้างประวัติใหม่บนเว็บ")
+    @command_tree.command(name="new", description="Start a new chat and create a new history entry on the web")
     async def new_command(interaction: Any) -> None:
         """Handle the /new slash command."""
         context_key = str(interaction.channel_id)
@@ -3077,7 +3189,7 @@ def start_discord_bot() -> None:
             "messages": [],
         })
         await interaction.response.send_message(
-            f"เปิดแชทใหม่แล้วครับ ประวัติขึ้นบนเว็บทันที (ID: `{record['id'][:8]}`)"
+            f"Started a new chat; the history appears on the web immediately (ID: `{record['id'][:8]}`)"
         )
 
     async def model_autocomplete(interaction: Any, current_text: str) -> list[Any]:
@@ -3091,7 +3203,7 @@ def start_discord_bot() -> None:
             # Answers from memory: a provider fetch would risk Discord's 3s limit.
             names = model_names_for_autocomplete(selected_provider, settings)
         except Exception as exc:
-            log_event("discord.models", "autocomplete ของ model ล้มเหลว", error=str(exc)[:200])
+            log_event("discord.models", "Model autocomplete failed", error=str(exc)[:200])
             names = list(FALLBACK_MODELS.get(selected_provider, []))
         query = str(current_text or "").strip().lower()
         return [
@@ -3100,7 +3212,7 @@ def start_discord_bot() -> None:
             if not query or query in name.lower()
         ][:25]
 
-    @command_tree.command(name="models", description="เปลี่ยน provider และ model ของ AI agent")
+    @command_tree.command(name="models", description="Change the AI agent's provider and model")
     @discord.app_commands.autocomplete(model=model_autocomplete)
     @discord.app_commands.choices(provider=[
         discord.app_commands.Choice(name="OpenAI / compatible", value="openai"),
@@ -3124,17 +3236,17 @@ def start_discord_bot() -> None:
                 current_model = current.get("model") if current.get("provider") == selected_provider else ""
                 names = [item["id"] for item in available[:25]]
                 listing = "\n".join(
-                    f"• `{name}`{' ← กำลังใช้งาน' if name == current_model else ''} · พร้อมใช้งาน"
+                    f"• `{name}`{' ← in use' if name == current_model else ''} · ready"
                     for name in names
-                ) or "ไม่พบรายการ model"
+                ) or "No models found"
                 await interaction.followup.send(
-                    f"Models ของ {PROVIDER_LABELS[selected_provider]} (ตรวจจาก API แล้ว):\n{listing}"
+                    f"{PROVIDER_LABELS[selected_provider]} models (checked against the API):\n{listing}"
                 )
             except Exception as exc:
                 names = FALLBACK_MODELS.get(selected_provider, [])
-                listing = "\n".join(f"• `{name}` · ยังยืนยันไม่ได้" for name in names) or "ไม่มีรายการสำรอง"
+                listing = "\n".join(f"• `{name}` · unverified" for name in names) or "No fallback list"
                 await interaction.followup.send(
-                    f"API ของ {PROVIDER_LABELS[selected_provider]} ใช้งานไม่ได้: {str(exc)[:220]}\nรายการสำรอง:\n{listing}"
+                    f"The {PROVIDER_LABELS[selected_provider]} API is unavailable: {str(exc)[:220]}\nFallback list:\n{listing}"
                 )
             return
         # Read-modify-write under the same lock as /api/settings and /fallback,
@@ -3146,18 +3258,18 @@ def start_discord_bot() -> None:
             save_settings(current)
         STATUS_CACHE.clear()
         availability = await check_model_availability(selected_provider, current["model"], current)
-        state = "พร้อมใช้งาน" if availability.get("ready") else f"ยังใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
+        state = "ready" if availability.get("ready") else f"not available yet: {availability.get('reason', 'check failed')}"
         await interaction.followup.send(
-            f"เปลี่ยน agent เป็น `{PROVIDER_LABELS[selected_provider]}` / `{current['model']}` แล้วครับ · {state}"
+            f"Agent changed to `{PROVIDER_LABELS[selected_provider]}` / `{current['model']}` · {state}"
         )
 
-    @command_tree.command(name="ping", description="ตรวจสอบความหน่วงของ Discord bot")
+    @command_tree.command(name="ping", description="Check the Discord bot latency")
     async def ping_command(interaction: Any) -> None:
         """Handle the /ping slash command."""
         latency_ms = round(client.latency * 1000)
         await interaction.response.send_message(f"Pong! Discord latency: `{latency_ms} ms`")
 
-    @command_tree.command(name="fallback", description="ตั้ง fallback model สำหรับห้อง Discord นี้")
+    @command_tree.command(name="fallback", description="Set a fallback model for this Discord channel")
     @discord.app_commands.autocomplete(model=model_autocomplete)
     async def fallback_command(interaction: Any, model: str | None = None) -> None:
         """Handle the /fallback slash command for a channel."""
@@ -3168,13 +3280,13 @@ def start_discord_bot() -> None:
             channel_fallbacks = {}
         if not model or not model.strip():
             await interaction.response.defer()
-            selected = channel_fallbacks.get(channel_key) or current.get("fallback_model") or "ไม่ได้ตั้งค่า"
-            if selected == "ไม่ได้ตั้งค่า":
-                await interaction.followup.send("Fallback model ของห้องนี้: ยังไม่ได้ตั้งค่า")
+            selected = channel_fallbacks.get(channel_key) or current.get("fallback_model") or "not set"
+            if selected == "not set":
+                await interaction.followup.send("Fallback model for this channel: not set")
                 return
             availability = await check_model_availability(current.get("provider", "openai"), selected, current)
-            state = "พร้อมใช้งาน" if availability.get("ready") else f"ใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
-            await interaction.followup.send(f"Fallback model ของห้องนี้: `{selected}` · {state}")
+            state = "ready" if availability.get("ready") else f"unavailable: {availability.get('reason', 'check failed')}"
+            await interaction.followup.send(f"Fallback model for this channel: `{selected}` · {state}")
             return
         if not await require_server_admin(interaction):
             return
@@ -3187,38 +3299,38 @@ def start_discord_bot() -> None:
             latest_fallbacks = latest.get("discord_fallback_models")
             if not isinstance(latest_fallbacks, dict):
                 latest_fallbacks = {}
-            if model.strip().lower() in {"off", "none", "ปิด"}:
+            if model.strip().lower() in {"off", "none", "disabled"}:
                 latest_fallbacks.pop(channel_key, None)
-                message = "ปิด fallback เฉพาะห้องแล้วครับ (จะใช้ค่า fallback หลักถ้ามี)"
+                message = "Fallback is off for this channel (the main fallback is used if one is set)."
             else:
                 latest_fallbacks[channel_key] = model.strip()[:200]
-                message = f"ตั้ง fallback model ของห้องนี้เป็น `{latest_fallbacks[channel_key]}` แล้วครับ"
+                message = f"Fallback model for this channel set to `{latest_fallbacks[channel_key]}`."
             latest["discord_fallback_models"] = latest_fallbacks
             save_settings(latest)
         if channel_key in latest_fallbacks:
             availability = await check_model_availability(latest.get("provider", "openai"), latest_fallbacks[channel_key], latest)
-            state = "พร้อมใช้งาน" if availability.get("ready") else f"ยังใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
+            state = "ready" if availability.get("ready") else f"not available yet: {availability.get('reason', 'check failed')}"
             message += f" · {state}"
         await interaction.followup.send(message)
 
-    @command_tree.command(name="thread", description="สร้างห้องย่อยสำหรับหัวข้อใหม่")
+    @command_tree.command(name="thread", description="Create a thread for a new topic")
     async def thread_command(interaction: Any, name: str) -> None:
         """Handle the /thread slash command."""
         channel = interaction.channel
         if not hasattr(channel, "create_thread"):
-            await interaction.response.send_message("คำสั่งนี้ใช้ในห้องข้อความของ server เท่านั้นครับ", ephemeral=True)
+            await interaction.response.send_message("This command only works in a server text channel.", ephemeral=True)
             return
         try:
             thread = await channel.create_thread(
-                name=name.strip()[:100] or "หัวข้อใหม่",
+                name=name.strip()[:100] or "New topic",
                 type=discord.ChannelType.public_thread,
                 auto_archive_duration=1440,
             )
-            await interaction.response.send_message(f"สร้างห้องย่อยให้แล้วครับ: {thread.mention}")
+            await interaction.response.send_message(f"Created the thread: {thread.mention}")
         except Exception as exc:
-            await interaction.response.send_message(f"สร้างห้องย่อยไม่สำเร็จ: {str(exc)[:300]}", ephemeral=True)
+            await interaction.response.send_message(f"Could not create the thread: {str(exc)[:300]}", ephemeral=True)
 
-    @command_tree.command(name="status", description="ตรวจสอบสถานะ AI agent")
+    @command_tree.command(name="status", description="Check the AI agent status")
     async def status_command(interaction: Any) -> None:
         """Handle the /status slash command."""
         await interaction.response.defer()
@@ -3226,12 +3338,12 @@ def start_discord_bot() -> None:
         availability = await check_model_availability(
             current.get("provider", "openai"), current.get("model", ""), current
         )
-        state = "พร้อมใช้งาน" if availability.get("ready") else f"ใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
+        state = "ready" if availability.get("ready") else f"unavailable: {availability.get('reason', 'check failed')}"
         await interaction.followup.send(
-            f"Discord: เชื่อมต่อแล้ว\nProvider: {current.get('provider', 'openai')}\nModel: {current.get('model', 'ยังไม่ได้เลือก')}\nสถานะ AI: {state}"
+            f"Discord: connected\nProvider: {current.get('provider', 'openai')}\nModel: {current.get('model', 'not selected')}\nAI status: {state}"
         )
 
-    @command_tree.command(name="model", description="ดู provider และ model ที่ agent ใช้งาน")
+    @command_tree.command(name="model", description="Show the provider and model the agent uses")
     async def model_command(interaction: Any) -> None:
         """Handle the /model slash command."""
         await interaction.response.defer()
@@ -3239,12 +3351,12 @@ def start_discord_bot() -> None:
         availability = await check_model_availability(
             current.get("provider", "openai"), current.get("model", ""), current
         )
-        state = "พร้อมใช้งาน" if availability.get("ready") else f"ใช้ไม่ได้: {availability.get('reason', 'ตรวจสอบไม่สำเร็จ')}"
+        state = "ready" if availability.get("ready") else f"unavailable: {availability.get('reason', 'check failed')}"
         await interaction.followup.send(
-            f"Provider: `{current.get('provider', 'openai')}` · Model: `{current.get('model', 'ยังไม่ได้เลือก')}` · {state}"
+            f"Provider: `{current.get('provider', 'openai')}` · Model: `{current.get('model', 'not selected')}` · {state}"
         )
 
-    @command_tree.command(name="invite", description="สร้างลิงก์เชิญ bot ด้วยสิทธิ Administrator")
+    @command_tree.command(name="invite", description="Create a bot invite link with Administrator permission")
     async def invite_command(interaction: Any) -> None:
         """Handle the /invite slash command."""
         if not await require_server_admin(interaction):
@@ -3256,28 +3368,28 @@ def start_discord_bot() -> None:
             scopes=("bot", "applications.commands"),
         )
         await interaction.response.send_message(
-            "ลิงก์นี้ใช้เชิญหรือเชิญ bot เข้า server ใหม่ด้วยสิทธิ Administrator "
-            "ผู้กดลิงก์ต้องมีสิทธิ์จัดการ server เอง:\n" + url,
+            "This link invites or adds the bot to a new server with Administrator permission. "
+            "Whoever opens the link needs permission to manage that server:\n" + url,
             ephemeral=True,
         )
 
-    @command_tree.command(name="help", description="แสดงคำสั่งของ AI agent")
+    @command_tree.command(name="help", description="Show the AI agent commands")
     async def help_command(interaction: Any) -> None:
         """Handle the /help slash command."""
         await interaction.response.send_message(
-            "คำสั่งของ AI agent:\n"
-            "`/ai prompt` ส่งงานหรือคุยกับ AI\n"
-            "`/new` เปิดแชทใหม่และสร้างประวัติบนเว็บ\n"
-            "`/clear` ล้างบริบทห้อง\n"
-            "`/models` เปลี่ยน provider/model\n"
-            "`/ping` ตรวจ latency ของ bot\n"
-            "`/thread` สร้างห้องย่อยตามหัวข้อ\n"
-            "`/fallback model` ตั้ง fallback เฉพาะห้อง\n"
-            "`/invite` สร้างลิงก์เชิญด้วยสิทธิ Administrator (admin เท่านั้น)\n"
-            "`/status` ตรวจสถานะ bot\n"
-            "`/model` ดูโมเดลปัจจุบัน\n"
-            "`/help` แสดงคำสั่งนี้\n\n"
-            f"นอกจากนี้ mention bot หรือใช้ `{prefix} ข้อความ` ได้ด้วย"
+            "AI agent commands:\n"
+            "`/ai prompt` sends a task to or chats with the AI\n"
+            "`/new` starts a new chat and creates a history entry on the web\n"
+            "`/clear` clears the channel context\n"
+            "`/models` changes the provider/model\n"
+            "`/ping` checks the bot latency\n"
+            "`/thread` creates a thread for a topic\n"
+            "`/fallback model` sets a per-channel fallback\n"
+            "`/invite` creates an invite link with Administrator permission (admins only)\n"
+            "`/status` checks the bot status\n"
+            "`/model` shows the current model\n"
+            "`/help` shows this list\n\n"
+            f"You can also mention the bot or type `{prefix} message`."
         )
 
     DISCORD_BOT = client
@@ -3292,7 +3404,7 @@ def start_discord_bot() -> None:
         try:
             DISCORD_LOOP.run_until_complete(client.start(token))
         except Exception as exc:
-            log_event("discord.error", "Discord bot หยุดทำงาน", error=str(exc))
+            log_event("discord.error", "Discord bot stopped", error=str(exc))
         finally:
             DISCORD_LOOP.close()
 
@@ -3330,24 +3442,24 @@ def tools_execute():
     arguments = body.get("arguments", {})
     approval_id = body.get("approval_id")
     if not isinstance(name, str) or not isinstance(arguments, dict):
-        log_event("tool.invalid", "ข้อมูลเครื่องมือไม่ถูกต้อง")
-        return jsonify({"ok": False, "error": "ข้อมูลเครื่องมือไม่ถูกต้อง"}), 400
+        log_event("tool.invalid", "Invalid tool payload")
+        return jsonify({"ok": False, "error": status_message(request_language(), "tool_invalid_payload")}), 400
     canonical_name = TOOL_ALIASES.get(name, name)
     approved = False
     if canonical_name in approval_required_tools():
         approved = consume_tool_approval(approval_id, name, arguments)
         if not approved:
-            log_event("tool.denied", f"ปฏิเสธ {name} เพราะไม่มีการอนุมัติที่ถูกต้อง", tool=name)
-            return jsonify({"ok": False, "error": "คำขออนุมัติไม่ถูกต้องหรือหมดอายุ กรุณาขอใหม่อีกครั้ง"}), 403
+            log_event("tool.denied", f"Denied {name} because there is no valid approval", tool=name)
+            return jsonify({"ok": False, "error": status_message(request_language(), "tool_approval_invalid")}), 403
     try:
         result = run_local_tool(name, arguments, approved=approved)
         return jsonify({"ok": True, "result": result})
     except (FileNotFoundError, PermissionError, ValueError, OSError, subprocess.SubprocessError) as exc:
-        log_event("tool.error", f"ใช้ {name} ไม่สำเร็จ", tool=name, error=str(exc))
+        log_event("tool.error", f"{name} failed", tool=name, error=str(exc))
         # ``approved`` means the single-use token was already consumed above, so
         # the client must ask for a new approval instead of offering a retry
         # with a token this endpoint will reject.
-        return jsonify({"ok": False, "error": "ใช้เครื่องมือไม่สำเร็จ กรุณาตรวจสอบพารามิเตอร์แล้วลองใหม่", "approval_consumed": approved}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "tool_failed"), "approval_consumed": approved}), 400
 
 
 @app.get("/api/terminal/info")
@@ -3372,14 +3484,14 @@ def terminal_exec():
     body = request.get_json(silent=True) or {}
     command = body.get("command")
     if not isinstance(command, str):
-        return jsonify({"ok": False, "error": "ต้องระบุคำสั่ง"}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "command_required")}), 400
     try:
         cwd = resolve_terminal_cwd(body.get("cwd", "."))
         result = execute_terminal_command(command, cwd)
         return jsonify({"ok": True, **result})
     except (PermissionError, FileNotFoundError, ValueError, OSError, subprocess.SubprocessError) as exc:
-        log_event("tool.terminal_error", "Terminal รันคำสั่งไม่สำเร็จ", error=str(exc))
-        return jsonify({"ok": False, "error": "คำสั่ง Terminal ถูกปฏิเสธหรือทำงานไม่สำเร็จ"}), 400
+        log_event("tool.terminal_error", "The terminal command failed", error=str(exc))
+        return jsonify({"ok": False, "error": status_message(request_language(), "terminal_failed")}), 400
 
 
 @app.get("/api/logs")
@@ -3399,7 +3511,7 @@ def logs_delete():
             APP_LOGS.clear()
             LOG_FILE.unlink(missing_ok=True)
     except OSError:
-        return jsonify({"ok": False, "error": "ลบ log ไม่สำเร็จ"}), 500
+        return jsonify({"ok": False, "error": status_message(request_language(), "log_clear_failed")}), 500
     return jsonify({"ok": True, "deleted": deleted})
 
 
@@ -3416,14 +3528,14 @@ def schedules_create():
     name = str(body.get("name", "")).strip()
     prompt = str(body.get("prompt", "")).strip()
     if not name or not prompt:
-        return jsonify({"error": "กรุณาระบุชื่องานและ prompt"}), 400
+        return jsonify({"error": status_message(request_language(), "schedule_name_required")}), 400
     try:
         schedule = validate_cron(body.get("schedule", ""))
     except (TypeError, ValueError):
-        return jsonify({"error": "รูปแบบ schedule ไม่ถูกต้อง (ต้องเป็น cron 5 ช่อง)"}), 400
+        return jsonify({"error": status_message(request_language(), "schedule_invalid")}), 400
     discord_channel_id = str(body.get("discord_channel_id", "")).strip()[:30]
     if discord_channel_id and not discord_channel_id.isdigit():
-        return jsonify({"error": "Discord Channel ID ต้องเป็นตัวเลข"}), 400
+        return jsonify({"error": status_message(request_language(), "schedule_channel_invalid")}), 400
     job = {"id": str(uuid.uuid4()), "conversation_id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "model": str(body.get("model", "")).strip()[:200], "discord_channel_id": discord_channel_id, "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
     with SCHEDULE_LOCK:
         jobs = load_schedules()
@@ -3440,12 +3552,12 @@ def schedules_update(job_id: str):
         jobs = load_schedules()
         job = next((item for item in jobs if item.get("id") == job_id), None)
         if not job:
-            return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
+            return jsonify({"error": status_message(request_language(), "schedule_not_found")}), 404
         if "schedule" in body:
             try:
                 job["schedule"] = validate_cron(body["schedule"])
             except (TypeError, ValueError):
-                return jsonify({"error": "รูปแบบ schedule ไม่ถูกต้อง (ต้องเป็น cron 5 ช่อง)"}), 400
+                return jsonify({"error": status_message(request_language(), "schedule_invalid")}), 400
         if "name" in body:
             job["name"] = str(body["name"]).strip()[:100] or job["name"]
         if "prompt" in body:
@@ -3455,7 +3567,7 @@ def schedules_update(job_id: str):
         if "discord_channel_id" in body:
             discord_channel_id = str(body["discord_channel_id"]).strip()[:30]
             if discord_channel_id and not discord_channel_id.isdigit():
-                return jsonify({"error": "Discord Channel ID ต้องเป็นตัวเลข"}), 400
+                return jsonify({"error": status_message(request_language(), "schedule_channel_invalid")}), 400
             job["discord_channel_id"] = discord_channel_id
         if "enabled" in body:
             job["enabled"] = bool(body["enabled"])
@@ -3469,10 +3581,10 @@ def schedules_run(job_id: str):
     jobs = load_schedules()
     job = next((item for item in jobs if item.get("id") == job_id), None)
     if not job:
-        return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
+        return jsonify({"error": status_message(request_language(), "schedule_not_found")}), 404
     with SCHEDULE_RUNNING_LOCK:
         if job_id in SCHEDULE_RUNNING:
-            return jsonify({"error": "งานนี้กำลังทำงานอยู่"}), 409
+            return jsonify({"error": status_message(request_language(), "schedule_running")}), 409
         SCHEDULE_RUNNING.add(job_id)
     try:
         threading.Thread(target=execute_schedule, args=(job,), daemon=True).start()
@@ -3490,7 +3602,7 @@ def schedules_delete(job_id: str):
         jobs = load_schedules()
         remaining = [job for job in jobs if job.get("id") != job_id]
         if len(remaining) == len(jobs):
-            return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
+            return jsonify({"error": status_message(request_language(), "schedule_not_found")}), 404
         save_schedules(remaining)
     return jsonify({"ok": True})
 
@@ -3644,7 +3756,7 @@ def create_auth_session(label: str = "", user_agent: str = "", client_ip: str = 
     record = {
         "id": secrets.token_hex(8),
         "token_hash": hash_auth_token(token),
-        "label": str(label or "").strip()[:60] or "อุปกรณ์ที่เชื่อมต่อ",
+        "label": str(label or "").strip()[:60] or "Connected device",
         "user_agent": str(user_agent or "")[:200],
         "ip": str(client_ip or "")[:80],
         "created_at": auth_timestamp(now),
@@ -3740,8 +3852,8 @@ def print_pairing_banner(record: dict[str, Any] | None) -> None:
     print(
         "\n" + "=" * 62 + "\n"
         f"  Pairing Key: {record['key']}\n"
-        f"  ใช้ได้ถึง {record['expires_at']} และใช้ได้ครั้งเดียว\n"
-        "  ฝั่ง client เปิด /pair แล้วใส่คีย์นี้\n"
+        f"  valid until {record['expires_at']} and single use\n"
+        "  on the client, open /pair and enter this key\n"
         + "=" * 62 + "\n",
         flush=True,
     )
@@ -3759,14 +3871,14 @@ def reject_cross_site_mutation():
     parsed = urlsplit(origin)
     if parsed.scheme in {"http", "https"} and parsed.netloc.lower() == request.host.lower():
         return None
-    log_event("security.cross_origin", "ปฏิเสธคำขอที่มาจากเว็บอื่น", path=request.path, method=request.method)
-    return jsonify({"error": "คำขอจากเว็บอื่นถูกปฏิเสธ"}), 403
+    log_event("security.cross_origin", "Rejected a request from another origin", path=request.path, method=request.method)
+    return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
 
 
 @app.errorhandler(413)
 def request_too_large(_error):
     """Answer an oversized upload with JSON instead of Werkzeug's HTML page."""
-    return jsonify({"error": "ข้อมูลที่ส่งมีขนาดใหญ่เกินกว่าที่อนุญาต"}), 413
+    return jsonify({"error": status_message(request_language(), "body_too_large")}), 413
 
 
 @app.before_request
@@ -3780,7 +3892,7 @@ def require_web_auth():
     if current_auth_session():
         return None
     if path.startswith("/api/"):
-        return jsonify({"error": "This device is not paired yet. Enter a Pairing Key.", "auth_required": True}), 401
+        return jsonify({"error": status_message(request_language(), "pairing_required"), "auth_required": True}), 401
     return redirect("/pair", code=302)
 
 
@@ -3944,16 +4056,16 @@ def auth_pair():
     body = request.get_json(silent=True) or {}
     client_ip = request.remote_addr or "unknown"
     if not pairing_attempt_allowed(client_ip):
-        return jsonify({"error": "Too many pairing attempts. Please wait a few minutes and try again."}), 429
+        return jsonify({"error": status_message(request_language(), "pairing_rate_limited")}), 429
     if not consume_pairing_key(body.get("key")):
         record_pairing_failure(client_ip)
-        return jsonify({"error": "This Pairing Key is invalid, expired, or already used."}), 401
+        return jsonify({"error": status_message(request_language(), "pairing_key_invalid")}), 401
     token = create_auth_session(
         label=str(body.get("label") or ""),
         user_agent=request.headers.get("User-Agent", ""),
         client_ip=client_ip,
     )
-    log_event("auth.paired", "จับคู่อุปกรณ์ใหม่สำเร็จ", ip=client_ip)
+    log_event("auth.paired", "Paired a new device", ip=client_ip)
     response = jsonify({"ok": True, "redirect": "/"})
     cookie_name = AUTH_SESSION_COOKIE if request.is_secure else AUTH_SESSION_COOKIE_HTTP
     response.set_cookie(
@@ -3997,10 +4109,10 @@ def auth_sessions_list():
 def auth_create_pairing_key():
     """Generate a fresh pairing key for a new device from an authorized session."""
     if not AUTH_ENABLED:
-        return jsonify({"error": "Web auth is disabled. Set AI_WEB_AUTH=on to use pairing keys."}), 400
+        return jsonify({"error": status_message(request_language(), "auth_disabled")}), 400
     body = request.get_json(silent=True) or {}
     record = generate_pairing_key(str(body.get("label") or ""))
-    log_event("auth.pairing_key", "สร้าง Pairing Key ใหม่")
+    log_event("auth.pairing_key", "Created a new Pairing Key")
     return jsonify({"ok": True, **record}), 201
 
 
@@ -4031,8 +4143,8 @@ def auth_logout():
 def auth_revoke_session(session_id: str):
     """Revoke one paired device by id."""
     if not revoke_auth_session(session_id):
-        return jsonify({"error": "Device not found"}), 404
-    log_event("auth.revoked", "ยกเลิกอุปกรณ์ที่เชื่อมต่อ", session=session_id)
+        return jsonify({"error": status_message(request_language(), "device_not_found")}), 404
+    log_event("auth.revoked", "Revoked a connected device", session=session_id)
     return jsonify({"ok": True})
 
 
@@ -4075,10 +4187,10 @@ def skill_get(name: str):
     try:
         path = skill_path(name)
         if not path.exists():
-            return jsonify({"error": "ไม่พบ Skill"}), 404
+            return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
         return jsonify({"name": path.parent.name, "content": path.read_text(encoding="utf-8")[:20_000]})
     except (OSError, ValueError):
-        return jsonify({"error": "อ่าน Skill ไม่สำเร็จ"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_read_failed")}), 400
 
 
 @app.post("/api/skills")
@@ -4089,7 +4201,7 @@ def skills_create():
         result = run_local_tool("create_skill", {"name": body.get("name", ""), "content": body.get("content", "")}, approved=True)
         return jsonify(result), 201
     except (OSError, PermissionError, ValueError):
-        return jsonify({"error": "สร้าง Skill ไม่สำเร็จ"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_create_failed")}), 400
 
 
 @app.put("/api/skills/<name>")
@@ -4098,15 +4210,15 @@ def skills_update(name: str):
     body = request.get_json(silent=True) or {}
     content = body.get("content", "")
     if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
-        return jsonify({"error": "เนื้อหา Skill ไม่ถูกต้องหรือใหญ่เกินขนาดที่อนุญาต"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_content_invalid")}), 400
     try:
         path = skill_path(name)
         if not path.exists():
-            return jsonify({"error": "ไม่พบ Skill"}), 404
+            return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
         path.write_text(content.strip() + "\n", encoding="utf-8")
         return jsonify({"ok": True, "name": path.parent.name})
     except (OSError, ValueError):
-        return jsonify({"error": "บันทึก Skill ไม่สำเร็จ"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_save_failed")}), 400
 
 
 @app.delete("/api/skills/<name>")
@@ -4115,11 +4227,11 @@ def skills_delete(name: str):
     try:
         path = skill_path(name)
         if not path.exists():
-            return jsonify({"error": "ไม่พบ Skill"}), 404
+            return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
         shutil.rmtree(path.parent)
         return jsonify({"ok": True, "name": path.parent.name})
     except (OSError, ValueError):
-        return jsonify({"error": "ลบ Skill ไม่สำเร็จ"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_delete_failed")}), 400
 
 
 @app.get("/api/status")
@@ -4152,10 +4264,10 @@ def history_get(conversation_id: str):
     """Return one full conversation record by id."""
     path = find_history_file(conversation_id)
     if not path or not path.exists():
-        return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+        return jsonify({"error": status_message(request_language(), "history_not_found")}), 404
     record = read_history_file(path)
     if record is None:
-        return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+        return jsonify({"error": status_message(request_language(), "history_corrupt")}), 409
     payload = dict(record)
     # A pending approval restored from disk needs the server clock to be
     # measured against; the browser clock cannot be trusted for that.
@@ -4174,15 +4286,15 @@ def history_clear_approval(conversation_id: str):
     body = request.get_json(silent=True) or {}
     message_id = body.get("message_id")
     if not isinstance(message_id, str) or not message_id:
-        return jsonify({"ok": False, "error": "ต้องระบุ message_id"}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "history_message_id_required")}), 400
     # find_history_file already rejects anything that is not a conversation id.
     with HISTORY_LOCK:
         path = find_history_file(conversation_id)
         if not path or not path.exists():
-            return jsonify({"ok": False, "error": "ไม่พบประวัติการสนทนา"}), 404
+            return jsonify({"ok": False, "error": status_message(request_language(), "history_not_found")}), 404
         record = read_history_file(path)
         if record is None:
-            return jsonify({"ok": False, "error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+            return jsonify({"ok": False, "error": status_message(request_language(), "history_corrupt")}), 409
         stored = record.get("messages") if isinstance(record.get("messages"), list) else []
         cleared = False
         for message in stored:
@@ -4204,13 +4316,13 @@ def history_update(conversation_id: str):
     with HISTORY_LOCK:
         path = find_history_file(conversation_id)
         if not path or not path.exists():
-            return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+            return jsonify({"error": status_message(request_language(), "history_not_found")}), 404
         record = read_history_file(path)
         if record is None:
-            return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+            return jsonify({"error": status_message(request_language(), "history_corrupt")}), 409
         body = request.get_json(silent=True) or {}
         if record.get("locked") and {"title", "messages"} & set(body):
-            return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนแก้ไข"}), 423
+            return jsonify({"error": status_message(request_language(), "history_locked_edit")}), 423
         if "title" in body:
             title = str(body["title"]).strip()
             if title:
@@ -4222,20 +4334,20 @@ def history_update(conversation_id: str):
         if "messages" in body:
             new_messages = body.get("messages")
             if not isinstance(new_messages, list):
-                return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
+                return jsonify({"error": status_message(request_language(), "history_invalid")}), 400
             if len(new_messages) > 5000:
-                return jsonify({"error": "จำนวนข้อความมากเกินไป"}), 400
+                return jsonify({"error": status_message(request_language(), "history_too_many_messages")}), 400
             safe_roles = {"user", "assistant"}
             sanitized_messages = []
             for item in new_messages:
                 if not isinstance(item, dict):
-                    return jsonify({"error": "รูปแบบข้อความไม่ถูกต้อง"}), 400
+                    return jsonify({"error": status_message(request_language(), "history_invalid_message")}), 400
                 role = str(item.get("role", "")).strip().lower()
                 content = item.get("content")
                 if role not in safe_roles:
-                    return jsonify({"error": "พบ role ที่ไม่อนุญาตในประวัติ"}), 400
+                    return jsonify({"error": status_message(request_language(), "history_unsupported_role")}), 400
                 if not isinstance(content, str):
-                    return jsonify({"error": "รูปแบบข้อความไม่ถูกต้อง"}), 400
+                    return jsonify({"error": status_message(request_language(), "history_invalid_message")}), 400
                 sanitized_messages.append({"role": role, "content": content[:20000]})
             # Editing a prompt replaces the stored list with the sanitized one.
             record["messages"] = sanitized_messages
@@ -4250,12 +4362,12 @@ def history_delete(conversation_id: str):
     with HISTORY_LOCK:
         path = find_history_file(conversation_id)
         if not path or not path.exists():
-            return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+            return jsonify({"error": status_message(request_language(), "history_not_found")}), 404
         record = read_history_file(path)
         if record is None:
-            return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+            return jsonify({"error": status_message(request_language(), "history_corrupt")}), 409
         if record.get("locked"):
-            return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนลบ"}), 423
+            return jsonify({"error": status_message(request_language(), "history_locked_delete")}), 423
         path.unlink()
         return jsonify({"ok": True})
 
@@ -4267,13 +4379,13 @@ def history_append(conversation_id: str):
     messages = body.get("messages")
     generation = body.get("generation")
     if not isinstance(messages, list) or not messages:
-        return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
+        return jsonify({"error": status_message(request_language(), "history_invalid")}), 400
     try:
         record = append_history_messages(conversation_id, messages, generation)
     except HistoryConflict:
-        return jsonify({"error": "เกิดความขัดแย้งข้อมูล: บันทึกถูกปรับปรุงโดยผู้อื่น กรุณาโหลดใหม่"}), 409
+        return jsonify({"error": status_message(request_language(), "history_conflict")}), 409
     if record is None:
-        return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+        return jsonify({"error": status_message(request_language(), "history_not_found")}), 404
     return jsonify(record)
 
 
@@ -4282,11 +4394,11 @@ def history_save():
     """Store a conversation payload sent by the web UI."""
     body = request.get_json(silent=True) or {}
     if not isinstance(body.get("messages"), list):
-        return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
+        return jsonify({"error": status_message(request_language(), "history_invalid")}), 400
     try:
         return jsonify(save_history(body))
     except HistoryLocked:
-        return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนบันทึกทับ"}), 423
+        return jsonify({"error": status_message(request_language(), "history_locked_save")}), 423
 
 
 def models_response(provider: str, settings: dict[str, Any]):
@@ -4297,7 +4409,7 @@ def models_response(provider: str, settings: dict[str, Any]):
         return jsonify({"provider": provider, "models": models, "source": "api"})
     except (requests.RequestException, RuntimeError, KeyError, TypeError):
         fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
-        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": "ดึงรายการโมเดลจาก API ไม่สำเร็จ ใช้รายการสำรองแทน"}), 502
+        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": status_message(request_language(), "models_fallback")}), 502
 
 
 @app.get("/api/models")
@@ -4371,7 +4483,7 @@ def apply_settings_update():
     allowed_channels, invalid_channels = parse_discord_ids(current.get("discord_allowed_channels"))
     if invalid_users or invalid_channels:
         return jsonify({
-            "error": "Discord ID ต้องเป็นตัวเลขเท่านั้น: " + ", ".join((invalid_users + invalid_channels)[:5]),
+            "error": status_message(request_language(), "discord_ids_invalid", ids=", ".join((invalid_users + invalid_channels)[:5])),
         }), 400
     current["discord_allowed_users"] = allowed_users
     current["discord_allowed_channels"] = allowed_channels
@@ -4397,11 +4509,11 @@ def apply_settings_update():
         try:
             custom_name = normalize_custom_key_name(custom_key.get("name"))
         except ValueError:
-            return jsonify({"error": "ชื่อ Custom API key ไม่ถูกต้อง"}), 400
+            return jsonify({"error": status_message(request_language(), "custom_key_name_invalid")}), 400
         custom_value = custom_key.get("value")
         custom_value = custom_key.get("value")
         if isinstance(custom_value, str) and "\x00" in custom_value:
-            return jsonify({"error": "Custom API key value must not contain NUL characters"}), 400
+            return jsonify({"error": status_message(request_language(), "custom_key_nul")}), 400
         if isinstance(custom_value, str) and custom_value.strip() and custom_value.strip() != "••••••••":
             keys = stored_custom_api_keys(current)
             keys[custom_name] = custom_value.strip()
@@ -4444,7 +4556,7 @@ def settings_test():
     provider = normalize_provider(settings.get("provider"))
     STATUS_CACHE.clear()
     try:
-        messages = clean_messages([{"role": "user", "content": "ตอบคำว่า OK สั้น ๆ"}], settings)
+        messages = clean_messages([{"role": "user", "content": "Reply with a short OK"}], settings)
         answer, _usage = call_provider(messages, settings)
         STATUS_CACHE.clear()
         return jsonify({"ok": True, "answer": answer, "provider": provider})
@@ -4467,10 +4579,10 @@ def settings_test():
                 detail = exc.response.text
             detail = detail[:300]
         api_key = get_api_key(provider, settings)
-        message = redact_secrets(detail, api_key=api_key) if detail else "ตรวจสอบ API key, โมเดล และ Base URL อีกครั้ง"
+        message = redact_secrets(detail, api_key=api_key) if detail else status_message(request_language(), "test_connection_hint")
         return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: {message}"}), 502
     except (requests.RequestException, KeyError, IndexError, RuntimeError):
-        return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"}), 502
+        return jsonify({"ok": False, "provider": provider, "error": status_message(request_language(), "test_connection_failed", label=PROVIDER_LABELS[provider])}), 502
 
 
 def gemini_error_detail(response: Any, api_key: str) -> str:
@@ -4957,7 +5069,7 @@ def update_env_file(values: dict[str, str]) -> None:
         try:
             lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
-            raise OSError(f"อ่านไฟล์ .env ไม่สำเร็จ: {exc}") from exc
+            raise OSError(f"Could not read the .env file: {exc}") from exc
     pending = dict(values)
     output: list[str] = []
     pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
@@ -5030,7 +5142,7 @@ def server_tls_update():
         except OSError as exc:
             return jsonify({"ok": False, "error": status_message(language, "env_write_failed", error=str(exc))}), 500
         apply_tls_environment(values)
-    log_event("system.tls_saved", "บันทึกโหมดการเชื่อมต่อจากหน้าเว็บ", mode=mode, kind=https_kind)
+    log_event("system.tls_saved", "Saved the connection mode from the web page", mode=mode, kind=https_kind)
     return no_store(jsonify({
         "ok": True,
         "mode": mode,
@@ -5078,7 +5190,7 @@ def server_action():
             "action": action,
             "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
-    log_event("system.server_action", "สั่งควบคุมเซิร์ฟเวอร์จากหน้าเว็บ", action=action)
+    log_event("system.server_action", "Server control requested from the web page", action=action)
     return no_store(jsonify({"ok": True, "action": action, "pid": child.pid})), 202
 
 
@@ -5102,17 +5214,17 @@ def update_run():
     body = request.get_json(silent=True) or {}
     mode = str(body.get("mode") or "apply").strip().lower()
     if mode not in UPDATE_MODES:
-        return jsonify({"ok": False, "error": "โหมดอัปเดตไม่ถูกต้อง"}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "update_mode_invalid")}), 400
     if not update_script_ready():
-        return jsonify({"ok": False, "error": "ไม่พบสคริปต์ update.sh ที่รันได้ในโฟลเดอร์โปรเจกต์"}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "update_script_missing")}), 400
     # Check the same view GET /api/update reports, so a job that is still running
     # after a server restart is not truncated and replaced by a second updater.
     if update_job_snapshot()["running"]:
-        return jsonify({"ok": False, "error": "มีการอัปเดตกำลังทำงานอยู่"}), 409
+        return jsonify({"ok": False, "error": status_message(request_language(), "update_busy")}), 409
     with UPDATE_JOB_LOCK:
         process = UPDATE_JOB.get("process")
         if process and process.poll() is None:
-            return jsonify({"ok": False, "error": "มีการอัปเดตกำลังทำงานอยู่"}), 409
+            return jsonify({"ok": False, "error": status_message(request_language(), "update_busy")}), 409
         args = [str(UPDATE_SCRIPT)]
         if mode == "check":
             # A dry run only compares files, so it must not write or restart.
@@ -5132,7 +5244,7 @@ def update_run():
                     env={**os.environ, "AI_WEB_UPDATE_FROM_WEB": "1"},
                 )
         except OSError:
-            return jsonify({"ok": False, "error": "เริ่มอัปเดตไม่สำเร็จ กรุณาดู log ของระบบ"}), 500
+            return jsonify({"ok": False, "error": status_message(request_language(), "update_start_failed")}), 500
         started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         UPDATE_JOB.clear()
         UPDATE_JOB.update({
@@ -5146,7 +5258,7 @@ def update_run():
         })
         save_update_status({"mode": mode, "started_at": started_at, "pid": new_process.pid})
     threading.Thread(target=watch_update_job, args=(new_process,), daemon=True).start()
-    log_event("system.update_started", "เริ่มอัปเดตระบบจากหน้าเว็บ", mode=mode)
+    log_event("system.update_started", "Started a system update from the web page", mode=mode)
     return jsonify({"ok": True, "mode": mode, "pid": new_process.pid}), 202
 
 
@@ -5156,14 +5268,14 @@ def chat():
     body = request.get_json(silent=True) or {}
     messages = body.get("messages", [])
     if not messages or not isinstance(messages, list):
-        return jsonify({"error": "กรุณาส่งข้อความ"}), 400
+        return jsonify({"error": status_message(request_language(), "chat_message_required")}), 400
 
     provider = "openai"
     # Bound before the try block: the error handlers below must never raise a
     # NameError that hides the real cause.
     settings: dict[str, Any] = {}
     try:
-        log_event("chat.start", "เริ่มประมวลผลข้อความ", message_count=len(messages))
+        log_event("chat.start", "Started processing a message", message_count=len(messages))
         settings = load_settings()
         provider = str(settings.get("provider", "openai")).lower()
         request_skills = body.get("skills")
@@ -5187,7 +5299,7 @@ def chat():
             part for part in (
                 settings.get("system_prompt", ""),
                 agent_profile_prompt(settings),
-                f"แนวทางทบทวนความจำ:\n{settings.get('memory_review', '')}" if settings.get("memory_review") else "",
+                f"Memory review guidance:\n{settings.get('memory_review', '')}" if settings.get("memory_review") else "",
                 selected_skill_prompt(settings),
                 TOOL_INSTRUCTIONS,
             ) if part
@@ -5244,7 +5356,7 @@ def chat():
             try:
                 tool_requests = parse_tool_requests(answer)
             except ValueError as exc:
-                log_event("tool.parse_failed", "ข้าม tool_call ที่ไม่สมบูรณ์", error=str(exc))
+                log_event("tool.parse_failed", "Skipped an incomplete tool_call", error=str(exc))
                 tool_requests = []
             if not tool_requests:
                 break
@@ -5267,7 +5379,7 @@ def chat():
             ):
                 approval_id, approval_expires_at = request_tool_approval(approval_request["name"], approval_request["arguments"])
                 return jsonify({
-                    "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
+                    "answer": "The AI requested a tool that needs approval first",
                     "provider": provider,
                     "tool_request": approval_request,
                     "approval_id": approval_id,
@@ -5291,24 +5403,24 @@ def chat():
                 results.append(result)
             messages.extend([
                 {"role": "assistant", "content": answer},
-                {"role": "user", "content": f"ผลการใช้เครื่องมือ:\n{json.dumps(results, ensure_ascii=False)}\n\nตอบผู้ใช้เป็นข้อความธรรมดา อธิบายชื่อและหน้าที่ของแต่ละ Skill ที่ตรวจพบ ห้ามแสดง tool_call หรือ JSON"},
+                {"role": "user", "content": f"Tool results:\n{json.dumps(results, ensure_ascii=False)}\n\nAnswer the user in plain text, describing the name and purpose of each detected Skill. Never show a tool_call or JSON."},
             ])
             answer, usage = call_provider(messages, settings)
         duration_ms = round((time.perf_counter() - started_at) * 1000)
-        log_event("chat.success", "ตอบข้อความสำเร็จ", provider=provider, model=settings["model"], duration_ms=duration_ms)
+        log_event("chat.success", "Replied successfully", provider=provider, model=settings["model"], duration_ms=duration_ms)
         return jsonify({"answer": answer, "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
-        log_event("provider.error", "ผู้ให้บริการตอบกลับด้วย HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
+        log_event("provider.error", "The provider answered with an HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
         api_key = safe_stored_api_key(provider, settings)
         if exc.response is not None and exc.response.status_code in {429, 503}:
-            provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "ผู้ให้บริการ")
-            return jsonify({"error": f"{provider_label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น"}), 503
-        fallback_detail = "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล"
+            provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "The provider")
+            return jsonify({"error": status_message(request_language(), "chat_busy", label=provider_label)}), 503
+        fallback_detail = status_message(request_language(), "chat_provider_error")
         detail = redact_secrets(exc.response.text if exc.response is not None else fallback_detail, api_key=api_key)[:500]
-        return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
+        return jsonify({"error": status_message(request_language(), "chat_api_failed", detail=detail)}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
-        log_event("chat.error", "ประมวลผลข้อความไม่สำเร็จ", error=str(exc))
-        return jsonify({"error": "ประมวลผลข้อความไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"}), 500
+        log_event("chat.error", "Could not process the message", error=str(exc))
+        return jsonify({"error": status_message(request_language(), "chat_failed")}), 500
 
 
 def tls_configuration() -> Any:
@@ -5317,10 +5429,10 @@ def tls_configuration() -> Any:
     key = os.getenv("AI_WEB_TLS_KEY", "").strip()
     if cert or key:
         if not (cert and key):
-            raise SystemExit("ต้องตั้ง AI_WEB_TLS_CERT และ AI_WEB_TLS_KEY พร้อมกัน")
+            raise SystemExit("Set AI_WEB_TLS_CERT and AI_WEB_TLS_KEY together")
         missing = [path for path in (cert, key) if not Path(path).is_file()]
         if missing:
-            raise SystemExit(f"ไม่พบไฟล์ใบรับรอง/คีย์: {', '.join(missing)}")
+            raise SystemExit(f"Certificate/key files not found: {', '.join(missing)}")
         return (cert, key)
     if os.getenv("AI_WEB_TLS_ADHOC", "").strip().lower() in {"1", "true", "yes", "on"}:
         return "adhoc"
@@ -5370,8 +5482,8 @@ def adhoc_certificate() -> tuple[str, str]:
     openssl = shutil.which("openssl")
     if not openssl:
         raise RuntimeError(
-            "ไม่พบ openssl สำหรับสร้างใบรับรองชั่วคราว — ติดตั้งด้วย pkg install openssl-tool "
-            "หรือใช้ ./start_web.sh --make-cert แล้วเลือกโหมด certificate"
+            "openssl was not found, so the ad-hoc certificate cannot be created — install it with pkg install openssl-tool "
+            "or run ./start_web.sh --make-cert and choose the certificate mode"
         )
     names = ["localhost", "127.0.0.1"]
     try:
@@ -5413,7 +5525,7 @@ def adhoc_certificate() -> tuple[str, str]:
         )
         if result.returncode != 0:
             raise RuntimeError(
-                f"สร้างใบรับรองชั่วคราวไม่สำเร็จ: {result.stderr.strip()[:300]}"
+                f"Could not create the ad-hoc certificate: {result.stderr.strip()[:300]}"
             )
         os.chmod(temp_key, 0o600)
         os.replace(temp_cert, ADHOC_CERT_FILE)
@@ -5421,7 +5533,7 @@ def adhoc_certificate() -> tuple[str, str]:
     finally:
         for leftover in (temp_key, temp_cert):
             leftover.unlink(missing_ok=True)
-    log_event("system.adhoc_cert", "สร้างใบรับรอง HTTPS ชั่วคราว", names=", ".join(names))
+    log_event("system.adhoc_cert", "Created an ad-hoc HTTPS certificate", names=", ".join(names))
     return str(ADHOC_CERT_FILE), str(ADHOC_KEY_FILE)
 
 
@@ -5441,7 +5553,7 @@ def build_tls_context(ssl_context: Any) -> Any:
     try:
         return load_ssl_context(*adhoc_certificate())
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
-        raise SystemExit(f"สร้างใบรับรอง HTTPS ชั่วคราวไม่สำเร็จ: {exc}") from exc
+        raise SystemExit(f"Could not create the ad-hoc HTTPS certificate: {exc}") from exc
 
 
 class TLSServer(ThreadedWSGIServer):
@@ -5481,10 +5593,10 @@ def auth_cli(argv: list[str]) -> bool:
     if "--pairing-key" not in argv and "--revoke-sessions" not in argv:
         return False
     if "--revoke-sessions" in argv:
-        print(f"✅ ยกเลิกอุปกรณ์ที่เชื่อมต่อทั้งหมดแล้ว ({revoke_all_auth_sessions()})", flush=True)
+        print(f"✅ Revoked every connected device ({revoke_all_auth_sessions()})", flush=True)
     if "--pairing-key" in argv:
         if not AUTH_ENABLED:
-            print("Web auth ปิดอยู่ — ตั้ง AI_WEB_AUTH=on เพื่อสร้าง Pairing Key", flush=True)
+            print("Web auth is off — set AI_WEB_AUTH=on to create a Pairing Key", flush=True)
             return True
         label = "cli"
         if "--label" in argv:
@@ -5508,9 +5620,9 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))
     ssl_context = tls_configuration()
     scheme = "https" if ssl_context else "http"
-    print(f"🔒 เปิดให้บริการที่ {scheme}://<ip>:{port}" if ssl_context else f"🌐 เปิดให้บริการที่ http://<ip>:{port}", flush=True)
+    print(f"🔒 Serving at {scheme}://<ip>:{port}" if ssl_context else f"🌐 Serving at http://<ip>:{port}", flush=True)
     if ssl_context:
-        print("   คุกกี้ session จะถูกตั้งเป็น Secure เพราะ request.is_secure เป็นจริง", flush=True)
+        print("   Session cookies are marked Secure because request.is_secure is true", flush=True)
         # Handshake per connection so a client that never sends TLS data
         # cannot block the accept loop.
         server = TLSServer("0.0.0.0", port, app, build_tls_context(ssl_context))
