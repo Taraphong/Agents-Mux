@@ -831,8 +831,14 @@ def parse_command(command: str) -> list[str]:
     return argv
 
 
-def request_tool_approval(name: str, arguments: dict[str, Any]) -> str:
-    """Create a short-lived approval token for a sensitive tool call."""
+def request_tool_approval(name: str, arguments: dict[str, Any]) -> tuple[str, int]:
+    """Create a short-lived approval token for a sensitive tool call.
+
+    Returns the token and the unix timestamp it expires at. The expiry is
+    derived from the same clock reading that is stored as ``created_at``, so
+    the deadline the client shows matches what ``consume_tool_approval``
+    accepts even when this call waits on the lock.
+    """
     approval_id = secrets.token_urlsafe(24)
     now = time.time()
     with PENDING_APPROVAL_LOCK:
@@ -842,7 +848,7 @@ def request_tool_approval(name: str, arguments: dict[str, Any]) -> str:
         while len(PENDING_TOOL_REQUESTS) >= MAX_PENDING_APPROVALS:
             PENDING_TOOL_REQUESTS.pop(next(iter(PENDING_TOOL_REQUESTS)))
         PENDING_TOOL_REQUESTS[approval_id] = {"name": name, "arguments": arguments, "created_at": now}
-    return approval_id
+    return approval_id, int(now) + APPROVAL_TTL_SECONDS
 
 
 def consume_tool_approval(approval_id: Any, name: str, arguments: dict[str, Any]) -> bool:
@@ -1994,6 +2000,21 @@ def is_openai_reasoning_model(provider: str, model: str) -> bool:
     return bool(re.match(r"^(?:o[1-9](?:-|$)|gpt-5|gpt-oss)", name))
 
 
+def rejects_sampling_params(provider: str, model: str) -> bool:
+    """Return whether the endpoint rejects temperature/top_p for this model.
+
+    Only the native OpenAI endpoint's reasoning models reject the sampling
+    fields. The same model names served by OpenRouter, Groq, or the Hugging
+    Face router accept them (Groq's gpt-oss examples send a temperature), so
+    this is decided by exact model id on the native provider instead of
+    reusing the reasoning-effort classifier.
+    """
+    if normalize_provider(provider) != "openai":
+        return False
+    name = str(model or "").strip().lower()
+    return bool(re.match(r"^(?:o[1-9](?:-|$)|gpt-5)", name))
+
+
 def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     """Send one chat completion request to an OpenAI-compatible endpoint."""
     key = get_api_key(settings["provider"], settings)
@@ -2007,17 +2028,19 @@ def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
         "model": model,
         "messages": messages,
     }
-    if reasoning_model:
-        # Reasoning models reject max_tokens, temperature, and top_p. Only the
-        # OpenAI endpoint renamed the output cap to max_completion_tokens;
-        # OpenAI-compatible routers still expect max_tokens.
-        if normalize_provider(settings["provider"]) == "openai":
-            payload["max_completion_tokens"] = settings["max_tokens"]
-        else:
-            payload["max_tokens"] = settings["max_tokens"]
+    if reasoning_model and normalize_provider(settings["provider"]) == "openai":
+        # Only the native OpenAI endpoint renamed the output cap to
+        # max_completion_tokens; OpenAI-compatible routers still expect
+        # max_tokens.
+        payload["max_completion_tokens"] = settings["max_tokens"]
     else:
-        payload["temperature"] = settings["temperature"]
         payload["max_tokens"] = settings["max_tokens"]
+    # Sampling support is a different question from reasoning-effort support:
+    # Groq's gpt-oss models take reasoning_effort and still accept the
+    # configured temperature/top_p, while native OpenAI reasoning models reject
+    # both fields.
+    if not rejects_sampling_params(settings["provider"], model):
+        payload["temperature"] = settings["temperature"]
         payload["top_p"] = settings["top_p"]
     if reasoning_model and settings.get("thinking_level") in {"low", "medium", "high"}:
         payload["reasoning_effort"] = settings["thinking_level"]
@@ -2083,10 +2106,30 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
     )
 
 
+def anthropic_model_version(model: str) -> tuple[int, int] | None:
+    """Return the Claude version encoded in a model id, or None."""
+    match = re.search(
+        r"claude-(?:[a-z]+-)?(\d+)(?:-(\d+))?", str(model or "").strip().lower()
+    )
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2) or 0)
+
+
+def anthropic_adaptive_thinking_supported(model: str) -> bool:
+    """Return whether the model takes adaptive thinking (Claude 4.7 and later)."""
+    version = anthropic_model_version(model)
+    return version is not None and version >= (4, 7)
+
+
 def anthropic_thinking_supported(model: str) -> bool:
-    """Return whether an Anthropic model accepts extended thinking."""
-    name = str(model or "").strip().lower()
-    return bool(re.search(r"claude-(?:3-7|(?:sonnet|opus|haiku)-4)", name))
+    """Return whether an Anthropic model accepts manual extended thinking.
+
+    Claude 4.7 and later reject ``thinking.type: "enabled"`` with a 400 error
+    and use adaptive thinking instead, so they are excluded here.
+    """
+    version = anthropic_model_version(model)
+    return version is not None and (3, 7) <= version < (4, 7)
 
 
 def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
@@ -2103,13 +2146,20 @@ def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> 
         "temperature": settings["temperature"],
     }
     thinking_level = settings.get("thinking_level", "off")
-    if thinking_level in {"low", "medium", "high"} and anthropic_thinking_supported(settings["model"]):
-        budget = {"low": 1024, "medium": 4096, "high": 8192}[thinking_level]
-        # Extended thinking requires max_tokens > budget_tokens and rejects a
-        # custom temperature, so leave temperature unset and grow the cap.
-        payload["max_tokens"] = max(int(settings["max_tokens"]), budget + 1024)
-        payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
-        payload.pop("temperature", None)
+    if thinking_level in {"low", "medium", "high"}:
+        if anthropic_adaptive_thinking_supported(settings["model"]):
+            # Claude 4.7 and later reject a manual budget with a 400 error; they
+            # take adaptive thinking with the depth steered by effort instead.
+            payload["thinking"] = {"type": "adaptive"}
+            payload["output_config"] = {"effort": thinking_level}
+            payload.pop("temperature", None)
+        elif anthropic_thinking_supported(settings["model"]):
+            budget = {"low": 1024, "medium": 4096, "high": 8192}[thinking_level]
+            # Extended thinking requires max_tokens > budget_tokens and rejects a
+            # custom temperature, so leave temperature unset and grow the cap.
+            payload["max_tokens"] = max(int(settings["max_tokens"]), budget + 1024)
+            payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            payload.pop("temperature", None)
     response = requests.post(
         f"{get_base_url('anthropic', settings)}/messages",
         headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
@@ -2129,6 +2179,10 @@ def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> 
         ),
         "",
     )
+    if not text:
+        # An end_turn response with no text block is valid for the API but
+        # useless here: returning an empty string would surface a blank reply.
+        raise RuntimeError("Anthropic response contained no text block")
     return text, normalize_usage(usage, "input_tokens", "output_tokens", None)
 
 
@@ -2692,7 +2746,10 @@ def tools_execute():
         return jsonify({"ok": True, "result": result})
     except (FileNotFoundError, PermissionError, ValueError, OSError, subprocess.SubprocessError) as exc:
         log_event("tool.error", f"ใช้ {name} ไม่สำเร็จ", tool=name, error=str(exc))
-        return jsonify({"ok": False, "error": "ใช้เครื่องมือไม่สำเร็จ กรุณาตรวจสอบพารามิเตอร์แล้วลองใหม่"}), 400
+        # ``approved`` means the single-use token was already consumed above, so
+        # the client must ask for a new approval instead of offering a retry
+        # with a token this endpoint will reject.
+        return jsonify({"ok": False, "error": "ใช้เครื่องมือไม่สำเร็จ กรุณาตรวจสอบพารามิเตอร์แล้วลองใหม่", "approval_consumed": approved}), 400
 
 
 @app.get("/api/terminal/info")
@@ -3501,7 +3558,47 @@ def history_get(conversation_id: str):
     record = read_history_file(path)
     if record is None:
         return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
-    return jsonify(record)
+    payload = dict(record)
+    # A pending approval restored from disk needs the server clock to be
+    # measured against; the browser clock cannot be trusted for that.
+    payload["server_time"] = int(time.time())
+    return jsonify(payload)
+
+
+@app.post("/api/history/<conversation_id>/approvals/clear")
+def history_clear_approval(conversation_id: str):
+    """Clear a used or rejected approval token from one stored message.
+
+    The chat page keeps the token in its message metadata so a reload can offer
+    the button again. Once the token is consumed the stored copy has to go as
+    well, otherwise reopening the conversation offers a dead approval.
+    """
+    body = request.get_json(silent=True) or {}
+    message_id = body.get("message_id")
+    if not isinstance(message_id, str) or not message_id:
+        return jsonify({"ok": False, "error": "ต้องระบุ message_id"}), 400
+    if not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
+        return jsonify({"ok": False, "error": "ไม่พบประวัติการสนทนา"}), 404
+    with HISTORY_LOCK:
+        path = find_history_file(conversation_id)
+        if not path or not path.exists():
+            return jsonify({"ok": False, "error": "ไม่พบประวัติการสนทนา"}), 404
+        record = read_history_file(path)
+        if record is None:
+            return jsonify({"ok": False, "error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+        stored = record.get("messages") if isinstance(record.get("messages"), list) else []
+        cleared = False
+        for message in stored:
+            if not isinstance(message, dict) or message.get("message_id") != message_id:
+                continue
+            for key in ("tool_request", "approval_id", "approval_expires_at", "approval_deadline"):
+                if message.pop(key, None) is not None:
+                    cleared = True
+        if cleared:
+            # Only a single-use token is removed, so a locked conversation can
+            # still be cleaned up without changing its content.
+            _write_history_record(path, record)
+        return jsonify({"ok": True, "cleared": cleared})
 
 
 @app.patch("/api/history/<conversation_id>")
@@ -4306,7 +4403,7 @@ def chat():
                 or machine_access_enabled(load_settings())
                 or command_mode not in {"auto", "fast"}
             ):
-                approval_id = request_tool_approval(approval_request["name"], approval_request["arguments"])
+                approval_id, approval_expires_at = request_tool_approval(approval_request["name"], approval_request["arguments"])
                 return jsonify({
                     "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
                     "provider": provider,
@@ -4314,7 +4411,10 @@ def chat():
                     "approval_id": approval_id,
                     # The client needs the expiry to only offer the button while
                     # the token can still be redeemed (e.g. after a reload).
-                    "approval_expires_at": int(time.time()) + APPROVAL_TTL_SECONDS,
+                    "approval_expires_at": approval_expires_at,
+                    # The matching server clock reading lets a browser whose
+                    # clock is off still compute the real remaining lifetime.
+                    "server_time": approval_expires_at - APPROVAL_TTL_SECONDS,
                     "duration_ms": round((time.perf_counter() - started_at) * 1000),
                     "usage": usage,
                     "model": settings["model"],

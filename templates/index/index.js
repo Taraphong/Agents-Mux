@@ -1739,6 +1739,71 @@ function formatUsage(durationMs, usage) {
       : t("usage.unknownTokens");
   return t("usage.summary", { duration, tokens });
 }
+// Approval tokens expire on the server's clock, so freshness is never measured
+// against the browser clock. Every payload that carries an expiry also carries
+// the server's own `server_time`; the client turns that pair into a local
+// deadline once and compares against the deadline from then on.
+function stampApprovalDeadline(meta, serverTimeSeconds) {
+  if (!meta || typeof meta !== "object") return;
+  const expiresAt = Number(meta.approval_expires_at || 0);
+  const serverNow = Number(serverTimeSeconds || 0);
+  if (!expiresAt || !serverNow) {
+    delete meta.approval_deadline;
+    return;
+  }
+  meta.approval_deadline =
+    Date.now() + Math.max(0, (expiresAt - serverNow) * 1000);
+}
+function isApprovalExpired(meta) {
+  const deadline = Number(meta?.approval_deadline || 0);
+  return deadline > 0 && deadline <= Date.now();
+}
+function scheduleApprovalExpiry(meta, button) {
+  const deadline = Number(meta?.approval_deadline || 0);
+  const remaining = deadline - Date.now();
+  if (!(remaining > 0)) return;
+  // The chat can sit open past the deadline, so close the control then instead
+  // of waiting for a click the server would reject.
+  window.setTimeout(() => {
+    if (!button.isConnected || button.messageMeta !== meta) return;
+    button.disabled = true;
+    button.textContent = t("tool.expired");
+  }, remaining);
+}
+function renderedApprovalButton(meta) {
+  const id = meta?.message_id;
+  if (!id) return null;
+  return (
+    Array.from(document.querySelectorAll("#messages .tool-approval")).find(
+      (candidate) => candidate.dataset.messageId === id,
+    ) || null
+  );
+}
+function clearApprovalState(meta, conversationIdForSave = null) {
+  if (!meta) return;
+  const messageId = meta.message_id;
+  const hadApproval = Boolean(meta.approval_id || meta.tool_request);
+  delete meta.approval_running;
+  meta.approval_id = "";
+  meta.tool_request = null;
+  delete meta.approval_expires_at;
+  delete meta.approval_deadline;
+  if (hadApproval && conversationIdForSave && messageId) {
+    clearStoredApproval(conversationIdForSave, messageId);
+  }
+}
+async function clearStoredApproval(id, messageId) {
+  try {
+    await fetch(`/api/history/${encodeURIComponent(id)}/approvals/clear`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message_id: messageId }),
+    });
+  } catch (error) {
+    // Best effort: the token is single-use on the server anyway, so a failed
+    // cleanup only leaves a button that answers 403.
+  }
+}
 function addMessage(role, content, meta = null, messageIndex = null) {
   const el = document.createElement("div");
   el.className = `message ${role}`;
@@ -1758,25 +1823,28 @@ function addMessage(role, content, meta = null, messageIndex = null) {
     skill.textContent = `🧩 ${meta.skill}`;
     el.appendChild(skill);
   }
-  const approvalExpiresAt = Number(meta?.approval_expires_at || 0);
-  const approvalExpired =
-    approvalExpiresAt > 0 && approvalExpiresAt * 1000 <= Date.now();
+  const approvalRunning = Boolean(meta?.approval_running);
   if (
     role === "assistant" &&
     meta?.tool_request &&
     meta?.approval_id &&
-    !approvalExpired
+    !isApprovalExpired(meta)
   ) {
     const approval = document.createElement("button");
     approval.type = "button";
     approval.className = "tool-approval";
-    approval.textContent = t("tool.approve", {
-      name: meta.tool_request.name,
-    });
+    approval.textContent = approvalRunning
+      ? t("tool.working")
+      : t("tool.approve", {
+          name: meta.tool_request.name,
+        });
+    approval.disabled = approvalRunning;
     approval.toolRequest = meta.tool_request;
     approval.approvalId = meta.approval_id;
     approval.messageMeta = meta;
+    if (meta.message_id) approval.dataset.messageId = meta.message_id;
     approval.addEventListener("click", approveToolRequest);
+    if (!approvalRunning) scheduleApprovalExpiry(meta, approval);
     el.appendChild(approval);
     const args = meta.tool_request.arguments || {};
     const summary = args.command || args.path || "";
@@ -1973,12 +2041,25 @@ function removeTypingIndicator() {
 }
 async function approveToolRequest(event) {
   const button = event.currentTarget;
+  const meta = button.messageMeta;
+  const targetConversationId = conversationId;
+  if (isApprovalExpired(meta)) {
+    // The deadline passed while the chat stayed open: never send a request the
+    // server is going to reject.
+    button.disabled = true;
+    button.textContent = t("tool.expired");
+    clearApprovalState(meta, targetConversationId);
+    return;
+  }
   button.disabled = true;
   button.textContent = t("tool.working");
+  // Keep the in-flight state on the message: a language switch or a history
+  // refresh rebuilds the button, and it must not come back enabled with a
+  // token this request is already spending.
+  if (meta) meta.approval_running = true;
   // The result belongs to the chat that was open when the tool finished, so
   // hold the session and conversation until then.
   const sessionToken = chatSessionToken;
-  const targetConversationId = conversationId;
   try {
     const request = button.toolRequest;
     const response = await fetch("/api/tools/execute", {
@@ -1993,17 +2074,19 @@ async function approveToolRequest(event) {
     const data = await response.json();
     if (!response.ok || !data.ok) {
       const error = new Error(data.error || t("tool.error"));
-      error.fatal = response.status === 403;
+      // 403 is a rejected or already used token. A 400 is fatal too when the
+      // server reports that the token was consumed before the tool failed.
+      error.fatal =
+        response.status === 403 || Boolean(data.approval_consumed);
       throw error;
     }
-    button.textContent = t("tool.done");
-    button.disabled = true;
-    // The token is single-use; drop it from the message so a language switch
-    // or re-render cannot offer the same approval twice.
-    if (button.messageMeta) {
-      button.messageMeta.approval_id = "";
-      button.messageMeta.tool_request = null;
-    }
+    if (meta) delete meta.approval_running;
+    // The token is single-use; drop it from the message and from the saved
+    // record so a re-render or a reopened conversation cannot offer it again.
+    clearApprovalState(meta, targetConversationId);
+    const liveButton = renderedApprovalButton(meta) || button;
+    liveButton.textContent = t("tool.done");
+    liveButton.disabled = true;
     if (
       sessionToken !== chatSessionToken ||
       conversationId !== targetConversationId
@@ -2016,14 +2099,12 @@ async function approveToolRequest(event) {
     resizeInput();
     $("chat-form").requestSubmit();
   } catch (error) {
+    if (meta) delete meta.approval_running;
     button.disabled = Boolean(error.fatal);
     button.textContent = error.fatal
       ? t("tool.expired")
       : t("tool.retry", { message: error.message });
-    if (error.fatal && button.messageMeta) {
-      button.messageMeta.approval_id = "";
-      button.messageMeta.tool_request = null;
-    }
+    if (error.fatal) clearApprovalState(meta, targetConversationId);
   }
 }
 document.querySelectorAll("nav button").forEach((button) =>
@@ -2587,8 +2668,11 @@ function newMessageId() {
 function historyMessagePayload(message = {}) {
   // Keep tool_request/approval_id: a pending approval must still be offered
   // after a reload or when the conversation is opened again from the sidebar,
-  // for as long as the server-side token has not expired.
-  return message;
+  // for as long as the server-side token has not expired. approval_deadline is
+  // a browser-clock value and is recomputed from the server clock on load.
+  if (!message || !("approval_deadline" in message)) return message;
+  const { approval_deadline: _deadline, ...rest } = message;
+  return rest;
 }
 async function appendMessagesToHistory(id, newMessages, generation) {
   if (!id || !newMessages.length) return { ok: true };
@@ -2859,6 +2943,7 @@ async function sendChatMessage(content, requestedSkills = null) {
       approval_expires_at: data.approval_expires_at,
       fallback_used: data.fallback_used,
     };
+    stampApprovalDeadline(assistantMessage, data.server_time);
     if (sessionToken !== chatSessionToken) {
       if (targetConversationId && conversationId === targetConversationId) {
         messages.push(assistantMessage);
@@ -4308,6 +4393,11 @@ async function openConversation(id) {
     ? record.messages
     : [];
   messages.splice(0, messages.length, ...recordMessages);
+  // Deadlines are rebuilt from the server clock that came with this record, so
+  // a browser clock that is off cannot hide an approval the server accepts.
+  recordMessages.forEach((message) =>
+    stampApprovalDeadline(message, record.server_time),
+  );
   persistedMessageCount = recordMessages.length;
   const pending = pendingHistoryAppends.get(id)?.messages || [];
   if (pending.length) {
