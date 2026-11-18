@@ -1769,12 +1769,14 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
 
 
 MODEL_LIST_CACHE_TTL = 600
-# Discord closes an autocomplete request after about three seconds, and a requests
-# timeout applies to the connect and to each read separately, so 1.5s keeps the
-# worst case inside that window. The web endpoints keep the 30s timeout.
-MODEL_LIST_AUTOCOMPLETE_TIMEOUT = 1.5
 MODEL_LIST_CACHE: dict[str, tuple[float, list[str]]] = {}
 MODEL_LIST_ERROR_LOGGED: dict[str, float] = {}
+# An autocomplete never waits on the provider API: it answers from the cache or
+# the static list and lets a daemon thread refresh the real list.
+MODEL_LIST_REFRESH_TIMEOUT = 8
+MODEL_LIST_REFRESH_INTERVAL = 15
+MODEL_LIST_REFRESH_LOCK = threading.Lock()
+MODEL_LIST_REFRESH_STARTED: dict[str, float] = {}
 
 
 def remember_model_names(provider: str, names: list[str]) -> None:
@@ -1784,23 +1786,24 @@ def remember_model_names(provider: str, names: list[str]) -> None:
         MODEL_LIST_CACHE[normalize_provider(provider)] = (time.time(), list(names))
 
 
-def model_names_for_autocomplete(provider: str, settings: dict[str, Any]) -> list[str]:
-    """Return model ids for a slash-command autocomplete within Discord's time limit.
+def static_model_names(provider: str, settings: dict[str, Any]) -> list[str]:
+    """Return the fallback model ids, with the model in use listed first."""
+    names = list(FALLBACK_MODELS.get(provider, []))
+    active_provider = normalize_provider(settings.get("provider", "openai"))
+    active_model = str(settings.get("model") or "").strip()
+    if active_provider == provider and active_model and active_model not in names:
+        names.insert(0, active_model)
+    return names
 
-    The cached list is answered immediately, so typing in Discord never waits on
-    the provider API. A cold cache gets one short live fetch, and a provider
-    without a key or a failed request falls back to the static list, so the
-    autocomplete is never empty.
-    """
+
+def refresh_model_names(provider: str, settings: dict[str, Any]) -> None:
+    """Fetch a provider's model ids so the next autocomplete has the real list."""
     provider = normalize_provider(provider)
-    cached = MODEL_LIST_CACHE.get(provider)
-    if cached and time.time() - cached[0] < MODEL_LIST_CACHE_TTL:
-        return list(cached[1])
     names: list[str] = []
     try:
         names = [
             str(item.get("id", ""))
-            for item in list_models(provider, settings, timeout=MODEL_LIST_AUTOCOMPLETE_TIMEOUT)
+            for item in list_models(provider, settings, timeout=MODEL_LIST_REFRESH_TIMEOUT)
             if item.get("id")
         ]
     except (requests.RequestException, RuntimeError, KeyError, TypeError, ValueError) as exc:
@@ -1809,17 +1812,48 @@ def model_names_for_autocomplete(provider: str, settings: dict[str, Any]) -> lis
             MODEL_LIST_ERROR_LOGGED[provider] = time.time()
             log_event(
                 "discord.models",
-                "ดึงรายการโมเดลสำหรับ autocomplete ไม่สำเร็จ ใช้รายการสำรองแทน",
+                "ดึงรายการโมเดลใน background ไม่สำเร็จ ใช้รายการสำรองแทน",
                 provider=provider,
                 error=str(exc)[:200],
             )
     if names:
         remember_model_names(provider, names)
-        return names
-    if cached:
-        # A stale list still beats an empty dropdown while the API is unreachable.
+
+
+def schedule_model_list_refresh(provider: str, settings: dict[str, Any]) -> None:
+    """Refresh one provider's model ids in a daemon thread, at most every 15s."""
+    provider = normalize_provider(provider)
+    now = time.time()
+    with MODEL_LIST_REFRESH_LOCK:
+        started = MODEL_LIST_REFRESH_STARTED.get(provider)
+        if started is not None and now - started < MODEL_LIST_REFRESH_INTERVAL:
+            return
+        MODEL_LIST_REFRESH_STARTED[provider] = now
+    threading.Thread(
+        target=refresh_model_names,
+        args=(provider, settings),
+        name=f"model-refresh-{provider}",
+        daemon=True,
+    ).start()
+
+
+def model_names_for_autocomplete(provider: str, settings: dict[str, Any]) -> list[str]:
+    """Return model ids immediately, refreshing a missing or stale list in the background.
+
+    Discord closes an autocomplete request after about three seconds, so this
+    never calls the provider API itself: it answers from the cache, then from a
+    stale cache, then from the static list, and the real list arrives through
+    :func:`schedule_model_list_refresh` for the next keystroke.
+    """
+    provider = normalize_provider(provider)
+    cached = MODEL_LIST_CACHE.get(provider)
+    if cached and time.time() - cached[0] < MODEL_LIST_CACHE_TTL:
         return list(cached[1])
-    return list(FALLBACK_MODELS.get(provider, []))
+    schedule_model_list_refresh(provider, settings)
+    if cached:
+        # A stale list still beats the static one while the refresh runs.
+        return list(cached[1])
+    return static_model_names(provider, settings)
 
 
 def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
@@ -2326,6 +2360,7 @@ def start_discord_bot() -> None:
     intents.message_content = True
     prefix = str(settings.get("discord_prefix") or "!ai").strip() or "!ai"
     commands_synced = False
+    guilds_synced = False
 
     class AccessControlledCommandTree(discord.app_commands.CommandTree):
         """Reject slash commands from channels or users outside the allowlists."""
@@ -2346,7 +2381,7 @@ def start_discord_bot() -> None:
     class AIClient(discord.Client):
         async def on_ready(self) -> None:
             """Sync slash commands once and log the successful connection."""
-            nonlocal commands_synced
+            nonlocal commands_synced, guilds_synced
             if not commands_synced:
                 try:
                     await command_tree.sync()
@@ -2354,6 +2389,26 @@ def start_discord_bot() -> None:
                     log_event("discord.commands", "ลงทะเบียน Discord slash commands แล้ว")
                 except Exception as exc:
                     log_event("discord.error", "ลงทะเบียน Discord slash commands ไม่สำเร็จ", error=str(exc))
+            if not guilds_synced:
+                # Global commands can take up to an hour to reach a client, while a
+                # guild sync shows up immediately, so every guild gets its own copy.
+                failures = []
+                for guild in self.guilds:
+                    try:
+                        server = discord.Object(id=guild.id)
+                        # sync(guild=...) only sends guild-scoped commands, so the
+                        # global ones have to be copied there first.
+                        command_tree.copy_global_to(guild=server)
+                        await command_tree.sync(guild=server)
+                    except Exception as exc:
+                        failures.append(f"{guild.id}: {exc}")
+                guilds_synced = True
+                details: dict[str, Any] = {"servers": len(self.guilds)}
+                if failures:
+                    details["failed"] = "; ".join(failures)[:300]
+                log_event("discord.commands", "ลงทะเบียน slash commands ระดับ server แล้ว", **details)
+            settings = load_settings()
+            schedule_model_list_refresh(settings.get("provider", "openai"), settings)
             log_event("discord.connected", "เชื่อมต่อ Discord bot แล้ว", user=str(self.user))
 
         async def on_message(self, message: Any) -> None:
@@ -2570,7 +2625,8 @@ def start_discord_bot() -> None:
         selected = getattr(selected, "value", selected) or settings.get("provider", "openai")
         selected_provider = normalize_provider(selected)
         try:
-            names = await asyncio.to_thread(model_names_for_autocomplete, selected_provider, settings)
+            # Answers from memory: a provider fetch would risk Discord's 3s limit.
+            names = model_names_for_autocomplete(selected_provider, settings)
         except Exception as exc:
             log_event("discord.models", "autocomplete ของ model ล้มเหลว", error=str(exc)[:200])
             names = list(FALLBACK_MODELS.get(selected_provider, []))
