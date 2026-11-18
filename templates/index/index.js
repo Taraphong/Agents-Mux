@@ -95,6 +95,9 @@ const I18N = {
     "server.uptimeMinutes": "{minutes} นาที",
     "settings.group.server": "เซิร์ฟเวอร์",
     "settings.group.serverDesc": "เปิด ปิด และรีสตาร์ตเซิร์ฟเวอร์ของเว็บนี้",
+    "settings.group.network": "เว็บและ HTTPS",
+    "settings.group.networkDesc":
+      "เลือกโหมด HTTP หรือ HTTPS ที่เซิร์ฟเวอร์ใช้ให้บริการหน้าเว็บนี้",
     "network.title": "การเชื่อมต่อเว็บ (HTTP / HTTPS)",
     "network.hint":
       "เลือกโหมดที่เซิร์ฟเวอร์ใช้ให้บริการหน้าเว็บ การเปลี่ยนโหมดมีผลหลังรีสตาร์ตเซิร์ฟเวอร์",
@@ -124,7 +127,6 @@ const I18N = {
     "network.certMissing": "ไม่พบไฟล์",
     "network.certOff": "ไม่ได้ใช้",
     "network.adhocOn": "ใช้ใบรับรองชั่วคราว",
-    "nav.network": "HTTPS",
     "page.network": "HTTPS / HTTP",
     "chat.typingThinking": "AI กำลังคิด",
     "chat.typingWorking": "AI กำลังเรียบเรียงคำตอบ",
@@ -472,6 +474,7 @@ const I18N = {
     "tool.resultPrefix": "ผลการใช้เครื่องมือ:",
     "attachment.tooLarge": "ไฟล์ใหญ่เกิน 1 MB",
     "attachment.readFailed": "อ่านไฟล์ไม่สำเร็จ",
+    "attachment.clear": "ยกเลิกไฟล์แนบ",
     "model.custom": "กำหนดเอง...",
     "model.fetching": "กำลังดึงจาก API...",
     "model.fetched": "ดึงจาก API แล้ว {count} รายการ",
@@ -508,7 +511,7 @@ const I18N = {
     "history.lock": "ล็อก",
     "history.unlock": "ปลดล็อก",
     "history.delete": "ลบ",
-    "history.pinned": "📌 ปักหมุด",
+    "history.pinned": "ปักหมุด",
     "history.empty": "ยังไม่มีประวัติ",
     "history.unknownDate": "ไม่ทราบวันที่",
     "history.deleteTitle": "ลบประวัติ",
@@ -609,6 +612,9 @@ const I18N = {
     "server.uptimeMinutes": "{minutes}m",
     "settings.group.server": "Server",
     "settings.group.serverDesc": "Start, stop, and restart this web server",
+    "settings.group.network": "Web & HTTPS",
+    "settings.group.networkDesc":
+      "Choose the HTTP or HTTPS mode this server uses to serve the page",
     "network.title": "Web connection (HTTP / HTTPS)",
     "network.hint":
       "Choose whether the server serves this page over HTTP or HTTPS. A change takes effect after a server restart.",
@@ -638,7 +644,6 @@ const I18N = {
     "network.certMissing": "Files missing",
     "network.certOff": "Not used",
     "network.adhocOn": "Ad-hoc certificate",
-    "nav.network": "HTTPS",
     "page.network": "HTTPS / HTTP",
     "chat.typingThinking": "AI is thinking",
     "chat.typingWorking": "AI is composing a reply",
@@ -987,6 +992,7 @@ const I18N = {
     "tool.resultPrefix": "Tool result:",
     "attachment.tooLarge": "File is larger than 1 MB",
     "attachment.readFailed": "Could not read the file",
+    "attachment.clear": "Remove attachment",
     "model.custom": "Custom...",
     "model.fetching": "Fetching from API...",
     "model.fetched": "Fetched {count} models from the API",
@@ -1023,7 +1029,7 @@ const I18N = {
     "history.lock": "Lock",
     "history.unlock": "Unlock",
     "history.delete": "Delete",
-    "history.pinned": "📌 Pinned",
+    "history.pinned": "Pinned",
     "history.empty": "No history yet",
     "history.unknownDate": "Unknown date",
     "history.deleteTitle": "Delete conversation",
@@ -1984,7 +1990,6 @@ document.querySelectorAll("nav button").forEach((button) =>
     if (button.dataset.view === "terminal") openTerminalView();
     if (button.dataset.view === "schedule") loadSchedules();
     if (button.dataset.view === "logs") loadLogs();
-    if (button.dataset.view === "network") loadServerStatus();
     closeSidebar();
   }),
 );
@@ -1996,6 +2001,7 @@ const SETTINGS_SECTIONS = [
   "security",
   "update",
   "server",
+  "network",
 ];
 let activeSettingsSection = SETTINGS_SECTIONS[0];
 function activateSettingsSection(section) {
@@ -2452,6 +2458,13 @@ $("slash-menu").addEventListener("mousedown", (event) => {
   event.preventDefault();
   applySlashSuggestion(Number(item.dataset.slashIndex));
 });
+function clearAttachment() {
+  pendingAttachment = null;
+  $("file-input").value = "";
+  $("attachment-name").textContent = "";
+  $("attachment-chip").hidden = true;
+}
+$("attachment-cancel").addEventListener("click", clearAttachment);
 $("skill-chip").addEventListener("click", () => clearPendingSkill());
 $("attach-button").addEventListener("click", () => $("file-input").click());
 $("file-input").addEventListener("change", async (event) => {
@@ -2459,7 +2472,7 @@ $("file-input").addEventListener("change", async (event) => {
   if (!file) return;
   const maxBytes = 1024 * 1024;
   if (file.size > maxBytes) {
-    $("attachment-chip").textContent = t("attachment.tooLarge");
+    $("attachment-name").textContent = t("attachment.tooLarge");
     $("attachment-chip").hidden = false;
     event.target.value = "";
     pendingAttachment = null;
@@ -2468,11 +2481,11 @@ $("file-input").addEventListener("change", async (event) => {
   try {
     const content = await file.text();
     pendingAttachment = { name: file.name, content };
-    $("attachment-chip").textContent = `📎 ${file.name}`;
+    $("attachment-name").textContent = `📎 ${file.name}`;
     $("attachment-chip").hidden = false;
   } catch (error) {
     pendingAttachment = null;
-    $("attachment-chip").textContent = t("attachment.readFailed");
+    $("attachment-name").textContent = t("attachment.readFailed");
     $("attachment-chip").hidden = false;
   }
 });
@@ -2731,9 +2744,7 @@ async function sendChatMessage(content, requestedSkills = null) {
     targetGeneration =
       savedConversation.generation || conversationGeneration || null;
     $("input").value = "";
-    pendingAttachment = null;
-    $("file-input").value = "";
-    $("attachment-chip").hidden = true;
+    clearAttachment();
     resizeInput();
     const payload = {
       messages,
@@ -4132,11 +4143,25 @@ function escapeHtml(value) {
 }
 const HISTORY_ITEM_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>';
+// Pinned conversations carry a red pushpin, so the state still reads in the
+// icon-only rail where the "Pinned" heading is hidden.
+const HISTORY_PIN_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" /></svg>';
 function historyRows(items) {
   return items
     .map((item) => {
       const title = escapeHtml(item.title || t("history.untitled"));
-      return `<div class="history-row${item.id === conversationId ? " active" : ""}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${title}" aria-label="${title}"><span class="history-icon">${HISTORY_ITEM_ICON}</span><span class="history-label">${item.locked ? "🔒 " : ""}${title}</span></button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.rename"))}">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.pinned ? t("history.unpin") : t("history.pin"))}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.locked ? t("history.unlock") : t("history.lock"))}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.delete"))}">×</button></div></div>`;
+      const classes = [
+        "history-row",
+        item.id === conversationId ? "active" : "",
+        item.pinned ? "is-pinned" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const pin = item.pinned
+        ? `<span class="history-pin">${HISTORY_PIN_ICON}</span>`
+        : "";
+      return `<div class="${classes}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${title}" aria-label="${title}"><span class="history-icon">${HISTORY_ITEM_ICON}</span><span class="history-label">${pin}${item.locked ? "🔒 " : ""}${title}</span></button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.rename"))}">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.pinned ? t("history.unpin") : t("history.pin"))}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.locked ? t("history.unlock") : t("history.lock"))}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.delete"))}">×</button></div></div>`;
     })
     .join("");
 }
@@ -4152,7 +4177,7 @@ function renderHistoryList(items) {
       (grouped[day] ||= []).push(item);
     });
   const pinnedHtml = pinned.length
-    ? `<div class="history-day">${escapeHtml(t("history.pinned"))}</div>${historyRows(pinned)}`
+    ? `<div class="history-day"><span class="history-pin">${HISTORY_PIN_ICON}</span>${escapeHtml(t("history.pinned"))}</div>${historyRows(pinned)}`
     : "";
   const daysHtml = Object.entries(grouped)
     .map(

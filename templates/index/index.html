@@ -112,19 +112,6 @@
             <span class="nav-label" data-i18n="nav.logs">Log ระบบ</span>
           </button>
           <button
-            data-view="network"
-            title="HTTPS"
-            aria-label="HTTPS"
-            data-i18n-title="nav.network"
-            data-i18n-aria-label="nav.network"
-          >
-            <span class="nav-icon" aria-hidden="true"
-              ><svg viewBox="0 0 24 24">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg
-            ></span>
-            <span class="nav-label" data-i18n="nav.network">HTTPS</span>
-          </button>
-          <button
             data-view="about"
             title="เกี่ยวกับ"
             aria-label="เกี่ยวกับ"
@@ -308,11 +295,23 @@
                         Fast+
                       </option>
                     </select>
-                    <span
-                      id="attachment-chip"
-                      class="attachment-chip"
-                      hidden
-                    ></span>
+                    <span id="attachment-chip" class="attachment-chip" hidden>
+                      <span
+                        id="attachment-name"
+                        class="attachment-name"
+                      ></span>
+                      <button
+                        id="attachment-cancel"
+                        class="chip-cancel"
+                        type="button"
+                        title="ยกเลิกไฟล์แนบ"
+                        aria-label="ยกเลิกไฟล์แนบ"
+                        data-i18n-title="attachment.clear"
+                        data-i18n-aria-label="attachment.clear"
+                      >
+                        ×
+                      </button>
+                    </span>
                     <span
                       id="skill-chip"
                       class="skill-chip"
@@ -454,6 +453,17 @@
                   data-i18n="settings.group.server"
                 >
                   เซิร์ฟเวอร์
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="settings-tab-network"
+                  aria-controls="settings-panel-network"
+                  aria-selected="false"
+                  data-settings-section="network"
+                  data-i18n="settings.group.network"
+                >
+                  เว็บและ HTTPS
                 </button>
               </div>
               <div class="settings-panels">
@@ -1178,6 +1188,115 @@
                     <p class="hint update-status" id="server-status-text"></p>
                   </div>
                 </div>
+                <div
+                  class="settings-panel"
+                  id="settings-panel-network"
+                  role="tabpanel"
+                  aria-labelledby="settings-tab-network"
+                  data-settings-panel="network"
+                >
+                  <div class="settings-panel-head">
+                    <h2 data-i18n="settings.group.network">เว็บและ HTTPS</h2>
+                    <p class="hint" data-i18n="settings.group.networkDesc">
+                      เลือกโหมด HTTP หรือ HTTPS ที่เซิร์ฟเวอร์ใช้ให้บริการหน้าเว็บนี้
+                      การเปลี่ยนโหมดมีผลหลังรีสตาร์ตเซิร์ฟเวอร์
+                    </p>
+                  </div>
+                  <div class="card">
+                    <div class="card-head">
+                      <h2 data-i18n="network.title">
+                        การเชื่อมต่อเว็บ (HTTP / HTTPS)
+                      </h2>
+                      <button
+                        class="secondary"
+                        id="network-refresh"
+                        type="button"
+                        data-i18n="network.refresh"
+                      >
+                        รีเฟรช
+                      </button>
+                    </div>
+                    <p class="hint" data-i18n="network.hint">
+                      เลือกโหมดที่เซิร์ฟเวอร์ใช้ให้บริการหน้าเว็บ
+                      การเปลี่ยนโหมดมีผลหลังรีสตาร์ตเซิร์ฟเวอร์
+                    </p>
+                    <div class="network-status">
+                      <div class="network-metric">
+                        <span data-i18n="network.currentMode">โหมดที่ใช้งาน</span>
+                        <strong id="network-scheme">—</strong>
+                      </div>
+                      <div class="network-metric">
+                        <span data-i18n="network.address">ที่อยู่</span>
+                        <strong id="network-url">—</strong>
+                      </div>
+                      <div class="network-metric">
+                        <span data-i18n="network.certState">ใบรับรอง</span>
+                        <strong id="network-cert">—</strong>
+                      </div>
+                    </div>
+                    <div
+                      class="network-options"
+                      role="radiogroup"
+                      aria-label="โหมดการเชื่อมต่อ"
+                      data-i18n-aria-label="network.optionsAria"
+                    >
+                      <label class="network-option">
+                        <input type="radio" name="tls-mode" value="http" />
+                        <span>
+                          <strong data-i18n="network.httpTitle">HTTP</strong>
+                          <small data-i18n="network.httpHint">
+                            ไม่เข้ารหัสการเชื่อมต่อ
+                            เหมาะกับเครือข่ายที่เชื่อถือได้ในบ้าน
+                          </small>
+                        </span>
+                      </label>
+                      <label class="network-option">
+                        <input type="radio" name="tls-mode" value="https-cert" />
+                        <span>
+                          <strong data-i18n="network.certTitle"
+                            >HTTPS ด้วยไฟล์ใบรับรอง</strong
+                          >
+                          <small data-i18n="network.certHint">
+                            ใช้ certs/cert.pem และ certs/key.pem ที่มีอยู่
+                          </small>
+                        </span>
+                      </label>
+                      <label class="network-option">
+                        <input type="radio" name="tls-mode" value="https-adhoc" />
+                        <span>
+                          <strong data-i18n="network.adhocTitle"
+                            >HTTPS ด้วยใบรับรองชั่วคราว</strong
+                          >
+                          <small data-i18n="network.adhocHint">
+                            สร้างใบรับรองชั่วคราวอัตโนมัติ
+                            ต้องมีแพ็กเกจ cryptography
+                          </small>
+                        </span>
+                      </label>
+                    </div>
+                    <div class="actions">
+                      <button
+                        id="network-save"
+                        type="button"
+                        data-i18n="network.save"
+                      >
+                        บันทึกโหมด
+                      </button>
+                      <button
+                        id="network-restart"
+                        type="button"
+                        class="secondary"
+                        data-i18n="network.restart"
+                      >
+                        รีสตาร์ตเซิร์ฟเวอร์
+                      </button>
+                    </div>
+                    <p class="hint" id="network-status-text"></p>
+                    <p class="hint" data-i18n="network.certHelp">
+                      สร้างใบรับรองถาวรได้ด้วย ./start_web.sh --make-cert &lt;ip&gt;
+                    </p>
+                  </div>
+                </div>
               </div>
               <div class="settings-footer">
                 <p class="hint settings-footer-hint" data-i18n="settings.saveScopeHint">
@@ -1444,95 +1563,6 @@
                 >
                 <span id="terminal-cwd"></span>
               </div>
-            </div>
-          </section>
-          <section id="network-view" class="view">
-            <div class="card">
-              <div class="card-head">
-                <h2 data-i18n="network.title">การเชื่อมต่อเว็บ (HTTP / HTTPS)</h2>
-                <button
-                  class="secondary"
-                  id="network-refresh"
-                  type="button"
-                  data-i18n="network.refresh"
-                >
-                  รีเฟรช
-                </button>
-              </div>
-              <p class="hint" data-i18n="network.hint">
-                เลือกโหมดที่เซิร์ฟเวอร์ใช้ให้บริการหน้าเว็บ
-                การเปลี่ยนโหมดมีผลหลังรีสตาร์ตเซิร์ฟเวอร์
-              </p>
-              <div class="network-status">
-                <div class="network-metric">
-                  <span data-i18n="network.currentMode">โหมดที่ใช้งาน</span>
-                  <strong id="network-scheme">—</strong>
-                </div>
-                <div class="network-metric">
-                  <span data-i18n="network.address">ที่อยู่</span>
-                  <strong id="network-url">—</strong>
-                </div>
-                <div class="network-metric">
-                  <span data-i18n="network.certState">ใบรับรอง</span>
-                  <strong id="network-cert">—</strong>
-                </div>
-              </div>
-              <div
-                class="network-options"
-                role="radiogroup"
-                aria-label="โหมดการเชื่อมต่อ"
-                data-i18n-aria-label="network.optionsAria"
-              >
-                <label class="network-option">
-                  <input type="radio" name="tls-mode" value="http" />
-                  <span>
-                    <strong data-i18n="network.httpTitle">HTTP</strong>
-                    <small data-i18n="network.httpHint">
-                      ไม่เข้ารหัสการเชื่อมต่อ เหมาะกับเครือข่ายที่เชื่อถือได้ในบ้าน
-                    </small>
-                  </span>
-                </label>
-                <label class="network-option">
-                  <input type="radio" name="tls-mode" value="https-cert" />
-                  <span>
-                    <strong data-i18n="network.certTitle"
-                      >HTTPS ด้วยไฟล์ใบรับรอง</strong
-                    >
-                    <small data-i18n="network.certHint">
-                      ใช้ certs/cert.pem และ certs/key.pem ที่มีอยู่
-                    </small>
-                  </span>
-                </label>
-                <label class="network-option">
-                  <input type="radio" name="tls-mode" value="https-adhoc" />
-                  <span>
-                    <strong data-i18n="network.adhocTitle"
-                      >HTTPS ด้วยใบรับรองชั่วคราว</strong
-                    >
-                    <small data-i18n="network.adhocHint">
-                      สร้างใบรับรองชั่วคราวอัตโนมัติ
-                      ต้องมีแพ็กเกจ cryptography
-                    </small>
-                  </span>
-                </label>
-              </div>
-              <div class="actions">
-                <button id="network-save" type="button" data-i18n="network.save">
-                  บันทึกโหมด
-                </button>
-                <button
-                  id="network-restart"
-                  type="button"
-                  class="secondary"
-                  data-i18n="network.restart"
-                >
-                  รีสตาร์ตเซิร์ฟเวอร์
-                </button>
-              </div>
-              <p class="hint" id="network-status-text"></p>
-              <p class="hint" data-i18n="network.certHelp">
-                สร้างใบรับรองถาวรได้ด้วย ./start_web.sh --make-cert &lt;ip&gt;
-              </p>
             </div>
           </section>
           <section id="about-view" class="view">

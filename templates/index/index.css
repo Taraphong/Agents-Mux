@@ -4514,20 +4514,6 @@ nav button[hidden] {
   .app.sidebar-collapsed .brand-copy {
     display: none;
   }
-  .app.sidebar-collapsed .brand-mark {
-    width: auto;
-    height: auto;
-    padding: 0;
-    border-radius: 0;
-    background: linear-gradient(135deg, #fb7185, #a78bfa 45%, #38bdf8);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    -webkit-text-fill-color: transparent;
-    box-shadow: none;
-    font-size: 1.8rem;
-    line-height: 1;
-  }
   .app.sidebar-collapsed .new-chat {
     width: 42px;
     height: 42px;
@@ -4556,14 +4542,42 @@ nav button[hidden] {
     padding: 0;
     justify-content: center;
     border-radius: 10px;
+    /* Ensure SVG icons have good contrast against the glass background. */
+    color: var(--text);
   }
-  /* Keep settings at the foot of the rail, like the rest of the app shell. */
   .app.sidebar-collapsed nav button[data-view="settings"] {
     position: absolute;
     left: 50%;
     bottom: 14px;
     margin: 0;
     transform: translateX(-50%);
+    color: var(--text);
+  }
+  /* Brand mark in the collapsed rail: theme-aware styling. */
+  .app.sidebar-collapsed .brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    font-size: 1.8rem;
+    line-height: 1;
+  }
+  body.dark-theme .app.sidebar-collapsed .brand-mark {
+    /* Rainbow gradient for dark theme, as specified in the requirements. */
+    background: linear-gradient(135deg, #fb7185, #a78bfa 45%, #38bdf8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+  body.light-theme .app.sidebar-collapsed .brand-mark {
+    /* Use the light theme accent gradient to match the expanded state. */
+    background: var(--accent-grad);
+    color: var(--accent-ink);
+    box-shadow:
+      0 8px 22px var(--accent-glow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.45);
   }
   .app.sidebar-collapsed .nav-icon,
   .app.sidebar-collapsed .new-chat-icon {
@@ -4576,8 +4590,9 @@ nav button[hidden] {
   .app.sidebar-collapsed #history-list {
     width: 100%;
     margin-top: 8px;
-    /* Leave room for the settings button pinned to the bottom. */
-    padding-bottom: 54px;
+    /* Keep the scrollable list above the settings button pinned to the
+       bottom, so history rows never slide underneath it. */
+    margin-bottom: 54px;
   }
   .app.sidebar-collapsed .history-day {
     display: none;
@@ -4740,4 +4755,110 @@ body.light-theme .network-option {
   .network-option {
     padding: 10px;
   }
+}
+
+/* Pinned history entries: a red pushpin marks the row in the expanded list
+   and the group heading, and colours the bubble in the icon-only rail. */
+.history-pin {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  color: #f87171;
+  vertical-align: -2px;
+}
+.history-pin svg {
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+.history-day .history-pin {
+  width: 11px;
+  height: 11px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.app.sidebar-collapsed .history-row.is-pinned .history-icon {
+  color: #f87171;
+}
+
+/* Attachment chip: the file name ellipsises and a button removes the file. */
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.attachment-chip[hidden] {
+  display: none;
+}
+.attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-chip .chip-cancel {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  box-shadow: none;
+  opacity: 0.7;
+}
+.attachment-chip .chip-cancel:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.25);
+  color: inherit;
+  box-shadow: none;
+  transform: none;
+  opacity: 1;
+}
+
+/* Message actions read as real buttons instead of plain text. */
+.message-action {
+  min-height: 26px;
+  padding: 5px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--glass-4);
+  color: var(--text);
+  font-weight: 600;
+  opacity: 1;
+}
+.message-action:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+body.light-theme .message-action {
+  border-color: rgba(15, 23, 42, 0.16);
+  background: #ffffff;
+  color: #1f2937;
+}
+body.light-theme .message-action:hover:not(:disabled) {
+  background: #eef2f7;
+  color: #0f172a;
+}
+body.light-theme .user .message-action {
+  border-color: rgba(15, 23, 42, 0.16);
+  background: rgba(255, 255, 255, 0.7);
+  color: #202b66;
+}
+
+/* The slash menu floats over the conversation: keep it opaque in both themes
+   so the chat behind it never shows through. */
+.slash-menu {
+  background: #111111;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+body.light-theme .slash-menu {
+  background: #ffffff;
 }
