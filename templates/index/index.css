@@ -116,6 +116,12 @@ aside {
 .history-action:hover {
   color: white;
 }
+body.dark-theme .history-action {
+  color: #c6d1d8;
+}
+body.light-theme .history-action {
+  color: #40516a;
+}
 .sidebar-backdrop {
   display: none;
 }
@@ -4747,6 +4753,15 @@ body.light-theme .network-metric,
 body.light-theme .network-option {
   background: #f4f6fb;
   border-color: #d6dfec;
+}
+body.light-theme .network-metric span {
+  color: #40516a;
+}
+body.light-theme .network-metric strong {
+  color: #1f2937;
+}
+body.light-theme .network-option small {
+  color: #6b7280;
 }
 @media (max-width: 700px) {
   .network-status {
