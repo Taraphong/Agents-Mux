@@ -4489,7 +4489,10 @@ nav button[hidden] {
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
-  pointer-events: none;
+  /* The tooltip takes hover so the pointer can rest on it while crossing the
+     gap from the icon; the listeners in index.js keep it while hovered and
+     dismiss it after the pointer leaves. */
+  pointer-events: auto;
 }
 
 /* Laptop sidebar collapse: the sidebar turns into an icon rail instead of
@@ -4551,12 +4554,9 @@ nav button[hidden] {
     /* Ensure SVG icons have good contrast against the glass background. */
     color: var(--text);
   }
+  /* Settings stays in the flow of the navigation block, so it can never
+     overlap the other navigation buttons however short the sidebar is. */
   .app.sidebar-collapsed nav button[data-view="settings"] {
-    position: absolute;
-    left: 50%;
-    bottom: 14px;
-    margin: 0;
-    transform: translateX(-50%);
     color: var(--text);
   }
   /* Brand mark in the collapsed rail: theme-aware styling. */
@@ -4596,9 +4596,6 @@ nav button[hidden] {
   .app.sidebar-collapsed #history-list {
     width: 100%;
     margin-top: 8px;
-    /* Keep the scrollable list above the settings button pinned to the
-       bottom, so history rows never slide underneath it. */
-    margin-bottom: 54px;
   }
   .app.sidebar-collapsed .history-day {
     display: none;
@@ -4797,7 +4794,21 @@ body.light-theme .network-option small {
   vertical-align: -1px;
 }
 .app.sidebar-collapsed .history-row.is-pinned .history-icon {
+  position: relative;
   color: #f87171;
+}
+/* A pin badge keeps pinned rows distinguishable in the collapsed rail without
+   relying on the icon colour alone. */
+.app.sidebar-collapsed .history-row.is-pinned .history-icon::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid #0a0e16;
+  background: #f87171;
 }
 
 /* Attachment chip: the file name ellipsises and a button removes the file. */
