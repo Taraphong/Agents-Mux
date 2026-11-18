@@ -1646,7 +1646,15 @@ function addMessage(role, content, meta = null, messageIndex = null) {
     skill.textContent = `🧩 ${meta.skill}`;
     el.appendChild(skill);
   }
-  if (role === "assistant" && meta?.tool_request && meta?.approval_id) {
+  const approvalExpiresAt = Number(meta?.approval_expires_at || 0);
+  const approvalExpired =
+    approvalExpiresAt > 0 && approvalExpiresAt * 1000 <= Date.now();
+  if (
+    role === "assistant" &&
+    meta?.tool_request &&
+    meta?.approval_id &&
+    !approvalExpired
+  ) {
     const approval = document.createElement("button");
     approval.type = "button";
     approval.className = "tool-approval";
@@ -1655,6 +1663,7 @@ function addMessage(role, content, meta = null, messageIndex = null) {
     });
     approval.toolRequest = meta.tool_request;
     approval.approvalId = meta.approval_id;
+    approval.messageMeta = meta;
     approval.addEventListener("click", approveToolRequest);
     el.appendChild(approval);
     const args = meta.tool_request.arguments || {};
@@ -1876,6 +1885,13 @@ async function approveToolRequest(event) {
       throw error;
     }
     button.textContent = t("tool.done");
+    button.disabled = true;
+    // The token is single-use; drop it from the message so a language switch
+    // or re-render cannot offer the same approval twice.
+    if (button.messageMeta) {
+      button.messageMeta.approval_id = "";
+      button.messageMeta.tool_request = null;
+    }
     if (
       sessionToken !== chatSessionToken ||
       conversationId !== targetConversationId
@@ -1892,6 +1908,10 @@ async function approveToolRequest(event) {
     button.textContent = error.fatal
       ? t("tool.expired")
       : t("tool.retry", { message: error.message });
+    if (error.fatal && button.messageMeta) {
+      button.messageMeta.approval_id = "";
+      button.messageMeta.tool_request = null;
+    }
   }
 }
 document.querySelectorAll("nav button").forEach((button) =>
@@ -2422,8 +2442,11 @@ function newMessageId() {
   }
   return `msg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
-function historyMessagePayload({ tool_request, approval_id, ...rest } = {}) {
-  return rest;
+function historyMessagePayload(message = {}) {
+  // Keep tool_request/approval_id: a pending approval must still be offered
+  // after a reload or when the conversation is opened again from the sidebar,
+  // for as long as the server-side token has not expired.
+  return message;
 }
 async function appendMessagesToHistory(id, newMessages, generation) {
   if (!id || !newMessages.length) return { ok: true };
@@ -2693,6 +2716,7 @@ async function sendChatMessage(content, requestedSkills = null) {
       usage: data.usage,
       tool_request: data.tool_request,
       approval_id: data.approval_id,
+      approval_expires_at: data.approval_expires_at,
       fallback_used: data.fallback_used,
     };
     if (sessionToken !== chatSessionToken) {

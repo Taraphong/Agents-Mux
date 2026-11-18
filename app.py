@@ -1981,10 +1981,17 @@ def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: st
 
 
 def is_openai_reasoning_model(provider: str, model: str) -> bool:
-    """Return whether an OpenAI model is a reasoning model (o-series or GPT-5)."""
-    if normalize_provider(provider) != "openai":
+    """Return whether a model on an OpenAI-compatible endpoint takes reasoning_effort.
+
+    OpenRouter, Groq and the Hugging Face router all speak the OpenAI chat
+    completions shape, and their reasoning models accept reasoning_effort too.
+    Routers prefix the owner (``openai/gpt-5``, ``openai/gpt-oss-120b``), so the
+    check looks at the part after the last slash.
+    """
+    if normalize_provider(provider) not in {"openai", "or", "groq", "hf"}:
         return False
-    return bool(re.match(r"^(?:o[0-9]|gpt-5)", str(model or "").strip().lower()))
+    name = str(model or "").strip().lower().rsplit("/", 1)[-1]
+    return bool(re.match(r"^(?:o[1-9](?:-|$)|gpt-5|gpt-oss)", name))
 
 
 def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
@@ -2001,8 +2008,13 @@ def call_openai(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
         "messages": messages,
     }
     if reasoning_model:
-        # Reasoning models reject max_tokens, temperature, and top_p.
-        payload["max_completion_tokens"] = settings["max_tokens"]
+        # Reasoning models reject max_tokens, temperature, and top_p. Only the
+        # OpenAI endpoint renamed the output cap to max_completion_tokens;
+        # OpenAI-compatible routers still expect max_tokens.
+        if normalize_provider(settings["provider"]) == "openai":
+            payload["max_completion_tokens"] = settings["max_tokens"]
+        else:
+            payload["max_tokens"] = settings["max_tokens"]
     else:
         payload["temperature"] = settings["temperature"]
         payload["max_tokens"] = settings["max_tokens"]
@@ -2041,9 +2053,12 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
     }
     thinking_level = settings.get("thinking_level", "off")
     if thinking_level in {"low", "medium", "high"}:
-        if settings["model"].startswith("gemini-2.5"):
+        # Gemini 2.5 takes a token budget, Gemini 3 takes a named level, and
+        # anything older has no thinking support at all. Sending the wrong
+        # field makes the API reject the whole request.
+        if model.startswith("gemini-2.5"):
             generation_config["thinkingConfig"] = {"thinkingBudget": {"low": 1024, "medium": 4096, "high": 8192}[thinking_level]}
-        else:
+        elif model.startswith("gemini-3"):
             generation_config["thinkingConfig"] = {"thinkingLevel": thinking_level}
     request_url = f"{get_base_url('gemini', settings)}/models/{model}:generateContent"
     request_payload = {"contents": contents, "generationConfig": generation_config}
@@ -2068,28 +2083,53 @@ def call_gemini(messages: list[dict[str, str]], settings: dict[str, Any]) -> tup
     )
 
 
+def anthropic_thinking_supported(model: str) -> bool:
+    """Return whether an Anthropic model accepts extended thinking."""
+    name = str(model or "").strip().lower()
+    return bool(re.search(r"claude-(?:3-7|(?:sonnet|opus|haiku)-4)", name))
+
+
 def call_anthropic(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     """Send one messages request to Anthropic with the configured settings."""
     key = get_api_key("anthropic", settings)
     if not key:
         raise RuntimeError("ยังไม่ได้ตั้งค่า Anthropic API key")
     system = next((m["content"] for m in messages if m["role"] == "system"), "")
+    payload: dict[str, Any] = {
+        "model": settings["model"],
+        "system": system,
+        "messages": [m for m in messages if m["role"] != "system"],
+        "max_tokens": settings["max_tokens"],
+        "temperature": settings["temperature"],
+    }
+    thinking_level = settings.get("thinking_level", "off")
+    if thinking_level in {"low", "medium", "high"} and anthropic_thinking_supported(settings["model"]):
+        budget = {"low": 1024, "medium": 4096, "high": 8192}[thinking_level]
+        # Extended thinking requires max_tokens > budget_tokens and rejects a
+        # custom temperature, so leave temperature unset and grow the cap.
+        payload["max_tokens"] = max(int(settings["max_tokens"]), budget + 1024)
+        payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
+        payload.pop("temperature", None)
     response = requests.post(
         f"{get_base_url('anthropic', settings)}/messages",
         headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
-        json={
-            "model": settings["model"],
-            "system": system,
-            "messages": [m for m in messages if m["role"] != "system"],
-            "max_tokens": settings["max_tokens"],
-            "temperature": settings["temperature"],
-        },
+        json=payload,
         timeout=90,
     )
     response.raise_for_status()
     data = response.json()
     usage = data.get("usage", {})
-    return data["content"][0]["text"], normalize_usage(usage, "input_tokens", "output_tokens", None)
+    # With thinking enabled the first content block is a thinking block, so
+    # read the first text block instead of assuming content[0] is the answer.
+    text = next(
+        (
+            block.get("text", "")
+            for block in data.get("content", [])
+            if isinstance(block, dict) and block.get("type") == "text"
+        ),
+        "",
+    )
+    return text, normalize_usage(usage, "input_tokens", "output_tokens", None)
 
 
 def call_provider(messages: list[dict[str, str]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
@@ -4266,11 +4306,15 @@ def chat():
                 or machine_access_enabled(load_settings())
                 or command_mode not in {"auto", "fast"}
             ):
+                approval_id = request_tool_approval(approval_request["name"], approval_request["arguments"])
                 return jsonify({
                     "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
                     "provider": provider,
                     "tool_request": approval_request,
-                    "approval_id": request_tool_approval(approval_request["name"], approval_request["arguments"]),
+                    "approval_id": approval_id,
+                    # The client needs the expiry to only offer the button while
+                    # the token can still be redeemed (e.g. after a reload).
+                    "approval_expires_at": int(time.time()) + APPROVAL_TTL_SECONDS,
                     "duration_ms": round((time.perf_counter() - started_at) * 1000),
                     "usage": usage,
                     "model": settings["model"],
