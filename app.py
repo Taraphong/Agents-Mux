@@ -251,7 +251,10 @@ def log_event(event: str, message: str, **details: Any) -> None:
         LOGGER.warning("บันทึก log ถาวรไม่สำเร็จ: %s", exc)
         with APP_LOG_LOCK:
             APP_LOGS.append(record)
-    LOGGER.info("%s: %s", event, redact_secrets(str(message)))
+    # Only the event name reaches the plain-text console log. The message and its
+    # details stay in APP_LOGS/log file below, where redact_secrets has run, so a
+    # credential can never be written here as clear text.
+    LOGGER.info("%s", event)
 
 
 load_persisted_logs()
@@ -1367,13 +1370,34 @@ def parse_tool_request(answer: str) -> dict[str, Any] | None:
     return requests[0] if requests else None
 
 
+def tool_call_bodies(answer: str) -> list[str]:
+    """Return the body of every <tool_call> block in *answer*.
+
+    Plain marker scanning keeps the work linear, so a reply that repeats
+    "<tool_call>" many times cannot make the parser backtrack.
+    """
+    bodies: list[str] = []
+    lowered = answer.lower()
+    start = 0
+    while True:
+        open_at = lowered.find("<tool_call>", start)
+        if open_at < 0:
+            return bodies
+        body_start = open_at + len("<tool_call>")
+        close_at = lowered.find("</tool_call>", body_start)
+        if close_at < 0:
+            return bodies
+        bodies.append(answer[body_start:close_at])
+        start = close_at + len("</tool_call>")
+
+
 def parse_tool_requests(answer: str) -> list[dict[str, Any]]:
     """Parse every tool call so multiple Skill files can be inspected in one turn."""
     if not isinstance(answer, str):
         return []
-    # Every match is stripped below; dropping the surrounding \s* keeps the
-    # scan linear in the length of the answer instead of backtracking.
-    matches = re.findall(r"<tool_call>(.*?)</tool_call>", answer, re.IGNORECASE | re.DOTALL)
+    # A marker scan instead of a DOTALL regular expression: the answer is shared
+    # with the model, so a pathological reply must not be able to backtrack.
+    matches = tool_call_bodies(answer)
     if not matches:
         return []
     requests = []
@@ -1752,18 +1776,27 @@ def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") 
     return len(key) >= 20 if official else True
 
 
-FINGERPRINT_SALT = secrets.token_bytes(32)
+FINGERPRINT_CACHE: dict[str, str] = {}
+FINGERPRINT_LOCK = threading.Lock()
+MAX_FINGERPRINTS = 64
 
 
 def key_fingerprint(key: str) -> str:
-    """Return a short fingerprint for a secret, safe to compare in this process.
+    """Return a short per-process identifier for a secret, safe to compare.
 
     The value only has to be stable inside one running server (it keys the status
-    cache and the Discord token check), so it is computed as an HMAC with a
-    random per-process salt instead of a plain hash of the secret.
+    cache and the Discord token check), so the first time a secret is seen it is
+    given a random identifier instead of being run through a hash function.
     """
-    digest = hmac.new(FINGERPRINT_SALT, str(key).encode("utf-8"), hashlib.sha256)
-    return digest.hexdigest()[:16]
+    value = str(key)
+    with FINGERPRINT_LOCK:
+        fingerprint = FINGERPRINT_CACHE.get(value)
+        if fingerprint is None:
+            if len(FINGERPRINT_CACHE) >= MAX_FINGERPRINTS:
+                FINGERPRINT_CACHE.clear()
+            fingerprint = secrets.token_hex(8)
+            FINGERPRINT_CACHE[value] = fingerprint
+        return fingerprint
 
 
 STATUS_MESSAGES = {
