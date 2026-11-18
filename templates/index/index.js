@@ -1765,7 +1765,11 @@ function scheduleApprovalExpiry(meta, button) {
   // The chat can sit open past the deadline, so close the control then instead
   // of waiting for a click the server would reject.
   window.setTimeout(() => {
-    if (!button.isConnected || button.messageMeta !== meta) return;
+    // Skip when the approval was consumed or the button was replaced before
+    // the timer fired.
+    if (!meta.approval_id || !button.isConnected || button.messageMeta !== meta) {
+      return;
+    }
     button.disabled = true;
     button.textContent = t("tool.expired");
   }, remaining);

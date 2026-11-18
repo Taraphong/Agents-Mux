@@ -1487,8 +1487,15 @@ def save_history(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def history_record_path(path: Path) -> Path:
-    """Return *path* normalized and confirmed inside the history folder."""
-    return normalized_path_under(str(path), HISTORY_ROOT, "Invalid history path")
+    """Return *path* normalized and confirmed inside the history folder.
+
+    The path is made absolute first: a path read back from disk by
+    ``find_history_file`` is relative (``history/<date>/<file>.json``), and
+    ``normalized_path_under`` joins its input to the root, so passing it as is
+    would write ``history/history/<date>/<file>.json`` and leave every read
+    looking at a stale copy.
+    """
+    return normalized_path_under(os.path.abspath(str(path)), HISTORY_ROOT, "Invalid history path")
 
 
 def _write_history_record(path: Path, record: dict[str, Any]) -> None:
@@ -3577,8 +3584,7 @@ def history_clear_approval(conversation_id: str):
     message_id = body.get("message_id")
     if not isinstance(message_id, str) or not message_id:
         return jsonify({"ok": False, "error": "ต้องระบุ message_id"}), 400
-    if not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
-        return jsonify({"ok": False, "error": "ไม่พบประวัติการสนทนา"}), 404
+    # find_history_file already rejects anything that is not a conversation id.
     with HISTORY_LOCK:
         path = find_history_file(conversation_id)
         if not path or not path.exists():
