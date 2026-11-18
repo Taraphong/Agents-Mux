@@ -1432,12 +1432,25 @@ def parse_tool_requests(answer: str) -> list[dict[str, Any]]:
 
 
 def find_history_file(conversation_id: str) -> Path | None:
-    """Find the history file that stores one conversation id."""
+    """Find the history file that stores one conversation id.
+
+    The same conversation can exist more than once when an older build wrote a
+    relative path under ``history/history``. The newest copy holds the latest
+    writes, so pick that one instead of relying on directory order.
+    """
     if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", conversation_id):
         return None
-    for path in HISTORY_ROOT.rglob(f"*_{conversation_id}.json"):
-        return path
-    return None
+    matches = list(HISTORY_ROOT.rglob(f"*_{conversation_id}.json"))
+    if len(matches) <= 1:
+        return matches[0] if matches else None
+
+    def modified(path: Path) -> float:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    return max(matches, key=modified)
 
 
 class HistoryConflict(Exception):
