@@ -42,6 +42,8 @@ from werkzeug.serving import (
 
 load_dotenv()
 
+CACHE_KEY_SECRET = secrets.token_bytes(32)
+
 
 def env_int(name: str, default: int, minimum: int) -> int:
     """Read an integer environment variable, clamping invalid input to safe bounds."""
@@ -2235,7 +2237,8 @@ def gemini_capabilities(settings: dict[str, Any], language: str = "en", force: b
     key = get_api_key("gemini", settings)
     if not key:
         return {"ready": False, "error": status_message(language, "gemini_key_missing"), "groups": {}}
-    cache_key = hashlib.sha256(f"{key}|{get_base_url('gemini', settings)}".encode()).hexdigest()
+    cache_message = f"gemini|{get_base_url('gemini', settings)}|{key}".encode("utf-8")
+    cache_key = hmac.new(CACHE_KEY_SECRET, cache_message, hashlib.sha256).hexdigest()
     now = time.time()
     with GEMINI_CAPABILITY_LOCK:
         cached = GEMINI_CAPABILITY_CACHE.get(cache_key)
