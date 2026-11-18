@@ -9,13 +9,13 @@ const SUPPORTED_LANGUAGES = ["th", "en"];
 const I18N = {
   th: {
     "app.title": "AI Control Center",
-    "sidebar.newChat": "＋ แชตใหม่",
-    "nav.chat": "▰ แชต",
-    "nav.terminal": ">_ Terminal",
-    "nav.settings": "⚙ ตั้งค่า",
-    "nav.schedule": "◷ งานตามเวลา",
-    "nav.logs": "▤ Log ระบบ",
-    "nav.about": "ⓘ เกี่ยวกับ",
+    "sidebar.newChat": "แชตใหม่",
+    "nav.chat": "แชต",
+    "nav.terminal": "Terminal",
+    "nav.settings": "ตั้งค่า",
+    "nav.schedule": "งานตามเวลา",
+    "nav.logs": "Log ระบบ",
+    "nav.about": "เกี่ยวกับ",
     "sidebar.history": "ประวัติการพูดคุย",
     "history.renameTitle": "เปลี่ยนชื่อประวัติ",
     "history.renamePlaceholder": "ชื่อประวัติใหม่",
@@ -95,6 +95,9 @@ const I18N = {
     "server.uptimeMinutes": "{minutes} นาที",
     "settings.group.server": "เซิร์ฟเวอร์",
     "settings.group.serverDesc": "เปิด ปิด และรีสตาร์ตเซิร์ฟเวอร์ของเว็บนี้",
+    "settings.group.network": "เว็บและ HTTPS",
+    "settings.group.networkDesc":
+      "เลือกโหมด HTTP หรือ HTTPS ที่เซิร์ฟเวอร์ใช้ให้บริการหน้าเว็บนี้",
     "network.title": "การเชื่อมต่อเว็บ (HTTP / HTTPS)",
     "network.hint":
       "เลือกโหมดที่เซิร์ฟเวอร์ใช้ให้บริการหน้าเว็บ การเปลี่ยนโหมดมีผลหลังรีสตาร์ตเซิร์ฟเวอร์",
@@ -113,6 +116,8 @@ const I18N = {
     "network.adhocHint":
       "สร้างใบรับรอง self-signed อัตโนมัติด้วย openssl และใช้ไฟล์เดิมทุกครั้งที่รีสตาร์ต",
     "network.save": "บันทึกโหมด",
+    "network.saveScopeHint":
+      "ปุ่มนี้ใช้กับการตั้งค่าทั่วไปเท่านั้น — โหมดเครือข่ายใช้ปุ่ม \"บันทึกโหมด\" ใน Web & HTTPS",
     "network.restart": "รีสตาร์ตเซิร์ฟเวอร์",
     "network.certHelp": "สร้างใบรับรองถาวรได้ด้วย ./start_web.sh --make-cert <ip>",
     "network.saved": "บันทึกโหมดการเชื่อมต่อแล้ว",
@@ -124,7 +129,6 @@ const I18N = {
     "network.certMissing": "ไม่พบไฟล์",
     "network.certOff": "ไม่ได้ใช้",
     "network.adhocOn": "ใช้ใบรับรองชั่วคราว",
-    "nav.network": "🛡 HTTPS",
     "page.network": "HTTPS / HTTP",
     "chat.typingThinking": "AI กำลังคิด",
     "chat.typingWorking": "AI กำลังเรียบเรียงคำตอบ",
@@ -472,6 +476,7 @@ const I18N = {
     "tool.resultPrefix": "ผลการใช้เครื่องมือ:",
     "attachment.tooLarge": "ไฟล์ใหญ่เกิน 1 MB",
     "attachment.readFailed": "อ่านไฟล์ไม่สำเร็จ",
+    "attachment.clear": "ยกเลิกไฟล์แนบ",
     "model.custom": "กำหนดเอง...",
     "model.fetching": "กำลังดึงจาก API...",
     "model.fetched": "ดึงจาก API แล้ว {count} รายการ",
@@ -508,7 +513,7 @@ const I18N = {
     "history.lock": "ล็อก",
     "history.unlock": "ปลดล็อก",
     "history.delete": "ลบ",
-    "history.pinned": "📌 ปักหมุด",
+    "history.pinned": "ปักหมุด",
     "history.empty": "ยังไม่มีประวัติ",
     "history.unknownDate": "ไม่ทราบวันที่",
     "history.deleteTitle": "ลบประวัติ",
@@ -523,13 +528,13 @@ const I18N = {
   },
   en: {
     "app.title": "AI Control Center",
-    "sidebar.newChat": "+ New chat",
-    "nav.chat": "▰ Chat",
-    "nav.terminal": ">_ Terminal",
-    "nav.settings": "⚙ Settings",
-    "nav.schedule": "◷ Scheduled jobs",
-    "nav.logs": "▤ System logs",
-    "nav.about": "ⓘ About",
+    "sidebar.newChat": "New chat",
+    "nav.chat": "Chat",
+    "nav.terminal": "Terminal",
+    "nav.settings": "Settings",
+    "nav.schedule": "Scheduled jobs",
+    "nav.logs": "System logs",
+    "nav.about": "About",
     "sidebar.history": "Conversation history",
     "history.renameTitle": "Rename conversation",
     "history.renamePlaceholder": "New conversation name",
@@ -609,6 +614,9 @@ const I18N = {
     "server.uptimeMinutes": "{minutes}m",
     "settings.group.server": "Server",
     "settings.group.serverDesc": "Start, stop, and restart this web server",
+    "settings.group.network": "Web & HTTPS",
+    "settings.group.networkDesc":
+      "Choose the HTTP or HTTPS mode this server uses to serve the page",
     "network.title": "Web connection (HTTP / HTTPS)",
     "network.hint":
       "Choose whether the server serves this page over HTTP or HTTPS. A change takes effect after a server restart.",
@@ -627,6 +635,8 @@ const I18N = {
     "network.adhocHint":
       "Generates a self-signed certificate with openssl and reuses the same files on every restart",
     "network.save": "Save mode",
+    "network.saveScopeHint":
+      "This button applies the other sections only — the network mode uses the \"Save mode\" button in Web & HTTPS",
     "network.restart": "Restart server",
     "network.certHelp": "Create a permanent certificate with ./start_web.sh --make-cert <ip>",
     "network.saved": "Connection mode saved",
@@ -638,7 +648,6 @@ const I18N = {
     "network.certMissing": "Files missing",
     "network.certOff": "Not used",
     "network.adhocOn": "Ad-hoc certificate",
-    "nav.network": "🛡 HTTPS",
     "page.network": "HTTPS / HTTP",
     "chat.typingThinking": "AI is thinking",
     "chat.typingWorking": "AI is composing a reply",
@@ -987,6 +996,7 @@ const I18N = {
     "tool.resultPrefix": "Tool result:",
     "attachment.tooLarge": "File is larger than 1 MB",
     "attachment.readFailed": "Could not read the file",
+    "attachment.clear": "Remove attachment",
     "model.custom": "Custom...",
     "model.fetching": "Fetching from API...",
     "model.fetched": "Fetched {count} models from the API",
@@ -1023,7 +1033,7 @@ const I18N = {
     "history.lock": "Lock",
     "history.unlock": "Unlock",
     "history.delete": "Delete",
-    "history.pinned": "📌 Pinned",
+    "history.pinned": "Pinned",
     "history.empty": "No history yet",
     "history.unknownDate": "Unknown date",
     "history.deleteTitle": "Delete conversation",
@@ -1613,6 +1623,108 @@ $("sidebar-toggle").addEventListener("click", () => {
   localStorage.setItem(SIDEBAR_STORAGE_KEY, sidebarCollapsed ? "1" : "0");
   applySidebarCollapsed(sidebarCollapsed);
 });
+// The collapsed sidebar only shows icons, so label the control under the
+// pointer (or keyboard focus) instead of relying on the delayed native title.
+const RAIL_ITEM_SELECTOR = ".new-chat, nav button, .history-item";
+const railTooltip = $("rail-tooltip");
+let railTooltipSource = null;
+let railTooltipTitle = null;
+let railTooltipHideTimer = 0;
+function cancelRailTooltipHide() {
+  if (railTooltipHideTimer) {
+    clearTimeout(railTooltipHideTimer);
+    railTooltipHideTimer = 0;
+  }
+}
+function scheduleRailTooltipHide() {
+  cancelRailTooltipHide();
+  // A short delay lets the pointer travel from the icon onto the tooltip
+  // across the gap without the tooltip disappearing on the way.
+  railTooltipHideTimer = window.setTimeout(hideRailTooltip, 160);
+}
+function railModeActive() {
+  return (
+    appRoot.classList.contains("sidebar-collapsed") &&
+    window.matchMedia("(min-width: 701px)").matches
+  );
+}
+function showRailTooltip(target) {
+  if (!railTooltip || !railModeActive()) return;
+  cancelRailTooltipHide();
+  const label =
+    target.getAttribute("aria-label") || target.getAttribute("title");
+  if (!label) return;
+  if (railTooltipSource !== target) {
+    hideRailTooltip();
+    railTooltipSource = target;
+    railTooltipTitle = target.getAttribute("title");
+  }
+  // Keep the native title off the element while the custom tooltip shows, and
+  // refresh the cached copy so a language switch restores the newest text.
+  const titleAttr = target.getAttribute("title");
+  if (titleAttr) {
+    railTooltipTitle = titleAttr;
+    target.removeAttribute("title");
+  }
+  railTooltip.textContent = label;
+  railTooltip.hidden = false;
+  const rect = target.getBoundingClientRect();
+  const tip = railTooltip.getBoundingClientRect();
+  const top = rect.top + rect.height / 2 - tip.height / 2;
+  railTooltip.style.left = `${Math.round(rect.right + 10)}px`;
+  railTooltip.style.top = `${Math.round(
+    Math.max(8, Math.min(window.innerHeight - tip.height - 8, top)),
+  )}px`;
+}
+function hideRailTooltip() {
+  cancelRailTooltipHide();
+  // Only restore the cached title when no newer one was set in the meantime:
+  // a language switch writes the translated title onto the element first, and
+  // restoring the old value would leave the stale language behind.
+  if (
+    railTooltipSource &&
+    railTooltipTitle &&
+    !railTooltipSource.hasAttribute("title")
+  ) {
+    railTooltipSource.setAttribute("title", railTooltipTitle);
+  }
+  railTooltipSource = null;
+  railTooltipTitle = null;
+  if (railTooltip) railTooltip.hidden = true;
+}
+function railItemFrom(node) {
+  const item = node?.closest?.(RAIL_ITEM_SELECTOR);
+  return item && !item.closest(".history-actions") ? item : null;
+}
+document.querySelector("aside").addEventListener("pointerover", (event) => {
+  const item = railItemFrom(event.target);
+  if (item) showRailTooltip(item);
+});
+document.querySelector("aside").addEventListener("pointerout", (event) => {
+  const item = railItemFrom(event.target);
+  if (!item) return;
+  if (event.relatedTarget && item.contains(event.relatedTarget)) return;
+  scheduleRailTooltipHide();
+});
+document.querySelector("aside").addEventListener("focusin", (event) => {
+  const item = railItemFrom(event.target);
+  if (item) showRailTooltip(item);
+});
+document.querySelector("aside").addEventListener("focusout", hideRailTooltip);
+document
+  .querySelector("aside")
+  .addEventListener("pointerleave", scheduleRailTooltipHide);
+if (railTooltip) {
+  railTooltip.addEventListener("pointerenter", cancelRailTooltipHide);
+  railTooltip.addEventListener("pointerleave", scheduleRailTooltipHide);
+}
+$("history-list").addEventListener("scroll", hideRailTooltip);
+window.addEventListener("resize", hideRailTooltip);
+$("sidebar-toggle").addEventListener("click", hideRailTooltip);
+// Escape dismisses the tooltip without moving focus or the pointer.
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideRailTooltip();
+});
 function formatUsage(durationMs, usage) {
   const duration = Number.isFinite(Number(durationMs))
     ? t("usage.duration", {
@@ -1940,7 +2052,6 @@ document.querySelectorAll("nav button").forEach((button) =>
     if (button.dataset.view === "terminal") openTerminalView();
     if (button.dataset.view === "schedule") loadSchedules();
     if (button.dataset.view === "logs") loadLogs();
-    if (button.dataset.view === "network") loadServerStatus();
     closeSidebar();
   }),
 );
@@ -1952,6 +2063,7 @@ const SETTINGS_SECTIONS = [
   "security",
   "update",
   "server",
+  "network",
 ];
 let activeSettingsSection = SETTINGS_SECTIONS[0];
 function activateSettingsSection(section) {
@@ -1969,12 +2081,27 @@ function activateSettingsSection(section) {
       panel.dataset.settingsPanel === activeSettingsSection,
     );
   });
+  // The footer Save settings button does not apply the network mode, so the
+  // Web & HTTPS panel points at its own Save mode button instead.
+  const footerHint = document.querySelector(".settings-footer-hint");
+  if (footerHint) {
+    footerHint.dataset.i18n =
+      activeSettingsSection === "network"
+        ? "network.saveScopeHint"
+        : "settings.saveScopeHint";
+    footerHint.textContent = t(footerHint.dataset.i18n);
+  }
   $("settings-view").scrollTop = 0;
 }
 document.querySelectorAll("[data-settings-section]").forEach((button) => {
   button.addEventListener("click", () => {
     activateSettingsSection(button.dataset.settingsSection);
-    if (button.dataset.settingsSection === "server") loadServerStatus();
+    // The network panel reports live server/TLS state too; loading it keeps
+    // the unsaved radio selection because renderNetworkState only reselects
+    // when nothing is checked.
+    if (["server", "network"].includes(button.dataset.settingsSection)) {
+      loadServerStatus();
+    }
   });
 });
 function renderLogs() {
@@ -2408,14 +2535,27 @@ $("slash-menu").addEventListener("mousedown", (event) => {
   event.preventDefault();
   applySlashSuggestion(Number(item.dataset.slashIndex));
 });
+let attachmentRequestToken = 0;
+function clearAttachment() {
+  // Invalidate any file read still in flight so its result cannot restore a
+  // cleared attachment.
+  attachmentRequestToken += 1;
+  pendingAttachment = null;
+  $("file-input").value = "";
+  $("attachment-name").textContent = "";
+  $("attachment-chip").hidden = true;
+}
+$("attachment-cancel").addEventListener("click", clearAttachment);
 $("skill-chip").addEventListener("click", () => clearPendingSkill());
 $("attach-button").addEventListener("click", () => $("file-input").click());
 $("file-input").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
+  attachmentRequestToken += 1;
+  const requestToken = attachmentRequestToken;
   const maxBytes = 1024 * 1024;
   if (file.size > maxBytes) {
-    $("attachment-chip").textContent = t("attachment.tooLarge");
+    $("attachment-name").textContent = t("attachment.tooLarge");
     $("attachment-chip").hidden = false;
     event.target.value = "";
     pendingAttachment = null;
@@ -2423,12 +2563,14 @@ $("file-input").addEventListener("change", async (event) => {
   }
   try {
     const content = await file.text();
+    if (requestToken !== attachmentRequestToken) return;
     pendingAttachment = { name: file.name, content };
-    $("attachment-chip").textContent = `📎 ${file.name}`;
+    $("attachment-name").textContent = `📎 ${file.name}`;
     $("attachment-chip").hidden = false;
   } catch (error) {
+    if (requestToken !== attachmentRequestToken) return;
     pendingAttachment = null;
-    $("attachment-chip").textContent = t("attachment.readFailed");
+    $("attachment-name").textContent = t("attachment.readFailed");
     $("attachment-chip").hidden = false;
   }
 });
@@ -2690,9 +2832,7 @@ async function sendChatMessage(content, requestedSkills = null) {
     targetGeneration =
       savedConversation.generation || conversationGeneration || null;
     $("input").value = "";
-    pendingAttachment = null;
-    $("file-input").value = "";
-    $("attachment-chip").hidden = true;
+    clearAttachment();
     resizeInput();
     const payload = {
       messages,
@@ -4090,12 +4230,31 @@ function escapeHtml(value) {
       })[character],
   );
 }
+const HISTORY_ITEM_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>';
+// Pinned conversations carry a red pushpin, so the state still reads in the
+// icon-only rail where the "Pinned" heading is hidden.
+const HISTORY_PIN_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" /></svg>';
 function historyRows(items) {
   return items
-    .map(
-      (item) =>
-        `<div class="history-row${item.id === conversationId ? " active" : ""}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.title || t("history.untitled"))}">${item.locked ? "🔒 " : ""}${escapeHtml(item.title || t("history.untitled"))}</button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.rename"))}">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.pinned ? t("history.unpin") : t("history.pin"))}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.locked ? t("history.unlock") : t("history.lock"))}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.delete"))}">×</button></div></div>`,
-    )
+    .map((item) => {
+      const title = escapeHtml(item.title || t("history.untitled"));
+      const ariaLabel = item.pinned
+        ? `${title} · ${escapeHtml(t("history.pinned"))}`
+        : title;
+      const classes = [
+        "history-row",
+        item.id === conversationId ? "active" : "",
+        item.pinned ? "is-pinned" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const pin = item.pinned
+        ? `<span class="history-pin">${HISTORY_PIN_ICON}</span>`
+        : "";
+      return `<div class="${classes}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${title}" aria-label="${ariaLabel}"><span class="history-icon">${HISTORY_ITEM_ICON}</span><span class="history-label">${pin}${item.locked ? "🔒 " : ""}${title}</span></button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.rename"))}">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.pinned ? t("history.unpin") : t("history.pin"))}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.locked ? t("history.unlock") : t("history.lock"))}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.delete"))}">×</button></div></div>`;
+    })
     .join("");
 }
 function renderHistoryList(items) {
@@ -4110,7 +4269,7 @@ function renderHistoryList(items) {
       (grouped[day] ||= []).push(item);
     });
   const pinnedHtml = pinned.length
-    ? `<div class="history-day">${escapeHtml(t("history.pinned"))}</div>${historyRows(pinned)}`
+    ? `<div class="history-day"><span class="history-pin">${HISTORY_PIN_ICON}</span>${escapeHtml(t("history.pinned"))}</div>${historyRows(pinned)}`
     : "";
   const daysHtml = Object.entries(grouped)
     .map(
@@ -4671,6 +4830,8 @@ function applyStaticTranslations() {
 }
 function applyTranslations() {
   applyStaticTranslations();
+  // Refresh a visible rail tooltip so it shows the new language right away.
+  if (railTooltipSource) showRailTooltip(railTooltipSource);
   updatePageTitle();
   setModelStatus(modelStatus.key, modelStatus.vars, modelStatus.title);
   const customModelOption = $("model_select").querySelector(
