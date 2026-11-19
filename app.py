@@ -1116,7 +1116,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
     if name == "read_file":
         machine_access = machine_access_enabled()
         if machine_access:
-            path = resolve_machine_path(arguments.get("path", ""), must_exist=True)
+            path = resolve_tool_path(arguments.get("path", ""), must_exist=True)
         else:
             path = resolve_project_path(arguments.get("path", ""), must_exist=True)
             file_text = os.path.normpath(str(path))
