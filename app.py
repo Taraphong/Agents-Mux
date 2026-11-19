@@ -3197,9 +3197,9 @@ def start_discord_bot() -> None:
     prefix = str(settings.get("discord_prefix") or "!ai").strip() or "!ai"
     commands_synced = False
     # A reconnect fires READY again, so the pass is serialised and records each
-    # guild only after its own sync returned.
+    # guild only after its own cleanup returned.
     sync_state_lock = asyncio.Lock()
-    synced_guilds: set[int] = set()
+    cleared_guilds: set[int] = set()
     GUILD_SYNC_ATTEMPTS = 3
 
     class AccessControlledCommandTree(discord.app_commands.CommandTree):
@@ -3233,40 +3233,41 @@ def start_discord_bot() -> None:
                         log_event("discord.commands", "Registered the Discord slash commands")
                     except Exception as exc:
                         log_event("discord.error", "Could not register the Discord slash commands", error=str(exc))
-                # Global commands can take up to an hour to reach a client, while a
-                # guild sync shows up immediately, so every guild gets its own copy.
-                pending = [guild for guild in self.guilds if guild.id not in synced_guilds]
+                # Global commands are the only registration. Registering the same
+                # commands per guild as well makes Discord show every command
+                # twice, so older guild-scoped copies are removed below.
+                pending = [guild for guild in self.guilds if guild.id not in cleared_guilds]
                 failures: list[str] = []
                 for guild in pending:
                     server = discord.Object(id=guild.id)
                     last_error = ""
                     for attempt in range(1, GUILD_SYNC_ATTEMPTS + 1):
                         try:
-                            # sync(guild=...) only sends guild-scoped commands, so
-                            # the global ones have to be copied there first.
-                            command_tree.copy_global_to(guild=server)
+                            # An empty guild scope removes the duplicates left
+                            # by versions that copied the global commands here.
+                            command_tree.clear_commands(guild=server)
                             await command_tree.sync(guild=server)
                         except Exception as exc:
                             last_error = f"{guild.id}: {exc}"
                             if attempt < GUILD_SYNC_ATTEMPTS:
                                 await asyncio.sleep(2 ** (attempt - 1))
                         else:
-                            synced_guilds.add(guild.id)
+                            cleared_guilds.add(guild.id)
                             break
                     else:
                         failures.append(last_error)
                 if pending:
-                    details: dict[str, Any] = {"servers": len(self.guilds), "synced": len(synced_guilds)}
+                    details: dict[str, Any] = {"servers": len(self.guilds), "cleared": len(cleared_guilds)}
                     if failures:
                         details["failed"] = "; ".join(failures)[:300]
-                    log_event("discord.commands", "Registered the guild slash commands", **details)
+                    log_event("discord.commands", "Cleared duplicate guild slash commands", **details)
                 # A guild that never succeeded is retried on the next READY event.
-                unsynced = len(self.guilds) - len(synced_guilds)
-            if unsynced:
+                uncleared = len(self.guilds) - len(cleared_guilds)
+            if uncleared:
                 log_event(
                     "discord.error",
-                    "Could not register slash commands on some guilds; retrying on the next connection",
-                    unsynced=unsynced,
+                    "Could not clear guild slash commands on some guilds; retrying on the next connection",
+                    uncleared=uncleared,
                 )
             settings = load_settings()
             schedule_model_list_refresh(settings.get("provider", "openai"), settings)
