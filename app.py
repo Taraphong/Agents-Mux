@@ -815,15 +815,18 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
 
     Machine access is the documented default; without this resolver the tools
     advertised as machine-scoped still refused every path outside the project.
-    The whole path is resolved through realpath before ".." is collapsed, so
-    neither a symlinked folder nor a symlinked final file can turn an approved
-    write into a different file. realpath keeps components that do not exist
-    yet, so write_file can still create a new file.
+    The parent is resolved through realpath before ".." is collapsed, so a
+    symlinked folder cannot turn an approved write into a different file, and
+    the final component may still be missing because write_file creates it.
+    protected_write_target() resolves the finished path before it decides, so a
+    symlinked final file is checked against the same secret rules.
     """
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("A path is required")
     expanded = os.path.expanduser(raw_path.strip())
-    candidate = Path(os.path.normpath(os.path.realpath(expanded)))
+    parent_text, name = os.path.split(expanded)
+    resolved_parent = os.path.realpath(parent_text or os.curdir)
+    candidate = Path(os.path.normpath(os.path.join(resolved_parent, name)))
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
@@ -859,12 +862,17 @@ def protected_write_target(path: Path) -> bool:
         return True
     if any(part in PROTECTED_PARTS for part in parts):
         return True
-    # The caller resolves the target (realpath) before comparing, so the text
-    # is already canonical and a symlinked destination was checked above.
-    candidate_text = os.path.normpath(str(path))
+    # The parent is already canonical; resolving the finished path covers a
+    # final component that is a symlink, so a link to .env is blocked too.
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    resolved_parts = [part for part in resolved.parts if part not in {"/", "", "."}]
+    if any(part in PROTECTED_NAMES or part in PROTECTED_PARTS for part in resolved_parts):
+        return True
     for target in configured_secret_targets():
-        target_text = str(target)
-        if candidate_text == target_text or candidate_text.startswith(target_text + os.sep):
+        if resolved == target or target in resolved.parents:
             return True
     return False
 
