@@ -816,8 +816,10 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
     Machine access is the documented default; without this resolver the tools
     advertised as machine-scoped still refused every path outside the project.
     The parent is resolved through realpath before ".." is collapsed, so a
-    symlinked folder cannot turn an approved write into a different file; the
-    final component may still be missing because write_file creates it.
+    symlinked folder cannot turn an approved write into a different file, and
+    the final component may still be missing because write_file creates it.
+    protected_write_target() resolves the finished path before it decides, so a
+    symlinked final file is checked against the same secret rules.
     """
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("A path is required")
@@ -831,11 +833,60 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
     if os.sep in name or (os.altsep and os.altsep in name):
         raise ValueError("Invalid path")
     resolved_parent = os.path.realpath(parent_text or os.curdir)
-    candidate_text = os.path.normpath(os.path.join(resolved_parent, name))
-    candidate = Path(candidate_text)
+    candidate = Path(os.path.normpath(os.path.join(resolved_parent, name)))
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
+
+
+def configured_secret_targets() -> list[Path]:
+    """Return the settings, auth, history and certificate paths in use."""
+    # ENV_FILE is included because .env itself can be a symlink: resolving the
+    # write target would otherwise hide the protected name behind its target.
+    targets = [SETTINGS_FILE, AUTH_FILE, HISTORY_ROOT, ENV_FILE]
+    for name in ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY"):
+        value = os.getenv(name, "").strip()
+        if value:
+            targets.append(Path(value))
+    resolved: list[Path] = []
+    for target in targets:
+        try:
+            resolved.append(target.expanduser().resolve())
+        except OSError:
+            continue
+    return resolved
+
+
+def protected_write_target(path: Path) -> bool:
+    """Return True when a write would touch a secret or machine-specific file.
+
+    These files hold API keys, pairing state, certificates and conversation
+    history, so no tool may overwrite them even when machine access is on.
+    The settings, auth, history and certificate locations can be moved with
+    environment variables, so the configured paths are compared as well: a
+    write to a custom settings file must stay blocked like the default one.
+    """
+    parts = [part for part in path.parts if part not in {"/", "", "."}]
+    if any(part in PROTECTED_NAMES for part in parts):
+        return True
+    if any(part in PROTECTED_PARTS for part in parts):
+        return True
+    # Canonicalize in a non-strict way for untrusted paths: resolve the parent
+    # through realpath, then collapse traversal in the final path text.
+    try:
+        expanded = os.path.expanduser(str(path))
+        parent_text, name = os.path.split(expanded)
+        resolved_parent = os.path.realpath(parent_text or os.curdir)
+        resolved = Path(os.path.normpath(os.path.join(resolved_parent, name)))
+    except OSError:
+        return False
+    resolved_parts = [part for part in resolved.parts if part not in {"/", "", "."}]
+    if any(part in PROTECTED_NAMES or part in PROTECTED_PARTS for part in resolved_parts):
+        return True
+    for target in configured_secret_targets():
+        if resolved == target or target in resolved.parents:
+            return True
+    return False
 
 
 def display_tool_path(path: Path) -> str:
@@ -1066,15 +1117,8 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
 
     if name == "read_file":
         machine_access = machine_access_enabled()
-        # Snapshot the secrets before the read: a settings save that lands
-        # between the read and the redaction would otherwise drop a key from
-        # the list and let it through into the transcript.
-        try:
-            secrets_before_read = terminal_secret_values() if machine_access else []
-        except (OSError, ValueError):
-            secrets_before_read = []
         if machine_access:
-            path = resolve_machine_path(arguments.get("path", ""), must_exist=True)
+            path = resolve_tool_path(arguments.get("path", ""), must_exist=True)
         else:
             path = resolve_project_path(arguments.get("path", ""), must_exist=True)
             file_text = os.path.normpath(str(path))
@@ -1085,12 +1129,22 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             raise ValueError("This path is not a file")
         if path.stat().st_size > TOOL_MAX_READ_BYTES:
             raise ValueError("The file is larger than the allowed read size")
-        content = path.read_text(encoding="utf-8", errors="replace")
         if machine_access:
             # Whole-machine reads must not copy stored credentials into the chat
-            # transcript or the saved conversation history.
-            content = redact_secrets(content)
-            content = redact_terminal_output(content, secrets_before_read)
+            # transcript or the saved conversation history. The snapshot, the
+            # read and the redaction share SETTINGS_LOCK with the settings
+            # writers: a save that lands mid-read would otherwise add a key
+            # that neither the snapshot nor the redaction knows.
+            with SETTINGS_LOCK:
+                try:
+                    secrets_before_read = terminal_secret_values()
+                except (OSError, ValueError):
+                    secrets_before_read = []
+                content = path.read_text(encoding="utf-8", errors="replace")
+                content = redact_secrets(content)
+                content = redact_terminal_output(content, secrets_before_read)
+        else:
+            content = path.read_text(encoding="utf-8", errors="replace")
         result = {"tool": name, "path": display_tool_path(path), "content": content, "scope": "machine" if machine_access else "project"}
         log_event("tool.success", f"Used {name}", tool=name, path=result["path"])
         return result
@@ -1110,6 +1164,8 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         content = arguments.get("content", "")
         if not isinstance(content, str) or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
             raise ValueError("The file content is larger than allowed")
+        if protected_write_target(path):
+            raise PermissionError("Writing files that hold secrets, certificates or history is not allowed")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         result = {"tool": name, "path": display_tool_path(path), "bytes": len(content.encode("utf-8"))}
@@ -2249,6 +2305,7 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น",
         "chat_provider_error": "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล",
         "chat_api_failed": "เรียก API ไม่สำเร็จ: {detail}",
+        "rate_limited": "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
     },
     "en": {
         "invalid_key": "{label} API key is invalid or unauthorized",
@@ -2325,6 +2382,7 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} is busy or rate-limited; try again or choose another model",
         "chat_provider_error": "The provider returned an error; check the API key and the model",
         "chat_api_failed": "API request failed: {detail}",
+        "rate_limited": "Too many requests; wait a moment and try again",
     },
 }
 
@@ -2339,6 +2397,47 @@ def status_message(language: str, key: str, **kwargs: Any) -> str:
     messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["en"]
     template = messages.get(key) or STATUS_MESSAGES["en"].get(key, key)
     return template.format(**kwargs)
+
+
+# A simple in-process limiter for the expensive, state-changing endpoints.
+# Pairing already has its own failure limiter; this keeps a paired device (or a
+# script that got hold of a session) from hammering the provider API.
+API_RATE_LIMITS: dict[str, list[float]] = {}
+API_RATE_LOCK = threading.Lock()
+
+
+def api_rate_limited(bucket: str, client: str, limit: int, window: float = 60.0) -> bool:
+    """Return True when *client* already used its budget for *bucket*."""
+    now = time.time()
+    key = f"{bucket}|{client}"
+    with API_RATE_LOCK:
+        if len(API_RATE_LIMITS) > 2000:
+            API_RATE_LIMITS.clear()
+        stamps = [stamp for stamp in API_RATE_LIMITS.get(key, []) if now - stamp < window]
+        if len(stamps) >= limit:
+            API_RATE_LIMITS[key] = stamps
+            return True
+        stamps.append(now)
+        API_RATE_LIMITS[key] = stamps
+    return False
+
+
+# Per-minute budgets for the endpoints that cost money or touch the machine.
+API_RATE_BUDGETS = {"chat": 30, "tools": 60, "terminal": 60, "test": 10}
+
+
+def rate_limit_response(bucket: str):
+    """Answer 429 when the caller exceeded the budget for *bucket*.
+
+    A paired device is identified by its session id, so a spoofed
+    X-Forwarded-For cannot hand one caller a fresh budget on every request.
+    """
+    session = current_auth_session() or {}
+    client = str(session.get("id") or request.remote_addr or "unknown")
+    if not api_rate_limited(bucket, client, API_RATE_BUDGETS[bucket]):
+        return None
+    log_event("security.rate_limited", "Rejected a request over the rate budget", bucket=bucket)
+    return jsonify({"ok": False, "error": status_message(request_language(), "rate_limited")}), 429
 
 
 def request_language(allow_body: bool = True) -> str:
@@ -3861,6 +3960,13 @@ def reject_cross_site_mutation():
     """Refuse state-changing requests that a browser sent from another site."""
     if request.method not in MUTATING_METHODS:
         return None
+    # Sec-Fetch-Site is set by the browser and cannot be forged by page script,
+    # so it catches a cross-site request even when the Origin comparison is
+    # defeated by a spoofed or proxy-supplied Host / X-Forwarded-Host.
+    fetch_site = request.headers.get("Sec-Fetch-Site", "").strip().lower()
+    if fetch_site in {"cross-site", "same-site"}:
+        log_event("security.cross_site", "Rejected a cross-site request", path=request.path, method=request.method, site=fetch_site)
+        return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
     origin = request.headers.get("Origin", "").strip()
     if not origin:
         # Non-browser clients (curl, scripts) do not send Origin.
