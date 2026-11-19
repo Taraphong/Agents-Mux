@@ -834,7 +834,9 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
 
 def configured_secret_targets() -> list[Path]:
     """Return the settings, auth, history and certificate paths in use."""
-    targets = [SETTINGS_FILE, AUTH_FILE, HISTORY_ROOT]
+    # ENV_FILE is included because .env itself can be a symlink: resolving the
+    # write target would otherwise hide the protected name behind its target.
+    targets = [SETTINGS_FILE, AUTH_FILE, HISTORY_ROOT, ENV_FILE]
     for name in ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY"):
         value = os.getenv(name, "").strip()
         if value:
