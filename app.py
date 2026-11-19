@@ -823,7 +823,7 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("A path is required")
     expanded = os.path.expanduser(raw_path.strip())
-    candidate = Path(os.path.realpath(expanded))
+    candidate = Path(os.path.normpath(os.path.realpath(expanded)))
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
