@@ -824,6 +824,18 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
     return candidate
 
 
+def protected_write_target(path: Path) -> bool:
+    """Return True when a write would touch a secret or machine-specific file.
+
+    These files hold API keys, pairing state, certificates and conversation
+    history, so no tool may overwrite them even when machine access is on.
+    """
+    parts = [part for part in path.parts if part not in {"/", "", "."}]
+    if any(part in PROTECTED_NAMES for part in parts):
+        return True
+    return any(part in PROTECTED_PARTS for part in parts)
+
+
 def display_tool_path(path: Path) -> str:
     """Show a project-relative path when possible, otherwise the absolute path."""
     try:
@@ -1088,6 +1100,8 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         content = arguments.get("content", "")
         if not isinstance(content, str) or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
             raise ValueError("The file content is larger than allowed")
+        if protected_write_target(path):
+            raise PermissionError("Writing files that hold secrets, certificates or history is not allowed")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         result = {"tool": name, "path": display_tool_path(path), "bytes": len(content.encode("utf-8"))}
@@ -2180,6 +2194,7 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น",
         "chat_provider_error": "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล",
         "chat_api_failed": "เรียก API ไม่สำเร็จ: {detail}",
+        "rate_limited": "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
     },
     "en": {
         "invalid_key": "{label} API key is invalid or unauthorized",
@@ -2256,6 +2271,7 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} is busy or rate-limited; try again or choose another model",
         "chat_provider_error": "The provider returned an error; check the API key and the model",
         "chat_api_failed": "API request failed: {detail}",
+        "rate_limited": "Too many requests; wait a moment and try again",
     },
 }
 
@@ -2270,6 +2286,47 @@ def status_message(language: str, key: str, **kwargs: Any) -> str:
     messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["en"]
     template = messages.get(key) or STATUS_MESSAGES["en"].get(key, key)
     return template.format(**kwargs)
+
+
+# A simple in-process limiter for the expensive, state-changing endpoints.
+# Pairing already has its own failure limiter; this keeps a paired device (or a
+# script that got hold of a session) from hammering the provider API.
+API_RATE_LIMITS: dict[str, list[float]] = {}
+API_RATE_LOCK = threading.Lock()
+
+
+def api_rate_limited(bucket: str, client: str, limit: int, window: float = 60.0) -> bool:
+    """Return True when *client* already used its budget for *bucket*."""
+    now = time.time()
+    key = f"{bucket}|{client}"
+    with API_RATE_LOCK:
+        if len(API_RATE_LIMITS) > 2000:
+            API_RATE_LIMITS.clear()
+        stamps = [stamp for stamp in API_RATE_LIMITS.get(key, []) if now - stamp < window]
+        if len(stamps) >= limit:
+            API_RATE_LIMITS[key] = stamps
+            return True
+        stamps.append(now)
+        API_RATE_LIMITS[key] = stamps
+    return False
+
+
+# Per-minute budgets for the endpoints that cost money or touch the machine.
+API_RATE_BUDGETS = {"chat": 30, "tools": 60, "terminal": 60, "test": 10}
+
+
+def rate_limit_response(bucket: str):
+    """Answer 429 when the caller exceeded the budget for *bucket*.
+
+    A paired device is identified by its session id, so a spoofed
+    X-Forwarded-For cannot hand one caller a fresh budget on every request.
+    """
+    session = current_auth_session() or {}
+    client = str(session.get("id") or request.remote_addr or "unknown")
+    if not api_rate_limited(bucket, client, API_RATE_BUDGETS[bucket]):
+        return None
+    log_event("security.rate_limited", "Rejected a request over the rate budget", bucket=bucket)
+    return jsonify({"ok": False, "error": status_message(request_language(), "rate_limited")}), 429
 
 
 def request_language(allow_body: bool = True) -> str:
@@ -3792,6 +3849,13 @@ def reject_cross_site_mutation():
     """Refuse state-changing requests that a browser sent from another site."""
     if request.method not in MUTATING_METHODS:
         return None
+    # Sec-Fetch-Site is set by the browser and cannot be forged by page script,
+    # so it catches a cross-site request even when the Origin comparison is
+    # defeated by a spoofed or proxy-supplied Host / X-Forwarded-Host.
+    fetch_site = request.headers.get("Sec-Fetch-Site", "").strip().lower()
+    if fetch_site in {"cross-site", "same-site"}:
+        log_event("security.cross_site", "Rejected a cross-site request", path=request.path, method=request.method, site=fetch_site)
+        return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
     origin = request.headers.get("Origin", "").strip()
     if not origin:
         # Non-browser clients (curl, scripts) do not send Origin.

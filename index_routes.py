@@ -27,6 +27,7 @@ from app import (
     PROJECT_ROOT,
     PROVIDERS,
     PROVIDER_LABELS,
+    rate_limit_response,
     Path,
     SCHEDULE_LOCK,
     SCHEDULE_RUNNING,
@@ -154,6 +155,9 @@ def tools_get():
 @index_bp.post("/api/tools/execute")
 def tools_execute():
     """Execute a local tool call after validating its approval token."""
+    limited = rate_limit_response("tools")
+    if limited:
+        return limited
     body = request.get_json(silent=True) or {}
     name = body.get("name")
     arguments = body.get("arguments", {})
@@ -198,6 +202,9 @@ def terminal_info():
 @index_bp.post("/api/terminal/exec")
 def terminal_exec():
     """Run one terminal command submitted by the web UI."""
+    limited = rate_limit_response("terminal")
+    if limited:
+        return limited
     body = request.get_json(silent=True) or {}
     command = body.get("command")
     if not isinstance(command, str):
@@ -660,6 +667,9 @@ def settings_put():
 @index_bp.post("/api/settings/test")
 def settings_test():
     """Test submitted settings against the provider without saving them."""
+    limited = rate_limit_response("test")
+    if limited:
+        return limited
     settings = load_settings()
     body = request.get_json(silent=True) or {}
     # Test submitted settings without persisting credentials first. This lets
@@ -1080,6 +1090,9 @@ def update_run():
 @index_bp.post("/api/chat")
 def chat():
     """Answer one chat turn, retrying once with the configured fallback."""
+    limited = rate_limit_response("chat")
+    if limited:
+        return limited
     body = request.get_json(silent=True) or {}
     messages = body.get("messages", [])
     if not messages or not isinstance(messages, list):
