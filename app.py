@@ -97,6 +97,12 @@ ASSET_GZIP_CACHE: dict[tuple[str, int, int], bytes] = {}
 ASSET_GZIP_LOCK = threading.Lock()
 ASSET_GZIP_CACHE_LIMIT = 8
 SKILLS_ROOT = Path(os.getenv("AI_WEB_SKILLS_DIR", "skills"))
+# CodeQL's py/path-injection query only honours a startswith() prefix check
+# inside the function that performs the file access, so these normalized roots
+# are used by the re-checks written next to those accesses.
+PROJECT_ROOT_TEXT = os.path.normpath(os.path.realpath(str(PROJECT_ROOT)))
+SKILLS_ROOT_TEXT = os.path.normpath(os.path.realpath(str(PROJECT_ROOT / SKILLS_ROOT)))
+HISTORY_ROOT_TEXT = os.path.normpath(os.path.realpath(str(HISTORY_ROOT)))
 TOOL_MAX_READ_BYTES = 200_000
 TOOL_MAX_WRITE_BYTES = 200_000
 PENDING_TOOL_REQUESTS: dict[str, dict[str, Any]] = {}
@@ -753,6 +759,14 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
         raise ValueError("A path inside the project is required")
     project_root = PROJECT_ROOT.resolve()
     candidate = normalized_path_under(raw_path, project_root, "Only paths inside the project folder are allowed")
+    # Repeat the normalized prefix check here: CodeQL only treats a startswith()
+    # guard in this function as a barrier for the accesses below.
+    candidate_text = os.path.normpath(str(candidate))
+    if candidate_text == PROJECT_ROOT_TEXT:
+        candidate_text = PROJECT_ROOT_TEXT + os.sep
+    if not candidate_text.startswith(PROJECT_ROOT_TEXT + os.sep):
+        raise ValueError("Only paths inside the project folder are allowed")
+    candidate = Path(candidate_text)
     relative_text = os.path.relpath(str(candidate), str(project_root))
     relative_parts: list[str] = [] if relative_text == os.curdir else relative_text.split(os.sep)
     if any(part in PROTECTED_PARTS for part in relative_parts) or candidate.name in PROTECTED_NAMES:
@@ -785,6 +799,12 @@ def resolve_tool_path(raw_path: str, must_exist: bool = False) -> Path:
         "The path is outside the project folder and is not allowed",
         PermissionError,
     )
+    candidate_text = os.path.normpath(str(candidate))
+    if candidate_text == PROJECT_ROOT_TEXT:
+        candidate_text = PROJECT_ROOT_TEXT + os.sep
+    if not candidate_text.startswith(PROJECT_ROOT_TEXT + os.sep):
+        raise PermissionError("The path is outside the project folder and is not allowed")
+    candidate = Path(candidate_text)
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
@@ -910,6 +930,10 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
             raise ValueError("The skill content is invalid or larger than allowed")
         path = skill_path(skill_name)
+        skill_text = os.path.normpath(str(path))
+        if not skill_text.startswith(SKILLS_ROOT_TEXT + os.sep):
+            raise PermissionError("The skill path is outside the allowed folder")
+        path = Path(skill_text)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content.strip() + "\n", encoding="utf-8")
         try:
@@ -983,6 +1007,12 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
     if name == "list_files":
         machine_access = machine_access_enabled()
         root = resolve_tool_path(arguments.get("path", "."), must_exist=True)
+        root_text = os.path.normpath(str(root))
+        if root_text == PROJECT_ROOT_TEXT:
+            root_text = PROJECT_ROOT_TEXT + os.sep
+        if not root_text.startswith(PROJECT_ROOT_TEXT + os.sep):
+            raise PermissionError("The path is outside the project folder and is not allowed")
+        root = Path(root_text)
         if not root.is_dir():
             raise ValueError("This path is not a folder")
         files: list[str] = []
@@ -1008,6 +1038,10 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         path = resolve_tool_path(arguments.get("path", ""), must_exist=True)
         if not machine_access:
             path = resolve_project_path(str(path), must_exist=True)
+        file_text = os.path.normpath(str(path))
+        if not file_text.startswith(PROJECT_ROOT_TEXT + os.sep):
+            raise PermissionError("The path is outside the project folder and is not allowed")
+        path = Path(file_text)
         if not path.is_file():
             raise ValueError("This path is not a file")
         if path.stat().st_size > TOOL_MAX_READ_BYTES:
@@ -1028,6 +1062,10 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         content = arguments.get("content", "")
         if not isinstance(content, str) or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
             raise ValueError("The file content is larger than allowed")
+        write_text = os.path.normpath(str(path))
+        if not write_text.startswith(PROJECT_ROOT_TEXT + os.sep):
+            raise PermissionError("The path is outside the project folder and is not allowed")
+        path = Path(write_text)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         result = {"tool": name, "path": display_tool_path(path), "bytes": len(content.encode("utf-8"))}
@@ -1274,6 +1312,12 @@ def resolve_terminal_cwd(raw_path: Any) -> Path:
     relative_parts: list[str] = [] if relative_text == os.curdir else relative_text.split(os.sep)
     if any(part in PROTECTED_PARTS for part in relative_parts):
         raise PermissionError("The terminal may not enter folders holding secrets")
+    cwd_text = os.path.normpath(str(candidate))
+    if cwd_text == PROJECT_ROOT_TEXT:
+        cwd_text = PROJECT_ROOT_TEXT + os.sep
+    if not cwd_text.startswith(PROJECT_ROOT_TEXT + os.sep):
+        raise PermissionError("The terminal is restricted to the project folder")
+    candidate = Path(cwd_text)
     if not candidate.exists():
         raise FileNotFoundError(f"Folder not found: {raw_path}")
     if not candidate.is_dir():
@@ -1544,6 +1588,10 @@ def history_record_path(path: Path) -> Path:
 def _write_history_record(path: Path, record: dict[str, Any]) -> None:
     """Write one history record atomically so readers never see a partial file."""
     path = history_record_path(path)
+    record_text = os.path.normpath(str(path))
+    if not record_text.startswith(HISTORY_ROOT_TEXT + os.sep):
+        raise ValueError("Invalid history path")
+    path = Path(record_text)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
