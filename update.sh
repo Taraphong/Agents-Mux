@@ -61,12 +61,12 @@ usage() {
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --branch)
-      [ "$#" -ge 2 ] || die "--branch ต้องระบุชื่อ branch"
+      [ "$#" -ge 2 ] || die "--branch requires a branch name"
       BRANCH="$2"
       shift 2
       ;;
     --repo)
-      [ "$#" -ge 2 ] || die "--repo ต้องระบุ owner/repo"
+      [ "$#" -ge 2 ] || die "--repo requires owner/repo"
       REPO="$2"
       shift 2
       ;;
@@ -83,20 +83,20 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      die "ไม่รู้จักตัวเลือก: $1 (ใช้ --help เพื่อดูวิธีใช้)"
+      die "Unknown option: $1 (use --help for usage)"
       ;;
   esac
 done
 
 case "$REPO" in
   */*) ;;
-  *) die "--repo ต้องอยู่ในรูป owner/repo" ;;
+  *) die "--repo must look like owner/repo" ;;
 esac
 case "$BRANCH" in
-  ""|*[!A-Za-z0-9._/-]*) die "ชื่อ branch ไม่ถูกต้อง: $BRANCH" ;;
+  ""|*[!A-Za-z0-9._/-]*) die "Invalid branch name: $BRANCH" ;;
 esac
 
-[ -f "$APP_DIR/app.py" ] || die "ไม่พบ app.py ใน $APP_DIR — รันสคริปต์นี้จากโฟลเดอร์โปรเจกต์"
+[ -f "$APP_DIR/app.py" ] || die "app.py not found in $APP_DIR — run this script from the project folder"
 
 UPDATE_TOKEN="${AI_WEB_UPDATE_TOKEN:-${GITHUB_TOKEN:-}}"
 
@@ -131,19 +131,19 @@ fetch_to() {
     if [ -n "$token" ]; then
       # wget re-sends headers after a redirect and cannot restrict the scheme
       # of later hops, so authenticated downloads need curl.
-      say "❌ ดาวน์โหลด repo ส่วนตัวต้องใช้ curl — ติดตั้งก่อน: pkg install curl" >&2
+      say "❌ Downloading a private repo needs curl — install it first: pkg install curl" >&2
       return 1
     fi
     wget -q -T 180 -O "$output" "$url"
     return $?
   fi
-  say "❌ ไม่พบ curl หรือ wget — ติดตั้งก่อน: pkg install curl" >&2
+  say "❌ curl or wget was not found — install one first: pkg install curl" >&2
   return 1
 }
 
 TMP_ROOT="${TMPDIR:-/tmp}"
 mkdir -p "$TMP_ROOT" 2>/dev/null || true
-WORK_DIR="$(mktemp -d "$TMP_ROOT/ai-web-update.XXXXXX")" || die "สร้างโฟลเดอร์ชั่วคราวไม่สำเร็จ"
+WORK_DIR="$(mktemp -d "$TMP_ROOT/ai-web-update.XXXXXX")" || die "Could not create the temporary folder"
 cleanup() {
   rm -rf "$WORK_DIR"
 }
@@ -158,25 +158,25 @@ if [ -z "$ARCHIVE_URL" ]; then
     ARCHIVE_URL="https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz"
   fi
 fi
-say "⬇️  กำลังดึง $REPO ($BRANCH)"
+say "⬇️  Fetching $REPO ($BRANCH)"
 if ! fetch_to "$ARCHIVE_URL" "$WORK_DIR/source.tar.gz"; then
-  die "ดาวน์โหลดไม่สำเร็จ: $ARCHIVE_URL (ตรวจสอบอินเทอร์เน็ต ชื่อ repo/branch หรือ AI_WEB_UPDATE_TOKEN สำหรับ repo ส่วนตัว)"
+  die "Download failed: $ARCHIVE_URL (check the network, the repo/branch name, or AI_WEB_UPDATE_TOKEN for a private repo)"
 fi
-[ -s "$WORK_DIR/source.tar.gz" ] || die "ไฟล์ที่ดาวน์โหลดว่างเปล่า"
+[ -s "$WORK_DIR/source.tar.gz" ] || die "The downloaded file is empty"
 
 mkdir -p "$WORK_DIR/source"
 if ! tar -xzf "$WORK_DIR/source.tar.gz" -C "$WORK_DIR/source" 2>"$WORK_DIR/tar.log"; then
   cat "$WORK_DIR/tar.log" >&2 2>/dev/null || true
-  die "แตกไฟล์ไม่สำเร็จ (ต้องมี tar: pkg install tar)"
+  die "Could not extract the archive (tar is required: pkg install tar)"
 fi
 
 set -- "$WORK_DIR"/source/*/
-[ -d "${1:-}" ] || die "ไม่พบโฟลเดอร์โปรเจกต์ในไฟล์ที่ดาวน์โหลด"
+[ -d "${1:-}" ] || die "No project folder was found in the downloaded archive"
 SOURCE_DIR="${1%/}"
-[ -f "$SOURCE_DIR/app.py" ] || die "ไฟล์ที่ดาวน์โหลดไม่มี app.py — ตรวจสอบ repo/branch"
+[ -f "$SOURCE_DIR/app.py" ] || die "The downloaded files have no app.py — check the repo/branch"
 
-say "📦 แหล่งข้อมูล: $REPO@$BRANCH"
-say "📁 ปลายทาง: $APP_DIR"
+say "📦 Source: $REPO@$BRANCH"
+say "📁 Destination: $APP_DIR"
 
 # Keep the old dependency list so the updater can tell whether pip must run.
 OLD_REQUIREMENTS=""
@@ -188,12 +188,12 @@ fi
 for file in $APP_FILES; do
   [ -f "$SOURCE_DIR/$file" ] || continue
   if [ -f "$APP_DIR/$file" ] && cmp -s "$SOURCE_DIR/$file" "$APP_DIR/$file"; then
-    say "   = $file (ไม่เปลี่ยน)"
+    say "   = $file (unchanged)"
     continue
   fi
   say "   → $file"
   if [ "$DRY_RUN" -eq 0 ]; then
-    cp -f "$SOURCE_DIR/$file" "$APP_DIR/$file.new" && mv -f "$APP_DIR/$file.new" "$APP_DIR/$file" || die "คัดลอก $file ไม่สำเร็จ"
+    cp -f "$SOURCE_DIR/$file" "$APP_DIR/$file.new" && mv -f "$APP_DIR/$file.new" "$APP_DIR/$file" || die "Could not copy $file"
   fi
 done
 
@@ -203,12 +203,12 @@ for dir in $APP_DIRS; do
   if [ "$DRY_RUN" -eq 0 ]; then
     mkdir -p "$APP_DIR/$dir"
     # Merge instead of replacing the folder so user-created skills survive.
-    cp -R "$SOURCE_DIR/$dir/." "$APP_DIR/$dir/" || die "คัดลอก $dir ไม่สำเร็จ"
+    cp -R "$SOURCE_DIR/$dir/." "$APP_DIR/$dir/" || die "Could not copy $dir"
   fi
 done
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  say "🔍 Dry run เสร็จแล้ว — ไม่มีการเขียนไฟล์"
+  say "🔍 Dry run finished — no files were written"
   exit 0
 fi
 
@@ -237,24 +237,24 @@ if [ "$DEPS_CHANGED" -eq 1 ]; then
     PYTHON="$(command -v python3 || command -v python || true)"
   fi
   if [ -n "$PYTHON" ]; then
-    say "🐍 requirements.txt เปลี่ยน — กำลังติดตั้ง dependencies"
+    say "🐍 requirements.txt changed — installing dependencies"
     # Record the pending install before running pip and clear it only on
     # success, so the next update retries a failed installation.
     : > "$DEPS_MARKER" 2>/dev/null || true
-    (cd "$APP_DIR" && "$PYTHON" -m pip install -r requirements.txt) || die "ติดตั้ง dependencies ไม่สำเร็จ (จะลองใหม่ในการอัพเดทครั้งถัดไป)"
+    (cd "$APP_DIR" && "$PYTHON" -m pip install -r requirements.txt) || die "Could not install the dependencies (it will retry on the next update)"
     rm -f "$DEPS_MARKER"
   else
-    say "⚠️  ไม่พบ python — ข้ามการติดตั้ง dependencies (รัน install.sh เอง)"
+    say "⚠️  python not found — skipping dependency install (run install.sh yourself)"
   fi
 fi
 
 if [ "$RESTART" -eq 1 ]; then
-  [ -x "$APP_DIR/start_web.sh" ] || die "ไม่พบ start_web.sh ที่รันได้"
-  say "🔁 กำลัง restart เซิร์ฟเวอร์"
-  "$APP_DIR/start_web.sh" --restart || die "restart ไม่สำเร็จ — ดู log ที่ logs/ai-web.log"
-  "$APP_DIR/start_web.sh" --check || die "เซิร์ฟเวอร์ไม่ตอบหลัง restart"
+  [ -x "$APP_DIR/start_web.sh" ] || die "No runnable start_web.sh found"
+  say "🔁 Restarting the server"
+  "$APP_DIR/start_web.sh" --restart || die "restart failed — see logs/ai-web.log"
+  "$APP_DIR/start_web.sh" --check || die "The server did not answer after the restart"
 else
-  say "ℹ️  ข้ามการ restart (ใช้ ./start_web.sh --restart เมื่อพร้อม)"
+  say "ℹ️  Skipped the restart (run ./start_web.sh --restart when ready)"
 fi
 
-say "✅ อัพเดทเสร็จแล้ว"
+say "✅ Update finished"
