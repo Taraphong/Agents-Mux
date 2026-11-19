@@ -1436,7 +1436,10 @@ def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, 
         while terminal_group_alive(pgid):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
+                # The shell already exited, so the job outlived the deadline:
+                # report it as a timeout instead of the shell's status 0.
                 kill_terminal_group(pgid)
+                timed_out = True
                 break
             time.sleep(min(0.05, remaining))
         stdout, stdout_cut = read_terminal_capture(out_file)
