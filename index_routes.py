@@ -456,7 +456,8 @@ def history_list():
                 # A stray list/scalar JSON file must not break the whole list.
                 continue
             records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked", "pinned")})
-    records.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+    # A record whose timestamp is missing or null must not break the whole list.
+    records.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
     return jsonify({"items": records})
 
 
