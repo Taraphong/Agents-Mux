@@ -825,6 +825,11 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
         raise ValueError("A path is required")
     expanded = os.path.expanduser(raw_path.strip())
     parent_text, name = os.path.split(expanded)
+    if not name or name in {".", ".."}:
+        raise ValueError("Invalid path")
+    name = Path(name).name
+    if not name or name in {".", ".."}:
+        raise ValueError("Invalid path")
     resolved_parent = os.path.realpath(parent_text or os.curdir)
     candidate = Path(os.path.normpath(os.path.join(resolved_parent, name)))
     if must_exist and not candidate.exists():
