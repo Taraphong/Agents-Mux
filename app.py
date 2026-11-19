@@ -869,10 +869,13 @@ def protected_write_target(path: Path) -> bool:
         return True
     if any(part in PROTECTED_PARTS for part in parts):
         return True
-    # The parent is already canonical; resolving the finished path covers a
-    # final component that is a symlink, so a link to .env is blocked too.
+    # Canonicalize in a non-strict way for untrusted paths: resolve the parent
+    # through realpath, then collapse traversal in the final path text.
     try:
-        resolved = path.resolve()
+        expanded = os.path.expanduser(str(path))
+        parent_text, name = os.path.split(expanded)
+        resolved_parent = os.path.realpath(parent_text or os.curdir)
+        resolved = Path(os.path.normpath(os.path.join(resolved_parent, name)))
     except OSError:
         return False
     resolved_parts = [part for part in resolved.parts if part not in {"/", "", "."}]
