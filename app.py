@@ -810,6 +810,83 @@ def resolve_tool_path(raw_path: str, must_exist: bool = False) -> Path:
     return candidate
 
 
+def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
+    """Resolve a path anywhere on the machine for machine-access tools.
+
+    Machine access is the documented default; without this resolver the tools
+    advertised as machine-scoped still refused every path outside the project.
+    The parent is resolved through realpath before ".." is collapsed, so a
+    symlinked folder cannot turn an approved write into a different file, and
+    the final component may still be missing because write_file creates it.
+    protected_write_target() resolves the finished path before it decides, so a
+    symlinked final file is checked against the same secret rules.
+    """
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("A path is required")
+    expanded = os.path.expanduser(raw_path.strip())
+    parent_text, name = os.path.split(expanded)
+    if not name or name in {".", ".."}:
+        raise ValueError("Invalid path")
+    name = Path(name).name
+    if not name or name in {".", ".."}:
+        raise ValueError("Invalid path")
+    resolved_parent = os.path.realpath(parent_text or os.curdir)
+    candidate = Path(os.path.normpath(os.path.join(resolved_parent, name)))
+    if must_exist and not candidate.exists():
+        raise FileNotFoundError(f"Path not found: {raw_path}")
+    return candidate
+
+
+def configured_secret_targets() -> list[Path]:
+    """Return the settings, auth, history and certificate paths in use."""
+    # ENV_FILE is included because .env itself can be a symlink: resolving the
+    # write target would otherwise hide the protected name behind its target.
+    targets = [SETTINGS_FILE, AUTH_FILE, HISTORY_ROOT, ENV_FILE]
+    for name in ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY"):
+        value = os.getenv(name, "").strip()
+        if value:
+            targets.append(Path(value))
+    resolved: list[Path] = []
+    for target in targets:
+        try:
+            resolved.append(target.expanduser().resolve())
+        except OSError:
+            continue
+    return resolved
+
+
+def protected_write_target(path: Path) -> bool:
+    """Return True when a write would touch a secret or machine-specific file.
+
+    These files hold API keys, pairing state, certificates and conversation
+    history, so no tool may overwrite them even when machine access is on.
+    The settings, auth, history and certificate locations can be moved with
+    environment variables, so the configured paths are compared as well: a
+    write to a custom settings file must stay blocked like the default one.
+    """
+    parts = [part for part in path.parts if part not in {"/", "", "."}]
+    if any(part in PROTECTED_NAMES for part in parts):
+        return True
+    if any(part in PROTECTED_PARTS for part in parts):
+        return True
+    # Canonicalize in a non-strict way for untrusted paths: resolve the parent
+    # through realpath, then collapse traversal in the final path text.
+    try:
+        expanded = os.path.expanduser(str(path))
+        parent_text, name = os.path.split(expanded)
+        resolved_parent = os.path.realpath(parent_text or os.curdir)
+        resolved = Path(os.path.normpath(os.path.join(resolved_parent, name)))
+    except OSError:
+        return False
+    resolved_parts = [part for part in resolved.parts if part not in {"/", "", "."}]
+    if any(part in PROTECTED_NAMES or part in PROTECTED_PARTS for part in resolved_parts):
+        return True
+    for target in configured_secret_targets():
+        if resolved == target or target in resolved.parents:
+            return True
+    return False
+
+
 def display_tool_path(path: Path) -> str:
     """Show a project-relative path when possible, otherwise the absolute path."""
     try:
@@ -1006,13 +1083,16 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
     if name == "list_files":
         machine_access = machine_access_enabled()
-        root = resolve_tool_path(arguments.get("path", "."), must_exist=True)
-        root_text = os.path.normpath(str(root))
-        if root_text == PROJECT_ROOT_TEXT:
-            root_text = PROJECT_ROOT_TEXT + os.sep
-        if not root_text.startswith(PROJECT_ROOT_TEXT + os.sep):
-            raise PermissionError("The path is outside the project folder and is not allowed")
-        root = Path(root_text)
+        if machine_access:
+            root = resolve_machine_path(arguments.get("path", "."), must_exist=True)
+        else:
+            root = resolve_tool_path(arguments.get("path", "."), must_exist=True)
+            root_text = os.path.normpath(str(root))
+            if root_text == PROJECT_ROOT_TEXT:
+                root_text = PROJECT_ROOT_TEXT + os.sep
+            if not root_text.startswith(PROJECT_ROOT_TEXT + os.sep):
+                raise PermissionError("The path is outside the project folder and is not allowed")
+            root = Path(root_text)
         if not root.is_dir():
             raise ValueError("This path is not a folder")
         files: list[str] = []
@@ -1035,22 +1115,34 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
 
     if name == "read_file":
         machine_access = machine_access_enabled()
-        path = resolve_tool_path(arguments.get("path", ""), must_exist=True)
-        if not machine_access:
-            path = resolve_project_path(str(path), must_exist=True)
-        file_text = os.path.normpath(str(path))
-        if not file_text.startswith(PROJECT_ROOT_TEXT + os.sep):
-            raise PermissionError("The path is outside the project folder and is not allowed")
-        path = Path(file_text)
+        if machine_access:
+            path = resolve_tool_path(arguments.get("path", ""), must_exist=True)
+        else:
+            path = resolve_project_path(arguments.get("path", ""), must_exist=True)
+            file_text = os.path.normpath(str(path))
+            if not file_text.startswith(PROJECT_ROOT_TEXT + os.sep):
+                raise PermissionError("The path is outside the project folder and is not allowed")
+            path = Path(file_text)
         if not path.is_file():
             raise ValueError("This path is not a file")
         if path.stat().st_size > TOOL_MAX_READ_BYTES:
             raise ValueError("The file is larger than the allowed read size")
-        content = path.read_text(encoding="utf-8", errors="replace")
         if machine_access:
             # Whole-machine reads must not copy stored credentials into the chat
-            # transcript or the saved conversation history.
-            content = redact_secrets(content)
+            # transcript or the saved conversation history. The snapshot, the
+            # read and the redaction share SETTINGS_LOCK with the settings
+            # writers: a save that lands mid-read would otherwise add a key
+            # that neither the snapshot nor the redaction knows.
+            with SETTINGS_LOCK:
+                try:
+                    secrets_before_read = terminal_secret_values()
+                except (OSError, ValueError):
+                    secrets_before_read = []
+                content = path.read_text(encoding="utf-8", errors="replace")
+                content = redact_secrets(content)
+                content = redact_terminal_output(content, secrets_before_read)
+        else:
+            content = path.read_text(encoding="utf-8", errors="replace")
         result = {"tool": name, "path": display_tool_path(path), "content": content, "scope": "machine" if machine_access else "project"}
         log_event("tool.success", f"Used {name}", tool=name, path=result["path"])
         return result
@@ -1058,14 +1150,20 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
     if name == "write_file":
         if not approved:
             raise PermissionError("Writing a file needs approval first")
-        path = resolve_tool_path(arguments.get("path", ""))
+        machine_access = machine_access_enabled()
+        if machine_access:
+            path = resolve_machine_path(arguments.get("path", ""))
+        else:
+            path = resolve_tool_path(arguments.get("path", ""))
+            write_text = os.path.normpath(str(path))
+            if not write_text.startswith(PROJECT_ROOT_TEXT + os.sep):
+                raise PermissionError("The path is outside the project folder and is not allowed")
+            path = Path(write_text)
         content = arguments.get("content", "")
         if not isinstance(content, str) or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
             raise ValueError("The file content is larger than allowed")
-        write_text = os.path.normpath(str(path))
-        if not write_text.startswith(PROJECT_ROOT_TEXT + os.sep):
-            raise PermissionError("The path is outside the project folder and is not allowed")
-        path = Path(write_text)
+        if protected_write_target(path):
+            raise PermissionError("Writing files that hold secrets, certificates or history is not allowed")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         result = {"tool": name, "path": display_tool_path(path), "bytes": len(content.encode("utf-8"))}
@@ -1344,17 +1442,36 @@ def terminal_identity() -> tuple[str, str]:
     return user, host
 
 
+def terminal_group_alive(pgid: int) -> bool:
+    """Report whether any process of a terminal command's group still runs."""
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def kill_terminal_group(pgid: int) -> None:
+    """Kill every process left in a terminal command's group."""
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
     """Run a command with capped output and a hard timeout for the whole process group."""
     started_at = time.perf_counter()
     timed_out = False
     env, injected_secrets = terminal_environment()
-    try:
-        argv = shlex.split(command, posix=True)
-    except ValueError as exc:
-        raise ValueError(f"Invalid command format: {exc}") from exc
-    if not argv:
+    if not command.strip():
         raise ValueError("Type a command")
+    # The page presents this as a terminal, and ensure_terminal_paths_allowed()
+    # already screens shell syntax, so run it through the real shell: pipes,
+    # redirections, globs and variables have to behave as typed.
+    argv = [terminal_shell(), "-c", command]
     with tempfile.TemporaryFile() as out_file, tempfile.TemporaryFile() as err_file:
         process = subprocess.Popen(
             argv,
@@ -1365,19 +1482,54 @@ def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, 
             env=env,
             start_new_session=True,
         )
+        # The group is its own session, so its id is the leader's pid.
+        pgid = process.pid
+        deadline = time.monotonic() + TERMINAL_TIMEOUT_SECONDS
         try:
             process.wait(timeout=TERMINAL_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             timed_out = True
-            try:
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                process.kill()
+            kill_terminal_group(pgid)
             process.wait()
+        # A shell that exits still leaves `cmd &` jobs running in the group, and
+        # they keep the capture files open. They get the same deadline, then the
+        # group is killed so nothing outlives the timeout.
+        while terminal_group_alive(pgid):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                # The shell already exited, so the job outlived the deadline:
+                # report it as a timeout instead of the shell's status 0.
+                kill_terminal_group(pgid)
+                timed_out = True
+                break
+            time.sleep(min(0.05, remaining))
         stdout, stdout_cut = read_terminal_capture(out_file)
         stderr, stderr_cut = read_terminal_capture(err_file)
     duration_ms = round((time.perf_counter() - started_at) * 1000)
     return process.returncode, stdout, stderr, timed_out, stdout_cut or stderr_cut, duration_ms, injected_secrets
+
+
+TERMINAL_COMPOUND_PATTERN = re.compile(r"[;&|<>`$\n]")
+
+
+def parse_standalone_cd(command: str) -> str | None:
+    """Return the folder for a standalone `cd`, or None for the shell to run.
+
+    shlex keeps a quoted path such as `cd "my folder"` as one argument, so the
+    quoted form persists too. A command list (`cd subdir; pwd`) or an expansion
+    is left to the shell instead of being read as one literal path.
+    """
+    if TERMINAL_COMPOUND_PATTERN.search(command):
+        return None
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        return None
+    if not tokens or tokens[0] != "cd":
+        return None
+    if len(tokens) > 2:
+        raise ValueError("cd accepts one path at a time")
+    return tokens[1] if len(tokens) == 2 else ""
 
 
 def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
@@ -1393,19 +1545,14 @@ def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
     ensure_terminal_paths_allowed(stripped)
 
     changed_directory = False
-    cd_match = re.fullmatch(r"cd(?:\s+(.*))?", stripped)
-    if cd_match:
-        target = (cd_match.group(1) or "").strip()
-        if target in {"", "~"}:
+    # Only a standalone `cd` is handled here so the directory can persist;
+    # anything with shell syntax goes to the shell like a real terminal.
+    cd_target = parse_standalone_cd(stripped)
+    if cd_target is not None:
+        if cd_target in {"", "~"}:
             new_cwd = PROJECT_ROOT
         else:
-            try:
-                tokens = shlex.split(target)
-            except ValueError as exc:
-                raise ValueError("Invalid path format for cd") from exc
-            if len(tokens) != 1:
-                raise ValueError("cd accepts one path at a time")
-            new_cwd = resolve_terminal_cwd(tokens[0])
+            new_cwd = resolve_terminal_cwd(cd_target)
         cwd = new_cwd
         changed_directory = True
         result = {
@@ -1703,6 +1850,10 @@ def append_history_messages(conversation_id: str, new_messages: list[dict[str, A
             return None
         if not isinstance(record, dict):
             return None
+        if record.get("locked"):
+            # Locked conversations reject edits and deletes; appending must not
+            # become a way around that protection.
+            raise HistoryLocked("This conversation is locked")
         record_generation = history_generation(record)
         if generation is not None and record_generation != generation:
             raise HistoryConflict(
@@ -1745,7 +1896,11 @@ def save_discord_turn(conversation_id: str, title: str, context_messages: list[d
     if not turn:
         return
     if load_history_record(conversation_id):
-        append_history_messages(conversation_id, turn)
+        try:
+            append_history_messages(conversation_id, turn)
+        except HistoryLocked:
+            # A locked conversation must not be written by an automated turn.
+            log_event("discord.locked", "Skipped a turn for a locked conversation", conversation=conversation_id)
         return
     save_history({"id": conversation_id, "title": title, "messages": list(context_messages)})
 
@@ -2148,6 +2303,7 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น",
         "chat_provider_error": "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล",
         "chat_api_failed": "เรียก API ไม่สำเร็จ: {detail}",
+        "rate_limited": "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
     },
     "en": {
         "invalid_key": "{label} API key is invalid or unauthorized",
@@ -2224,6 +2380,7 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} is busy or rate-limited; try again or choose another model",
         "chat_provider_error": "The provider returned an error; check the API key and the model",
         "chat_api_failed": "API request failed: {detail}",
+        "rate_limited": "Too many requests; wait a moment and try again",
     },
 }
 
@@ -2238,6 +2395,47 @@ def status_message(language: str, key: str, **kwargs: Any) -> str:
     messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["en"]
     template = messages.get(key) or STATUS_MESSAGES["en"].get(key, key)
     return template.format(**kwargs)
+
+
+# A simple in-process limiter for the expensive, state-changing endpoints.
+# Pairing already has its own failure limiter; this keeps a paired device (or a
+# script that got hold of a session) from hammering the provider API.
+API_RATE_LIMITS: dict[str, list[float]] = {}
+API_RATE_LOCK = threading.Lock()
+
+
+def api_rate_limited(bucket: str, client: str, limit: int, window: float = 60.0) -> bool:
+    """Return True when *client* already used its budget for *bucket*."""
+    now = time.time()
+    key = f"{bucket}|{client}"
+    with API_RATE_LOCK:
+        if len(API_RATE_LIMITS) > 2000:
+            API_RATE_LIMITS.clear()
+        stamps = [stamp for stamp in API_RATE_LIMITS.get(key, []) if now - stamp < window]
+        if len(stamps) >= limit:
+            API_RATE_LIMITS[key] = stamps
+            return True
+        stamps.append(now)
+        API_RATE_LIMITS[key] = stamps
+    return False
+
+
+# Per-minute budgets for the endpoints that cost money or touch the machine.
+API_RATE_BUDGETS = {"chat": 30, "tools": 60, "terminal": 60, "test": 10}
+
+
+def rate_limit_response(bucket: str):
+    """Answer 429 when the caller exceeded the budget for *bucket*.
+
+    A paired device is identified by its session id, so a spoofed
+    X-Forwarded-For cannot hand one caller a fresh budget on every request.
+    """
+    session = current_auth_session() or {}
+    client = str(session.get("id") or request.remote_addr or "unknown")
+    if not api_rate_limited(bucket, client, API_RATE_BUDGETS[bucket]):
+        return None
+    log_event("security.rate_limited", "Rejected a request over the rate budget", bucket=bucket)
+    return jsonify({"ok": False, "error": status_message(request_language(), "rate_limited")}), 429
 
 
 def request_language(allow_body: bool = True) -> str:
@@ -2274,24 +2472,32 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
         return {**cached[2], "cached": True}
     result: dict[str, Any]
     try:
+        # The key must not travel in clear text or follow a redirect here either;
+        # the same guard protects the model-list fetch.
+        ensure_secure_model_endpoint(base_url or "https://api.openai.com/v1")
         if provider == "gemini":
             response = requests.get(
                 f"{base_url}/models",
                 params={"key": key},
                 timeout=20,
+                allow_redirects=False,
             )
         elif provider == "anthropic":
             response = requests.get(
                 f"{base_url}/models",
                 headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
                 timeout=20,
+                allow_redirects=False,
             )
         else:
             response = requests.get(
                 f"{base_url or 'https://api.openai.com/v1'}/models",
                 headers={"Authorization": f"Bearer {key}"},
                 timeout=20,
+                allow_redirects=False,
             )
+        if 300 <= response.status_code < 400:
+            raise RuntimeError("The endpoint answered with a redirect; the API key is not forwarded across it")
         if response.status_code in {401, 403}:
             result = {"ready": False, "reason": status_message(language, "invalid_key", label=label), "status": response.status_code}
         elif response.status_code == 404:
@@ -2310,7 +2516,10 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
                     "messages": [{"role": "user", "content": "OK"}],
                 },
                 timeout=20,
+                allow_redirects=False,
             )
+            if 300 <= probe.status_code < 400:
+                raise RuntimeError("The endpoint answered with a redirect; the API key is not forwarded across it")
             if probe.status_code in {401, 403}:
                 result = {"ready": False, "reason": status_message(language, "invalid_key", label=label), "status": probe.status_code}
             elif probe.status_code == 404:
@@ -2323,6 +2532,10 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
             result = {"ready": True, "reason": "", "status": response.status_code}
         else:
             result = {"ready": False, "reason": status_message(language, "http_error", label=label, status=response.status_code), "status": response.status_code}
+    except RuntimeError as exc:
+        # A refused insecure endpoint or a redirect is a configuration result,
+        # not a connection failure.
+        result = {"ready": False, "reason": str(exc)[:300], "status": None}
     except requests.RequestException as exc:
         result = {"ready": False, "reason": status_message(language, "connection_failed", label=label, error=exc.__class__.__name__), "status": None}
     STATUS_CACHE[cache_key] = (time.time(), key, result)
@@ -2721,6 +2934,7 @@ def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
         raise RuntimeError("No API key is configured")
 
     base_url = get_base_url(settings["provider"], settings)
+    ensure_secure_model_endpoint(f"{base_url}/chat/completions")
     model = str(settings["model"])
     reasoning_model = is_openai_reasoning_model(settings["provider"], model)
     payload: dict[str, Any] = {
@@ -2748,7 +2962,10 @@ def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
         headers={"Authorization": f"Bearer {key}"},
         json=payload,
         timeout=90,
+        allow_redirects=False,
     )
+    if 300 <= response.status_code < 400:
+        raise RuntimeError("The endpoint answered with a redirect; the API key is not forwarded across it")
     response.raise_for_status()
     data = response.json()
     return data["choices"][0]["message"]["content"], normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens")
@@ -2783,6 +3000,7 @@ def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
         elif model.startswith("gemini-3"):
             generation_config["thinkingConfig"] = {"thinkingLevel": thinking_level}
     request_url = f"{get_base_url('gemini', settings)}/models/{model}:generateContent"
+    ensure_secure_model_endpoint(request_url)
     request_payload = {"contents": contents, "generationConfig": generation_config}
     system_instruction = next((message["content"] for message in messages if message["role"] == "system"), "")
     if system_instruction:
@@ -2793,7 +3011,10 @@ def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
             params={"key": key},
             json=request_payload,
             timeout=90,
+            allow_redirects=False,
         )
+        if 300 <= response.status_code < 400:
+            raise RuntimeError("The endpoint answered with a redirect; the API key is not forwarded across it")
         if response.status_code not in {429, 503} or attempt == 2:
             break
         time.sleep(1.5 * (2**attempt))
@@ -2879,12 +3100,17 @@ def call_anthropic(messages: list[dict[str, Any]], settings: dict[str, Any]) -> 
             payload["max_tokens"] = max(int(settings["max_tokens"]), budget + 1024)
             payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
             payload.pop("temperature", None)
+    anthropic_url = f"{get_base_url('anthropic', settings)}/messages"
+    ensure_secure_model_endpoint(anthropic_url)
     response = requests.post(
-        f"{get_base_url('anthropic', settings)}/messages",
+        anthropic_url,
         headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
         json=payload,
         timeout=90,
+        allow_redirects=False,
     )
+    if 300 <= response.status_code < 400:
+        raise RuntimeError("The endpoint answered with a redirect; the API key is not forwarded across it")
     response.raise_for_status()
     data = response.json()
     usage = data.get("usage", {})
@@ -3311,6 +3537,11 @@ def start_discord_bot() -> None:
         # so a concurrent settings change is not overwritten.
         with SETTINGS_LOCK:
             current = load_settings()
+            # A base URL belongs to one provider; clearing it keeps the new
+            # provider's key from being sent to the previous endpoint (the same
+            # rule /api/settings applies).
+            if normalize_provider(current.get("provider")) != selected_provider:
+                current["base_url"] = ""
             current["provider"] = selected_provider
             current["model"] = model.strip()[:200]
             save_settings(current)
@@ -3727,6 +3958,13 @@ def reject_cross_site_mutation():
     """Refuse state-changing requests that a browser sent from another site."""
     if request.method not in MUTATING_METHODS:
         return None
+    # Sec-Fetch-Site is set by the browser and cannot be forged by page script,
+    # so it catches a cross-site request even when the Origin comparison is
+    # defeated by a spoofed or proxy-supplied Host / X-Forwarded-Host.
+    fetch_site = request.headers.get("Sec-Fetch-Site", "").strip().lower()
+    if fetch_site in {"cross-site", "same-site"}:
+        log_event("security.cross_site", "Rejected a cross-site request", path=request.path, method=request.method, site=fetch_site)
+        return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
     origin = request.headers.get("Origin", "").strip()
     if not origin:
         # Non-browser clients (curl, scripts) do not send Origin.
@@ -4168,10 +4406,12 @@ def server_tls_state() -> dict[str, Any]:
     cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
     key = os.getenv("AI_WEB_TLS_KEY", "").strip()
     adhoc = os.getenv("AI_WEB_TLS_ADHOC", "").strip().lower() in {"1", "true", "yes", "on"}
-    if cert and key:
-        kind = "cert"
-    elif adhoc:
+    # An explicit ad-hoc request wins, so the saved certificate pair can stay in
+    # .env while ad-hoc mode runs and still be reused afterwards.
+    if adhoc:
         kind = "adhoc"
+    elif cert and key:
+        kind = "cert"
     else:
         kind = "none"
     return {
@@ -4198,37 +4438,11 @@ def apply_tls_environment(values: dict[str, str]) -> None:
     A restart started from the web page inherits them, and because an exported
     variable wins over .env, switching back to HTTP would never take effect.
 
-    When the TLS mode switches to HTTP or ad-hoc, the certificate-path
-    environment variables are preserved separately so that re-selecting
-    "HTTPS with certificate files" can reuse the same pair without needing
-    to reconfigure.
+    The caller keeps the certificate pair in AI_WEB_TLS_CERT/KEY while ad-hoc
+    mode runs, and tls_configuration() lets AI_WEB_TLS_ADHOC win over that
+    pair, so re-selecting "HTTPS with certificate files" reuses the same paths
+    instead of losing them.
     """
-    # Preserve the pair that was set, keyed by the mode name, so it is not
-    # lost when the mode switches away from "cert".
-    mode = values.get("AI_WEB_TLS_ADHOC", "").strip().lower()
-    if mode not in {"1", "true", "yes", "on"}:
-        # cert mode or HTTP mode — keep whatever pair was previously saved
-        # under the TLS_CERT/TLS_KEY env vars (may be empty if none set).
-        for key in TLS_ENV_KEYS:
-            value = values.get(key, "")
-            if value:
-                os.environ[key] = value
-            else:
-                os.environ.pop(key, None)
-    else:
-        # ad-hoc mode — still clear Secure-path keys but keep the cert/key
-        # pair that was previously configured, if any, so a later switch back
-        # to cert mode does not require re‑entering paths.
-        cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
-        key = os.getenv("AI_WEB_TLS_KEY", "").strip()
-        if cert and key:
-            # keep the existing pair; do not overwrite with empty values
-            pass
-        else:
-            # no pair configured — clear them so a later cert-mode select
-            # can be prompted properly
-            for key in ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY"):
-                os.environ.pop(key, None)
     for key in TLS_ENV_KEYS:
         value = values.get(key, "")
         if value:
@@ -4277,9 +4491,17 @@ def update_env_file(values: dict[str, str]) -> None:
 
 
 def tls_configuration() -> Any:
-    """Return a Werkzeug ssl_context for HTTPS, or None to serve plain HTTP."""
+    """Return a Werkzeug ssl_context for HTTPS, or None to serve plain HTTP.
+
+    Precedence matches start_web.sh: an explicit ad-hoc request wins over a
+    saved certificate pair, so the pair can be kept in .env while ad-hoc mode
+    runs and be reused when the user switches back.
+    """
+    adhoc = os.getenv("AI_WEB_TLS_ADHOC", "").strip().lower() in {"1", "true", "yes", "on"}
     cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
     key = os.getenv("AI_WEB_TLS_KEY", "").strip()
+    if adhoc:
+        return "adhoc"
     if cert or key:
         if not (cert and key):
             raise SystemExit("Set AI_WEB_TLS_CERT and AI_WEB_TLS_KEY together")
@@ -4287,8 +4509,6 @@ def tls_configuration() -> Any:
         if missing:
             raise SystemExit(f"Certificate/key files not found: {', '.join(missing)}")
         return (cert, key)
-    if os.getenv("AI_WEB_TLS_ADHOC", "").strip().lower() in {"1", "true", "yes", "on"}:
-        return "adhoc"
     return None
 
 
