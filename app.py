@@ -3200,7 +3200,7 @@ def start_discord_bot() -> None:
     # guild only after its own cleanup returned.
     sync_state_lock = asyncio.Lock()
     cleared_guilds: set[int] = set()
-    GUILD_SYNC_ATTEMPTS = 3
+    GUILD_CLEAR_ATTEMPTS = 3
 
     class AccessControlledCommandTree(discord.app_commands.CommandTree):
         """Reject slash commands from channels or users outside the allowlists."""
@@ -3220,9 +3220,9 @@ def start_discord_bot() -> None:
 
     class AIClient(discord.Client):
         async def on_ready(self) -> None:
-            """Sync slash commands once and log the successful connection."""
+            """Register the global commands and remove legacy guild copies."""
             nonlocal commands_synced
-            unsynced = 0
+            uncleared = 0
             # Overlapping READY events must not write the same guild twice, so
             # the whole pass runs under one lock and rechecks the per-guild state.
             async with sync_state_lock:
@@ -3233,36 +3233,35 @@ def start_discord_bot() -> None:
                         log_event("discord.commands", "Registered the Discord slash commands")
                     except Exception as exc:
                         log_event("discord.error", "Could not register the Discord slash commands", error=str(exc))
-                # Global commands are the only registration. Registering the same
-                # commands per guild as well makes Discord show every command
-                # twice, so older guild-scoped copies are removed below.
-                pending = [guild for guild in self.guilds if guild.id not in cleared_guilds]
-                failures: list[str] = []
-                for guild in pending:
-                    server = discord.Object(id=guild.id)
-                    last_error = ""
-                    for attempt in range(1, GUILD_SYNC_ATTEMPTS + 1):
-                        try:
-                            # An empty guild scope removes the duplicates left
-                            # by versions that copied the global commands here.
-                            command_tree.clear_commands(guild=server)
-                            await command_tree.sync(guild=server)
-                        except Exception as exc:
-                            last_error = f"{guild.id}: {exc}"
-                            if attempt < GUILD_SYNC_ATTEMPTS:
-                                await asyncio.sleep(2 ** (attempt - 1))
+                # Global commands are the only registration, so the guild-scoped
+                # copies left by older versions must go. If the global sync
+                # failed, keep them: no commands is worse than duplicates.
+                if commands_synced:
+                    pending = [guild for guild in self.guilds if guild.id not in cleared_guilds]
+                    failures: list[str] = []
+                    cleared_now = 0
+                    for guild in pending:
+                        last_error = ""
+                        for attempt in range(1, GUILD_CLEAR_ATTEMPTS + 1):
+                            try:
+                                await remove_legacy_guild_commands(guild)
+                            except Exception as exc:
+                                last_error = f"{guild.id}: {exc}"
+                                if attempt < GUILD_CLEAR_ATTEMPTS:
+                                    await asyncio.sleep(2 ** (attempt - 1))
+                            else:
+                                cleared_guilds.add(guild.id)
+                                cleared_now += 1
+                                break
                         else:
-                            cleared_guilds.add(guild.id)
-                            break
-                    else:
-                        failures.append(last_error)
-                if pending:
-                    details: dict[str, Any] = {"servers": len(self.guilds), "cleared": len(cleared_guilds)}
-                    if failures:
-                        details["failed"] = "; ".join(failures)[:300]
-                    log_event("discord.commands", "Cleared duplicate guild slash commands", **details)
-                # A guild that never succeeded is retried on the next READY event.
-                uncleared = len(self.guilds) - len(cleared_guilds)
+                            failures.append(last_error)
+                    if pending:
+                        details: dict[str, Any] = {"servers": len(self.guilds), "cleared_now": cleared_now}
+                        if failures:
+                            details["failed"] = "; ".join(failures)[:300]
+                        log_event("discord.commands", "Cleared duplicate guild slash commands", **details)
+                    # A guild that never succeeded is retried on the next READY event.
+                    uncleared = len(self.guilds) - len(cleared_guilds)
             if uncleared:
                 log_event(
                     "discord.error",
@@ -3312,6 +3311,11 @@ def start_discord_bot() -> None:
 
     client = AIClient(intents=intents)
     command_tree = AccessControlledCommandTree(client)
+
+    async def remove_legacy_guild_commands(guild: Any) -> None:
+        """Remove the guild-scoped copies left by older versions."""
+        command_tree.clear_commands(guild=guild)
+        await command_tree.sync(guild=guild)
 
     def member_is_admin(member: Any) -> bool:
         """Return whether a guild member has server administrator rights."""
