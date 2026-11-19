@@ -26,7 +26,7 @@ const I18N = {
     "header.openMenu": "เปิดเมนู",
     "header.toolsAria": "เครื่องมือแชต",
     "header.themeTitle": "สลับธีม",
-    "header.tagline": "ศูนย์ควบคุมการทำงาน",
+    "header.tagline": "พื้นที่ทำงาน AI ส่วนตัว",
     "language.title": "ภาษา",
     "status.checkingModel": "กำลังตรวจสอบ...",
     "chat.title": "แชตกับ AI",

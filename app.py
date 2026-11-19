@@ -121,9 +121,9 @@ _SCHEDULER_START_LOCK = threading.Lock()
 _SCHEDULER_LOCK_HANDLE: Any = None
 PROTECTED_NAMES = {".env", ".app-settings.json", ".app-auth.json"}
 PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__", "certs"}
-TERMINAL_TIMEOUT_SECONDS = 60
-TERMINAL_MAX_OUTPUT_BYTES = 100_000
-TERMINAL_SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
+COMMAND_TIMEOUT_SECONDS = 60
+COMMAND_MAX_OUTPUT_BYTES = 100_000
+SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
 
 
 # Device pairing: the server generates single-use keys, the client sends a key
@@ -481,6 +481,7 @@ def load_settings() -> dict[str, Any]:
         except (OSError, json.JSONDecodeError):
             pass
     settings = migrate_legacy_api_key(settings)
+    settings.pop("terminal_enabled", None)
     settings["custom_api_keys"] = stored_custom_api_keys(settings)
     return settings
 
@@ -1135,12 +1136,12 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             # that neither the snapshot nor the redaction knows.
             with SETTINGS_LOCK:
                 try:
-                    secrets_before_read = terminal_secret_values()
+                    secrets_before_read = secret_values()
                 except (OSError, ValueError):
                     secrets_before_read = []
                 content = path.read_text(encoding="utf-8", errors="replace")
                 content = redact_secrets(content)
-                content = redact_terminal_output(content, secrets_before_read)
+                content = redact_command_output(content, secrets_before_read)
         else:
             content = path.read_text(encoding="utf-8", errors="replace")
         result = {"tool": name, "path": display_tool_path(path), "content": content, "scope": "machine" if machine_access else "project"}
@@ -1183,16 +1184,16 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             # A real shell with the app user's privileges: any binary, pipes,
             # sudo (when the user may run it without a password prompt), and
             # any path on the machine. The approval click is the boundary.
-            returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_terminal_process(command, PROJECT_ROOT)
+            returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_shell_process(command, PROJECT_ROOT)
             if timed_out:
                 returncode = 124
-            secrets_found = terminal_secret_values(launch_secrets)
+            secrets_found = secret_values(launch_secrets)
             result = {
                 "tool": name,
-                "command": redact_terminal_output(command, secrets_found),
+                "command": redact_command_output(command, secrets_found),
                 "returncode": returncode,
-                "stdout": redact_terminal_output(stdout, secrets_found),
-                "stderr": redact_terminal_output(stderr, secrets_found),
+                "stdout": redact_command_output(stdout, secrets_found),
+                "stderr": redact_command_output(stderr, secrets_found),
                 "timed_out": timed_out,
                 "truncated": truncated,
                 "duration_ms": duration_ms,
@@ -1202,7 +1203,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
                 "tool.success" if returncode == 0 else "tool.failed",
                 f"Command finished ({returncode})",
                 tool=name,
-                command=redact_terminal_output(command, secrets_found)[:300],
+                command=redact_command_output(command, secrets_found)[:300],
                 duration_ms=duration_ms,
             )
             return result
@@ -1215,7 +1216,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
     raise ValueError("Unknown tool")
 
 
-def terminal_shell() -> str:
+def command_shell() -> str:
     """Pick an available POSIX shell, including Termux where /bin/sh may not exist."""
     for candidate in (os.getenv("SHELL"), shutil.which("bash"), shutil.which("sh"), "/system/bin/sh", "/bin/sh"):
         if candidate and Path(candidate).exists():
@@ -1223,7 +1224,7 @@ def terminal_shell() -> str:
     return "sh"
 
 
-def terminal_environment() -> tuple[dict[str, str], list[str]]:
+def command_environment() -> tuple[dict[str, str], list[str]]:
     """Inherit the server environment without exposing credentials to commands.
 
     Returns the child environment plus the custom key values injected into it,
@@ -1233,7 +1234,7 @@ def terminal_environment() -> tuple[dict[str, str], list[str]]:
     env = {
         name: value
         for name, value in os.environ.items()
-        if not any(part in name.upper() for part in TERMINAL_SENSITIVE_ENV_PARTS)
+        if not any(part in name.upper() for part in SENSITIVE_ENV_PARTS)
     }
     # Extra keys saved in Settings are exposed by name so a skill or command
     # can use e.g. "$WEATHER_API_KEY" without the value ever reaching the chat.
@@ -1252,7 +1253,7 @@ def terminal_environment() -> tuple[dict[str, str], list[str]]:
     return env, injected
 
 
-def terminal_secret_values(extra: list[str] | None = None) -> list[str]:
+def secret_values(extra: list[str] | None = None) -> list[str]:
     """Collect secret values that command output must never expose."""
     settings = load_settings()
     values = {value for value in stored_api_keys(settings).values() if value}
@@ -1263,7 +1264,7 @@ def terminal_secret_values(extra: list[str] | None = None) -> list[str]:
     if discord_token:
         values.add(discord_token)
     for name, value in os.environ.items():
-        if value and len(value) >= 8 and any(part in name.upper() for part in TERMINAL_SENSITIVE_ENV_PARTS):
+        if value and len(value) >= 8 and any(part in name.upper() for part in SENSITIVE_ENV_PARTS):
             values.add(value)
     return sorted(values, key=len, reverse=True)
 
@@ -1273,10 +1274,10 @@ PEM_MARKER_PATTERN = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|-----END [A-Z0-9 ]*PRIVATE KEY-----"
 )
 # How far before a truncated capture tail to look for an opening BEGIN line.
-TERMINAL_PEM_LOOKBACK_BYTES = 8192
+PEM_LOOKBACK_BYTES = 8192
 
 
-def terminal_pem_state(text: str, inside: bool = False) -> bool:
+def pem_state(text: str, inside: bool = False) -> bool:
     """Report whether the text ends inside a private key block."""
     for match in PEM_MARKER_PATTERN.finditer(text):
         inside = match.group(0).startswith("-----BEGIN")
@@ -1305,8 +1306,8 @@ def mask_unterminated_pem(text: str, starts_inside: bool = False) -> str:
     return text
 
 
-def redact_terminal_output(text: str, secrets_found: list[str]) -> str:
-    """Replace known secrets and any private key block in terminal output."""
+def redact_command_output(text: str, secrets_found: list[str]) -> str:
+    """Replace known secrets and any private key block in command output."""
     for secret in secrets_found:
         text = text.replace(secret, "••••••••")
     # mask_unterminated_pem walks the BEGIN/END markers instead of running a
@@ -1324,27 +1325,27 @@ def redact_secrets(text: str, api_key: str | None = None) -> str:
     if api_key:
         value = value.replace(api_key, "••••••••")
     try:
-        secrets_found = terminal_secret_values()
+        secrets_found = secret_values()
     except (OSError, ValueError):
         secrets_found = []
-    return redact_terminal_output(value, secrets_found)
+    return redact_command_output(value, secrets_found)
 
 
-def read_terminal_capture(handle: Any) -> tuple[str, bool]:
+def read_command_capture(handle: Any) -> tuple[str, bool]:
     """Read at most the tail of a captured stream so runaway output cannot exhaust memory."""
     handle.flush()
     handle.seek(0, os.SEEK_END)
     size = handle.tell()
-    start = max(0, size - TERMINAL_MAX_OUTPUT_BYTES)
+    start = max(0, size - COMMAND_MAX_OUTPUT_BYTES)
     cut = start > 0
     # A private key block may open before the tail starts, so derive the
     # redaction state from a bounded window in front of it instead of relying on
     # the BEGIN line being inside the returned text.
     starts_inside = False
     if cut:
-        lookback_start = max(0, start - TERMINAL_PEM_LOOKBACK_BYTES)
+        lookback_start = max(0, start - PEM_LOOKBACK_BYTES)
         handle.seek(lookback_start)
-        starts_inside = terminal_pem_state(
+        starts_inside = pem_state(
             handle.read(start - lookback_start).decode("utf-8", errors="replace")
         )
     handle.seek(start)
@@ -1356,8 +1357,8 @@ def read_terminal_capture(handle: Any) -> tuple[str, bool]:
     return text, cut
 
 
-def terminal_group_alive(pgid: int) -> bool:
-    """Report whether any process of a terminal command's group still runs."""
+def process_group_alive(pgid: int) -> bool:
+    """Report whether any process of a command's group still runs."""
     try:
         os.killpg(pgid, 0)
     except ProcessLookupError:
@@ -1367,24 +1368,24 @@ def terminal_group_alive(pgid: int) -> bool:
     return True
 
 
-def kill_terminal_group(pgid: int) -> None:
-    """Kill every process left in a terminal command's group."""
+def kill_process_group(pgid: int) -> None:
+    """Kill every process left in a command's group."""
     try:
         os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
         pass
 
 
-def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
+def run_shell_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
     """Run a command with capped output and a hard timeout for the whole process group."""
     started_at = time.perf_counter()
     timed_out = False
-    env, injected_secrets = terminal_environment()
+    env, injected_secrets = command_environment()
     if not command.strip():
         raise ValueError("Type a command")
     # Agent commands run through the real shell so pipes, redirections, globs
     # and variables behave as typed; approval is the boundary.
-    argv = [terminal_shell(), "-c", command]
+    argv = [command_shell(), "-c", command]
     with tempfile.TemporaryFile() as out_file, tempfile.TemporaryFile() as err_file:
         process = subprocess.Popen(
             argv,
@@ -1397,27 +1398,27 @@ def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, 
         )
         # The group is its own session, so its id is the leader's pid.
         pgid = process.pid
-        deadline = time.monotonic() + TERMINAL_TIMEOUT_SECONDS
+        deadline = time.monotonic() + COMMAND_TIMEOUT_SECONDS
         try:
-            process.wait(timeout=TERMINAL_TIMEOUT_SECONDS)
+            process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             timed_out = True
-            kill_terminal_group(pgid)
+            kill_process_group(pgid)
             process.wait()
         # A shell that exits still leaves `cmd &` jobs running in the group, and
         # they keep the capture files open. They get the same deadline, then the
         # group is killed so nothing outlives the timeout.
-        while terminal_group_alive(pgid):
+        while process_group_alive(pgid):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 # The shell already exited, so the job outlived the deadline:
                 # report it as a timeout instead of the shell's status 0.
-                kill_terminal_group(pgid)
+                kill_process_group(pgid)
                 timed_out = True
                 break
             time.sleep(min(0.05, remaining))
-        stdout, stdout_cut = read_terminal_capture(out_file)
-        stderr, stderr_cut = read_terminal_capture(err_file)
+        stdout, stdout_cut = read_command_capture(out_file)
+        stderr, stderr_cut = read_command_capture(err_file)
     duration_ms = round((time.perf_counter() - started_at) * 1000)
     return process.returncode, stdout, stderr, timed_out, stdout_cut or stderr_cut, duration_ms, injected_secrets
 
@@ -2092,7 +2093,6 @@ STATUS_MESSAGES = {
         "tool_invalid_payload": "ข้อมูลเครื่องมือไม่ถูกต้อง",
         "tool_approval_invalid": "คำขออนุมัติไม่ถูกต้องหรือหมดอายุ กรุณาขอใหม่อีกครั้ง",
         "tool_failed": "ใช้เครื่องมือไม่สำเร็จ กรุณาตรวจสอบพารามิเตอร์แล้วลองใหม่",
-        "command_required": "ต้องระบุคำสั่ง",
         "log_clear_failed": "ลบ log ไม่สำเร็จ",
         "schedule_name_required": "กรุณาระบุชื่องานและ prompt",
         "schedule_invalid": "รูปแบบ schedule ไม่ถูกต้อง (ต้องเป็น cron 5 ช่อง)",
@@ -2168,7 +2168,6 @@ STATUS_MESSAGES = {
         "tool_invalid_payload": "Invalid tool payload",
         "tool_approval_invalid": "The approval request is invalid or expired; request it again",
         "tool_failed": "The tool could not run; check the parameters and try again",
-        "command_required": "A command is required",
         "log_clear_failed": "Could not clear the log",
         "schedule_name_required": "Provide a job name and prompt",
         "schedule_invalid": "Invalid schedule (a 5-field cron expression is required)",
