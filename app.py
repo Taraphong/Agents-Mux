@@ -1383,9 +1383,9 @@ def run_shell_process(command: str, cwd: Path) -> tuple[int, str, str, bool, boo
     env, injected_secrets = command_environment()
     if not command.strip():
         raise ValueError("Type a command")
-    # Agent commands run through the real shell so pipes, redirections, globs
-    # and variables behave as typed; approval is the boundary.
-    argv = [command_shell(), "-c", command]
+    argv = parse_command(command)
+    if not argv:
+        raise ValueError("Type a command")
     with tempfile.TemporaryFile() as out_file, tempfile.TemporaryFile() as err_file:
         process = subprocess.Popen(
             argv,
