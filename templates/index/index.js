@@ -4896,8 +4896,19 @@ const serverState = {
   },
 };
 let activeServerAction = "";
-// Address the next restart will answer on when the protocol changes.
-let pendingSchemeUrl = "";
+// Address the next restart will answer on when the protocol changes. It is
+// kept in sessionStorage so reloading the page before the restart still points
+// at the new address instead of polling the old origin until it times out.
+const PENDING_SCHEME_KEY = "ai-web-pending-scheme";
+let pendingSchemeUrl = sessionStorage.getItem(PENDING_SCHEME_KEY) || "";
+function setPendingSchemeUrl(url) {
+  pendingSchemeUrl = url || "";
+  if (pendingSchemeUrl) {
+    sessionStorage.setItem(PENDING_SCHEME_KEY, pendingSchemeUrl);
+  } else {
+    sessionStorage.removeItem(PENDING_SCHEME_KEY);
+  }
+}
 function applyServerStatus(data) {
   serverState.known = true;
   serverState.failed = false;
@@ -4909,15 +4920,14 @@ function applyServerStatus(data) {
   serverState.uptime = Number(data.uptime_seconds) || 0;
   serverState.tls = data.tls || serverState.tls;
   serverState.scriptAvailable = Boolean(data.script_available);
-  // Rebuild pendingSchemeUrl if the mode from the server differs from the
-  // current browser protocol, so a page reload preserves the new-address
-  // behaviour instead of polling the old origin until it times out.
+  // Rebuild the pending address when the server already reports another
+  // protocol; a saved address is dropped once this page runs on it.
   const currentMode = location.protocol.slice(0, -1); // "http" or "https"
   if (serverState.scheme && currentMode !== serverState.scheme) {
     const port = serverState.port || Number(location.port) || 5000;
-    pendingSchemeUrl = `${serverState.scheme}://${location.hostname}:${port}/`;
-  } else {
-    pendingSchemeUrl = "";
+    setPendingSchemeUrl(`${serverState.scheme}://${location.hostname}:${port}/`);
+  } else if (pendingSchemeUrl && pendingSchemeUrl.startsWith(location.origin)) {
+    setPendingSchemeUrl("");
   }
 }
 function serverUptimeText(seconds) {
@@ -5026,7 +5036,7 @@ async function pollServerRestart(attempt = 0) {
     const data = await response.json();
     if (!data.running) throw new Error("down");
     applyServerStatus(data);
-    pendingSchemeUrl = "";
+    setPendingSchemeUrl("");
     renderServerStatus();
     renderNetworkState();
     activeServerAction = "";
@@ -5117,7 +5127,7 @@ $("network-save").addEventListener("click", async () => {
     const targetUrl = `${mode}://${location.hostname}:${port}/`;
     // Remember the address the restart will answer on, but only when the
     // protocol actually changes; otherwise the page can just poll as usual.
-    pendingSchemeUrl = mode === location.protocol.slice(0, -1) ? "" : targetUrl;
+    setPendingSchemeUrl(mode === location.protocol.slice(0, -1) ? "" : targetUrl);
     $("network-status-text").textContent = t("network.needRestart", {
       url: targetUrl,
     });

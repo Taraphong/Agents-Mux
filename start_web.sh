@@ -159,10 +159,15 @@ tls_config_value() {
   printf '%s' "$value"
 }
 
-# Match tls_configuration() in app.py, including its precedence: certificate
-# files first, then the adhoc certificate, otherwise plain HTTP.
+# Match tls_configuration() in app.py, including its precedence: an explicit
+# adhoc request wins over a saved certificate pair, otherwise the pair decides,
+# otherwise plain HTTP.
 tls_scheme() {
   local cert key adhoc
+  adhoc="$(tls_config_value AI_WEB_TLS_ADHOC)"
+  case "$(printf '%s' "$adhoc" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) echo "https"; return 0 ;;
+  esac
   cert="$(tls_config_value AI_WEB_TLS_CERT)"
   key="$(tls_config_value AI_WEB_TLS_KEY)"
   if [ -n "$cert" ] || [ -n "$key" ]; then
@@ -174,11 +179,7 @@ tls_scheme() {
     fi
     return 0
   fi
-  adhoc="$(tls_config_value AI_WEB_TLS_ADHOC)"
-  case "$(printf '%s' "$adhoc" | tr '[:upper:]' '[:lower:]')" in
-    1|true|yes|on) echo "https" ;;
-    *) echo "http" ;;
-  esac
+  echo "http"
 }
 
 status_line() {

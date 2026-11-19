@@ -540,6 +540,12 @@ def history_update(conversation_id: str):
             if len(new_messages) > 5000:
                 return jsonify({"error": status_message(request_language(), "history_too_many_messages")}), 400
             safe_roles = {"user", "assistant"}
+            stored_messages = record.get("messages") if isinstance(record.get("messages"), list) else []
+            stored_by_id = {
+                str(message.get("message_id")): message
+                for message in stored_messages
+                if isinstance(message, dict) and message.get("message_id")
+            }
             sanitized_messages = []
             for item in new_messages:
                 if not isinstance(item, dict):
@@ -550,7 +556,19 @@ def history_update(conversation_id: str):
                     return jsonify({"error": status_message(request_language(), "history_unsupported_role")}), 400
                 if not isinstance(content, str):
                     return jsonify({"error": status_message(request_language(), "history_invalid_message")}), 400
-                sanitized_messages.append({"role": role, "content": content[:20000]})
+                message_id = item.get("message_id")
+                if isinstance(message_id, str) and message_id in stored_by_id:
+                    # Keep the metadata already stored for this message (its
+                    # attachments, model, pending approval, ...) and update the
+                    # text that was edited instead of discarding it.
+                    entry = dict(stored_by_id[message_id])
+                    entry["role"] = role
+                    entry["content"] = content[:20000]
+                else:
+                    entry = {"role": role, "content": content[:20000]}
+                    if isinstance(message_id, str) and message_id.strip():
+                        entry["message_id"] = message_id.strip()[:100]
+                sanitized_messages.append(entry)
             # Editing a prompt replaces the stored list with the sanitized one.
             record["messages"] = sanitized_messages
             record["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -586,6 +604,8 @@ def history_append(conversation_id: str):
         record = append_history_messages(conversation_id, messages, generation)
     except HistoryConflict:
         return jsonify({"error": status_message(request_language(), "history_conflict")}), 409
+    except HistoryLocked:
+        return jsonify({"error": status_message(request_language(), "history_locked_edit")}), 423
     if record is None:
         return jsonify({"error": status_message(request_language(), "history_not_found")}), 404
     return jsonify(record)
@@ -922,7 +942,15 @@ def server_tls_update():
                 "AI_WEB_TLS_ADHOC": "",
             }
         else:
-            values = {"AI_WEB_TLS_CERT": "", "AI_WEB_TLS_KEY": "", "AI_WEB_TLS_ADHOC": "1"}
+            # Keep the certificate pair in .env while ad-hoc mode runs; ad-hoc
+            # wins over the pair, so switching back to certificate files still
+            # has the same paths instead of losing them.
+            pair = configured_certificate_pair()
+            values = {
+                "AI_WEB_TLS_CERT": pair[0] if pair else "",
+                "AI_WEB_TLS_KEY": pair[1] if pair else "",
+                "AI_WEB_TLS_ADHOC": "1",
+            }
     with TLS_ENV_LOCK:
         try:
             update_env_file(values)
