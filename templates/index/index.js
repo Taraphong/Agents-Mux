@@ -1,4 +1,18 @@
 const $ = (id) => document.getElementById(id);
+// Monochrome line icons, drawn with currentColor so they follow the theme
+// (white on the dark theme, black on the light theme).
+const ICONS = {
+  copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>',
+  edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>',
+  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z" /></svg>',
+  pinFilled:
+    '<svg class="is-filled" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z" /></svg>',
+  lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>',
+  unlock:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></svg>',
+  trash:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>',
+};
 const LANGUAGE_STORAGE_KEY = "ai-control-center-language";
 // Provider whose default base URL may still be replaced when the user switches.
 let activeProvider = "openai";
@@ -1948,16 +1962,22 @@ function addMessage(role, content, meta = null, messageIndex = null) {
     const copyButton = document.createElement("button");
     copyButton.type = "button";
     copyButton.className = "message-action";
-    copyButton.textContent = t(
+    const copyLabel = t(
       role === "user" ? "message.copyPrompt" : "message.copyAnswer",
     );
+    copyButton.setAttribute("aria-label", copyLabel);
+    copyButton.title = copyLabel;
+    copyButton.innerHTML = ICONS.copy;
     copyButton.addEventListener("click", () => copyMessageText(content));
     actions.appendChild(copyButton);
     if (role === "user" && Number.isInteger(messageIndex)) {
       const editButton = document.createElement("button");
       editButton.type = "button";
       editButton.className = "message-action";
-      editButton.textContent = t("message.editPrompt");
+      const editLabel = t("message.editPrompt");
+      editButton.setAttribute("aria-label", editLabel);
+      editButton.title = editLabel;
+      editButton.innerHTML = ICONS.edit;
       editButton.addEventListener("click", () =>
         openMessageEditor(messageIndex),
       );
@@ -4316,7 +4336,18 @@ function historyRows(items) {
       const pin = item.pinned
         ? `<span class="history-pin">${HISTORY_PIN_ICON}</span>`
         : "";
-      return `<div class="${classes}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${title}" aria-label="${ariaLabel}"><span class="history-icon">${HISTORY_ITEM_ICON}</span><span class="history-label">${pin}${item.locked ? "🔒 " : ""}${title}</span></button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.rename"))}">✎</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.pinned ? t("history.unpin") : t("history.pin"))}">${item.pinned ? "📌" : "📍"}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(item.locked ? t("history.unlock") : t("history.lock"))}">${item.locked ? "🔓" : "🔒"}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="${escapeHtml(t("history.delete"))}">×</button></div></div>`;
+      const lockedBadge = item.locked
+        ? `<span class="history-lock">${ICONS.lock}</span>`
+        : "";
+      const renameLabel = escapeHtml(t("history.rename"));
+      const pinLabel = escapeHtml(
+        item.pinned ? t("history.unpin") : t("history.pin"),
+      );
+      const lockLabel = escapeHtml(
+        item.locked ? t("history.unlock") : t("history.lock"),
+      );
+      const deleteLabel = escapeHtml(t("history.delete"));
+      return `<div class="${classes}" data-history-row="${escapeHtml(item.id)}"><button class="history-item" data-history-id="${escapeHtml(item.id)}" title="${title}" aria-label="${ariaLabel}"><span class="history-icon">${HISTORY_ITEM_ICON}</span><span class="history-label">${pin}${lockedBadge}${title}</span></button><div class="history-actions"><button class="history-action" data-history-action="rename" data-history-id="${escapeHtml(item.id)}" title="${renameLabel}" aria-label="${renameLabel}">${ICONS.edit}</button><button class="history-action" data-history-action="${item.pinned ? "unpin" : "pin"}" data-history-id="${escapeHtml(item.id)}" title="${pinLabel}" aria-label="${pinLabel}">${item.pinned ? ICONS.pinFilled : ICONS.pin}</button><button class="history-action" data-history-action="${item.locked ? "unlock" : "lock"}" data-history-id="${escapeHtml(item.id)}" title="${lockLabel}" aria-label="${lockLabel}">${item.locked ? ICONS.unlock : ICONS.lock}</button><button class="history-action" data-history-action="delete" data-history-id="${escapeHtml(item.id)}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICONS.trash}</button></div></div>`;
     })
     .join("");
 }

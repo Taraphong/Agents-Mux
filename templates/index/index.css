@@ -102,16 +102,33 @@ aside {
 }
 .history-actions {
   display: flex;
-  gap: 1px;
+  gap: 2px;
   padding-right: 4px;
 }
 .history-action {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   border: 0;
+  border-radius: 6px;
   background: transparent;
   color: #94a3b8;
-  padding: 4px;
-  font-size: 0.75rem;
   cursor: pointer;
+}
+.history-action svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.history-action svg.is-filled {
+  fill: currentColor;
+  stroke: none;
 }
 .history-action:hover {
   color: white;
@@ -4562,21 +4579,39 @@ body.light-theme .network-option small {
   }
 }
 
-/* Pinned history entries: a red pushpin marks the row in the expanded list
-   and the group heading, and colours the bubble in the icon-only rail. */
+/* Pinned and locked history entries use monochrome markers so the list stays
+   black-and-white in both themes. */
 .history-pin {
   display: inline-flex;
   flex: 0 0 auto;
   width: 12px;
   height: 12px;
   margin-right: 4px;
-  color: #f87171;
+  color: currentColor;
   vertical-align: -2px;
 }
 .history-pin svg {
   width: 100%;
   height: 100%;
   fill: currentColor;
+}
+.history-lock {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  margin-right: 4px;
+  color: currentColor;
+  vertical-align: -1px;
+}
+.history-lock svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .history-day .history-pin {
   width: 11px;
@@ -4586,7 +4621,7 @@ body.light-theme .network-option small {
 }
 .app.sidebar-collapsed .history-row.is-pinned .history-icon {
   position: relative;
-  color: #f87171;
+  color: var(--text);
 }
 /* A pin badge keeps pinned rows distinguishable in the collapsed rail without
    relying on the icon colour alone. */
@@ -4598,8 +4633,8 @@ body.light-theme .network-option small {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  border: 1px solid #0a0e16;
-  background: #f87171;
+  border: 1px solid var(--void);
+  background: var(--text);
 }
 
 /* Attachment chip: the file name ellipsises and a button removes the file. */
@@ -4641,16 +4676,28 @@ body.light-theme .network-option small {
   opacity: 1;
 }
 
-/* Message actions read as real buttons instead of plain text. */
+/* Message actions render as icon-only buttons with tooltips. */
 .message-action {
-  min-height: 26px;
-  padding: 5px 10px;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
   border: 1px solid var(--glass-border);
   border-radius: 8px;
   background: var(--glass-4);
   color: var(--text);
-  font-weight: 600;
   opacity: 1;
+}
+.message-action svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .message-action:hover:not(:disabled) {
   background: var(--hover-bg);
@@ -4659,16 +4706,16 @@ body.light-theme .network-option small {
 body.light-theme .message-action {
   border-color: rgba(15, 23, 42, 0.16);
   background: #ffffff;
-  color: #1f2937;
+  color: #0b0b0b;
 }
 body.light-theme .message-action:hover:not(:disabled) {
   background: #eef2f7;
-  color: #0f172a;
+  color: #000000;
 }
 body.light-theme .user .message-action {
   border-color: rgba(15, 23, 42, 0.16);
   background: rgba(255, 255, 255, 0.7);
-  color: #202b66;
+  color: #0b0b0b;
 }
 
 /* The slash menu floats over the conversation: keep it opaque in both themes
@@ -4778,4 +4825,18 @@ body.light-theme .gemini-transcript p {
 body.light-theme .gemini-status.missing {
   color: #8a1f1f;
   border-color: #b04a4a;
+}
+
+/* Icon-only history controls: a soft monochrome hover/focus ring, matching the
+   black-and-white action buttons used on messages. */
+.history-actions .history-action:hover:not(:disabled),
+body.light-theme .history-actions .history-action:hover:not(:disabled),
+body:not(.light-theme) .history-actions .history-action:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.history-action:focus-visible,
+.message-action:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
 }
