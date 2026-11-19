@@ -14,7 +14,7 @@
           <div class="brand-mark" aria-hidden="true">✦</div>
           <div class="brand-copy">
             <strong>AI Control Center</strong
-            ><small data-i18n="header.tagline">Operational Terminal</small>
+            ><small data-i18n="header.tagline">Self-hosted AI workspace</small>
           </div>
         </div>
         <button
@@ -48,20 +48,6 @@
                 /></svg
             ></span>
             <span class="nav-label" data-i18n="nav.chat">แชต</span>
-          </button>
-          <button
-            data-view="terminal"
-            title="Terminal"
-            aria-label="Terminal"
-            data-i18n-title="nav.terminal"
-            data-i18n-aria-label="nav.terminal"
-          >
-            <span class="nav-icon" aria-hidden="true"
-              ><svg viewBox="0 0 24 24">
-                <path d="M4 17l6-6-6-6" />
-                <path d="M12 19h8" /></svg
-            ></span>
-            <span class="nav-label" data-i18n="nav.terminal">Terminal</span>
           </button>
           <button
             data-view="settings"
@@ -603,7 +589,7 @@
                     </h2>
                     <p class="hint" data-i18n="settings.customKeysHint">
                       เก็บคีย์ของบริการอื่น เช่น สภาพอากาศ ไว้ในเครื่องนี้
-                      คำสั่งใน Terminal และ tool ของ Agent
+                      tool ของ Agent
                       จะเห็นคีย์เป็นตัวแปรสภาพแวดล้อมตามชื่อที่ตั้งไว้
                     </p>
                     <div class="grid">
@@ -974,7 +960,7 @@
                       ช่องทางและเครื่องมือ
                     </h2>
                     <p class="hint" data-i18n="settings.group.integrationsDesc">
-                      Discord bot และแท็บ Terminal
+                      Discord bot และ tool ของ Agent
                     </p>
                   </div>
                   <div class="card">
@@ -1053,19 +1039,6 @@
                         ></label
                       >
                     </div>
-                  </div>
-                  <div class="card">
-                    <h2 data-i18n="settings.terminalTitle">Terminal</h2>
-                    <p class="hint" data-i18n="settings.terminalHint">
-                      เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง
-                      คำสั่งถูกจำกัดให้อยู่ในโฟลเดอร์โปรเจกต์
-                    </p>
-                    <label class="toggle"
-                      ><input id="terminal_enabled" type="checkbox" /><span
-                        data-i18n="settings.terminalEnable"
-                        >แสดงแท็บ Terminal ในแถบด้านข้าง</span
-                      ></label
-                    >
                   </div>
                 </div>
                 <div
@@ -1562,74 +1535,6 @@
               </div>
               <div id="logs-list" class="logs-list">
                 <p class="hint" data-i18n="logs.loading">กำลังโหลด...</p>
-              </div>
-            </div>
-          </section>
-          <section id="terminal-view" class="view">
-            <div class="card terminal-card">
-              <div class="terminal-toolbar">
-                <div>
-                  <h2 data-i18n="terminal.title">Terminal</h2>
-                  <p class="hint" data-i18n="terminal.hint">
-                    พิมพ์คำสั่งเพื่อทำงานบนเครื่อง Server โดยตรง
-                  </p>
-                </div>
-                <div class="terminal-actions">
-                  <button
-                    id="terminal-clear"
-                    type="button"
-                    class="secondary"
-                    data-i18n="terminal.clear"
-                  >
-                    ล้างจอ
-                  </button>
-                </div>
-              </div>
-              <div class="terminal-warning">
-                <span data-i18n="terminal.warning"
-                  >⚠ คำสั่งจะทำงานบน Server ด้วยสิทธิ์ของผู้ใช้ที่รันแอป
-                  และถูกจำกัดอยู่ภายในโฟลเดอร์โปรเจกต์</span
-                >
-                <strong id="terminal-scope"></strong>
-              </div>
-              <div class="terminal-window">
-                <div
-                  id="terminal-output"
-                  class="terminal-output"
-                  role="log"
-                  aria-live="polite"
-                ></div>
-                <form id="terminal-form" class="terminal-input-row" autocomplete="off">
-                  <span id="terminal-prompt" class="terminal-prompt">$</span>
-                  <input
-                    id="terminal-input"
-                    type="text"
-                    spellcheck="false"
-                    autocomplete="off"
-                    autocapitalize="off"
-                    autocorrect="off"
-                    placeholder="พิมพ์คำสั่ง..."
-                    data-i18n-placeholder="terminal.placeholder"
-                  />
-                  <button
-                    id="terminal-run"
-                    type="submit"
-                    data-i18n="terminal.run"
-                  >
-                    รัน
-                  </button>
-                </form>
-              </div>
-              <div class="terminal-status">
-                <span
-                  ><span id="terminal-dot" class="terminal-dot">●</span>
-                  <span
-                    id="terminal-status-text"
-                    data-i18n="terminal.connecting"
-                    >กำลังเชื่อมต่อ...</span
-                  ></span
-                >
-                <span id="terminal-cwd"></span>
               </div>
             </div>
           </section>
