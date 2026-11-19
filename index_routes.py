@@ -40,7 +40,6 @@ from app import (
     SETTINGS_LOCK,
     STATUS_CACHE,
     TEMPLATES_ROOT,
-    TERMINAL_TIMEOUT_SECONDS,
     TLS_ENV_LOCK,
     TOOL_ALIASES,
     TOOL_INSTRUCTIONS,
@@ -65,7 +64,6 @@ from app import (
     discord_status,
     env_int,
     execute_schedule,
-    execute_terminal_command,
     find_history_file,
     forget_model_names,
     gemini_agent_answer,
@@ -94,7 +92,6 @@ from app import (
     request_language,
     request_tool_approval,
     requests,
-    resolve_terminal_cwd,
     run_local_tool,
     safe_stored_api_key,
     save_history,
@@ -109,10 +106,6 @@ from app import (
     stored_api_keys,
     stored_custom_api_keys,
     subprocess,
-    terminal_identity,
-    terminal_is_enabled,
-    terminal_settings,
-    terminal_shell,
     threading,
     time,
     timedelta,
@@ -181,41 +174,6 @@ def tools_execute():
         # the client must ask for a new approval instead of offering a retry
         # with a token this endpoint will reject.
         return jsonify({"ok": False, "error": status_message(request_language(), "tool_failed"), "approval_consumed": approved}), 400
-
-
-@index_bp.get("/api/terminal/info")
-def terminal_info():
-    """Report terminal availability, identity, shell, and working scope."""
-    settings = terminal_settings()
-    user, host = terminal_identity()
-    return jsonify({
-        "enabled": terminal_is_enabled(settings),
-        "user": user,
-        "host": host,
-        "cwd": ".",
-        "scope": f"~/{PROJECT_ROOT.name}",
-        "shell": Path(terminal_shell()).name,
-        "timeout_seconds": TERMINAL_TIMEOUT_SECONDS,
-    })
-
-
-@index_bp.post("/api/terminal/exec")
-def terminal_exec():
-    """Run one terminal command submitted by the web UI."""
-    limited = rate_limit_response("terminal")
-    if limited:
-        return limited
-    body = request.get_json(silent=True) or {}
-    command = body.get("command")
-    if not isinstance(command, str):
-        return jsonify({"ok": False, "error": status_message(request_language(), "command_required")}), 400
-    try:
-        cwd = resolve_terminal_cwd(body.get("cwd", "."))
-        result = execute_terminal_command(command, cwd)
-        return jsonify({"ok": True, **result})
-    except (PermissionError, FileNotFoundError, ValueError, OSError, subprocess.SubprocessError) as exc:
-        log_event("tool.terminal_error", "The terminal command failed", error=str(exc))
-        return jsonify({"ok": False, "error": status_message(request_language(), "terminal_failed")}), 400
 
 
 @index_bp.get("/api/logs")

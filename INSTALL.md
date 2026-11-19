@@ -188,7 +188,7 @@ Then open **Settings** in the web interface, select **Anthropic**, and pick a Cl
 - If editing `.env` has no effect, change the value in Settings, or press **Reset** at the bottom of Settings (it deletes `.app-settings.json`) and restart the server.
 - An API key saved through Settings is always used before a key in `.env`.
 
-Everything else — system prompt, temperature, model, thinking level, Discord bot, allowlists, terminal switch, machine access — is configured in **Settings** and stored only in `.app-settings.json` on your machine.
+Everything else — system prompt, temperature, model, thinking level, Discord bot, allowlists, machine access — is configured in **Settings** and stored only in `.app-settings.json` on your machine.
 
 > `.env`, `.app-settings.json`, `.app-auth.json`, `certs/`, `history/`, `logs/`, and `scheduled-jobs.json` are not committed to Git. Do not send them to anyone: they contain API keys, pairing state, and conversation history.
 

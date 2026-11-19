@@ -11,7 +11,6 @@ const I18N = {
     "app.title": "AI Control Center",
     "sidebar.newChat": "แชตใหม่",
     "nav.chat": "แชต",
-    "nav.terminal": "Terminal",
     "nav.settings": "ตั้งค่า",
     "nav.schedule": "งานตามเวลา",
     "nav.logs": "Log ระบบ",
@@ -27,7 +26,7 @@ const I18N = {
     "header.openMenu": "เปิดเมนู",
     "header.toolsAria": "เครื่องมือแชต",
     "header.themeTitle": "สลับธีม",
-    "header.tagline": "ศูนย์ควบคุมการทำงาน",
+    "header.tagline": "พื้นที่ทำงาน AI ส่วนตัว",
     "language.title": "ภาษา",
     "status.checkingModel": "กำลังตรวจสอบ...",
     "chat.title": "แชตกับ AI",
@@ -191,7 +190,7 @@ const I18N = {
     "settings.group.responseDesc":
       "พารามิเตอร์การสร้างคำตอบและระดับการคิด",
     "settings.group.integrations": "ช่องทางและเครื่องมือ",
-    "settings.group.integrationsDesc": "Discord bot และแท็บ Terminal",
+    "settings.group.integrationsDesc": "Discord bot และ tool ของ Agent",
     "settings.group.security": "ความปลอดภัย",
     "settings.group.securityDesc": "Pairing Key และอุปกรณ์ที่เชื่อมต่อ",
     "settings.group.update": "อัปเดต",
@@ -268,7 +267,7 @@ const I18N = {
     "settings.apiKeyPlaceholder": "เว้นว่างเพื่อใช้คีย์เดิม",
     "settings.customKeysTitle": "คีย์ API อื่น ๆ",
     "settings.customKeysHint":
-      "เก็บคีย์ของบริการอื่น เช่น สภาพอากาศ ไว้ในเครื่องนี้ คำสั่งใน Terminal และ tool ของ Agent จะเห็นคีย์เป็นตัวแปรสภาพแวดล้อมตามชื่อที่ตั้งไว้",
+      "เก็บคีย์ของบริการอื่น เช่น สภาพอากาศ ไว้ในเครื่องนี้ tool ของ Agent จะเห็นคีย์เป็นตัวแปรสภาพแวดล้อมตามชื่อที่ตั้งไว้",
     "settings.customKeyName": "ชื่อคีย์",
     "settings.customKeyNamePlaceholder": "WEATHER_API_KEY",
     "settings.customKeyValue": "ค่า API key",
@@ -325,10 +324,6 @@ const I18N = {
     "settings.discordAllowedUsers": "จำกัดเฉพาะผู้ใช้ (User ID)",
     "settings.discordAllowedUsersPlaceholder": "เช่น 123456789012345678, 987654321098765432",
     "settings.discordAllowedUsersHint": "เว้นว่างเพื่อให้ทุกคนในช่องที่อนุญาตใช้งานได้ ใส่ User ID คั่นด้วยจุลภาค (เปิด Developer Mode แล้วคลิกขวาที่ผู้ใช้ > Copy ID)",
-    "settings.terminalTitle": "Terminal",
-    "settings.terminalHint":
-      "เปิดหรือปิดแท็บ Terminal ในแถบด้านข้าง (เริ่มต้นในโฟลเดอร์โปรเจกต์)",
-    "settings.terminalEnable": "แสดงแท็บ Terminal ในแถบด้านข้าง",
     "settings.machineTitle": "สิทธิ์เข้าถึงเครื่อง",
     "settings.machineHint":
       "ให้ agent เข้าถึงทุก path ในเครื่องและรันคำสั่งผ่าน shell จริง (รวม sudo ถ้าผู้ใช้ที่รันแอปมีสิทธิ์) ทุกการเรียกเครื่องมือจะขออนุมัติในแชตก่อนทุกครั้ง",
@@ -429,35 +424,12 @@ const I18N = {
     "logs.empty": "ยังไม่มี log",
     "logs.loadError": "โหลด log ไม่สำเร็จ: {message}",
     "logs.saveFailed": "บันทึกไม่สำเร็จ",
-    "terminal.title": "Terminal",
-    "terminal.hint": "พิมพ์คำสั่งเพื่อทำงานบนเครื่อง Server โดยตรง",
-    "terminal.warning":
-      "⚠ คำสั่งจะทำงานบน Server ด้วยสิทธิ์ของผู้ใช้ที่รันแอป และเริ่มต้นในโฟลเดอร์โปรเจกต์",
-    "terminal.scope": "· เริ่มต้นที่: {scope}",
-    "terminal.clear": "ล้างจอ",
-    "terminal.run": "รัน",
-    "terminal.placeholder": "พิมพ์คำสั่ง...",
-    "terminal.connecting": "กำลังเชื่อมต่อ...",
-    "terminal.ready": "พร้อมรับคำสั่ง",
-    "terminal.running": "กำลังรัน...",
-    "terminal.disabled": "Terminal ถูกปิดใช้งาน — เปิดได้ใน Settings",
-    "terminal.welcome": "Terminal พร้อมใช้งาน พิมพ์คำสั่งแล้วกด Enter",
-    "terminal.exitCode": "exit {code}",
-    "terminal.timeout": "คำสั่งใช้เวลานานเกินกำหนดและถูกหยุดแล้ว",
-    "terminal.truncated": "ผลลัพธ์ถูกตัดบางส่วน",
-    "terminal.error": "เชื่อมต่อ Terminal ไม่สำเร็จ: {message}",
-    "terminal.noOutput": "(ไม่มี output)",
-    "terminal.cwd": "โฟลเดอร์: {cwd}",
-    "terminal.statusIdle": "พร้อมใช้งาน",
-    "terminal.statusBusy": "กำลังทำงาน",
-    "terminal.statusDisabled": "ปิดใช้งาน",
     "about.title": "เกี่ยวกับระบบ",
     "about.text1":
       "เว็บแชต AI ที่รันบน Termux พร้อมหน้า settings สำหรับควบคุม provider, model, endpoint, prompt และพารามิเตอร์ต่าง ๆ",
     "about.text2":
       "API key จะเก็บฝั่งเซิร์ฟเวอร์ในไฟล์ตั้งค่าที่ไม่ถูก commit เข้า Git",
     "page.settings": "ตั้งค่าระบบ",
-    "page.terminal": "Terminal",
     "page.schedule": "งานตามเวลา",
     "page.logs": "Log ระบบ",
     "page.about": "เกี่ยวกับระบบ",
@@ -584,7 +556,6 @@ const I18N = {
     "app.title": "AI Control Center",
     "sidebar.newChat": "New chat",
     "nav.chat": "Chat",
-    "nav.terminal": "Terminal",
     "nav.settings": "Settings",
     "nav.schedule": "Scheduled jobs",
     "nav.logs": "System logs",
@@ -600,7 +571,7 @@ const I18N = {
     "header.openMenu": "Open menu",
     "header.toolsAria": "Chat tools",
     "header.themeTitle": "Toggle theme",
-    "header.tagline": "Operational Terminal",
+    "header.tagline": "Self-hosted AI workspace",
     "language.title": "Language",
     "status.checkingModel": "Checking...",
     "chat.title": "Chat with AI",
@@ -765,7 +736,7 @@ const I18N = {
     "settings.group.responseDesc":
       "Generation parameters and thinking level",
     "settings.group.integrations": "Channels and tools",
-    "settings.group.integrationsDesc": "Discord bot and the Terminal tab",
+    "settings.group.integrationsDesc": "Discord bot and Agent tools",
     "settings.group.security": "Security",
     "settings.group.securityDesc": "Pairing key and paired devices",
     "settings.group.update": "Update",
@@ -843,7 +814,7 @@ const I18N = {
     "settings.apiKeyPlaceholder": "Leave blank to keep the current key",
     "settings.customKeysTitle": "Other API keys",
     "settings.customKeysHint":
-      "Store keys for other services, such as weather, on this machine. Terminal commands and Agent tools see each key as an environment variable named after it.",
+      "Store keys for other services, such as weather, on this machine. Agent tools see each key as an environment variable named after it.",
     "settings.customKeyName": "Key name",
     "settings.customKeyNamePlaceholder": "WEATHER_API_KEY",
     "settings.customKeyValue": "API key value",
@@ -900,10 +871,6 @@ const I18N = {
     "settings.discordAllowedUsers": "Allowed users (User ID)",
     "settings.discordAllowedUsersPlaceholder": "e.g. 123456789012345678, 987654321098765432",
     "settings.discordAllowedUsersHint": "Leave blank to allow everyone in the allowed channels. Separate User IDs with commas (enable Developer Mode, then right-click a user > Copy ID).",
-    "settings.terminalTitle": "Terminal",
-    "settings.terminalHint":
-      "Show or hide the Terminal tab in the sidebar. It starts in the project folder.",
-    "settings.terminalEnable": "Show the Terminal tab in the sidebar",
     "settings.machineTitle": "Machine access",
     "settings.machineHint":
       "Let agents reach every path on this machine and run commands through a real shell (including sudo when the user running the app is allowed to). Every tool call asks for approval in the chat first.",
@@ -1004,34 +971,11 @@ const I18N = {
     "logs.loadError": "Could not load logs: {message}",
     "logs.saveFailed": "Save failed",
     "about.title": "About",
-    "terminal.title": "Terminal",
-    "terminal.hint": "Type commands to run directly on the server",
-    "terminal.warning":
-      "⚠ Commands run on the server with the permissions of the user running this app and start in the project folder.",
-    "terminal.scope": "· Starts in: {scope}",
-    "terminal.clear": "Clear",
-    "terminal.run": "Run",
-    "terminal.placeholder": "Type a command...",
-    "terminal.connecting": "Connecting...",
-    "terminal.ready": "Ready for commands",
-    "terminal.running": "Running...",
-    "terminal.disabled": "Terminal is disabled — enable it in Settings",
-    "terminal.welcome": "Terminal ready. Type a command and press Enter.",
-    "terminal.exitCode": "exit {code}",
-    "terminal.timeout": "The command took too long and was stopped.",
-    "terminal.truncated": "Output was truncated",
-    "terminal.error": "Could not reach the terminal: {message}",
-    "terminal.noOutput": "(no output)",
-    "terminal.cwd": "Folder: {cwd}",
-    "terminal.statusIdle": "Ready",
-    "terminal.statusBusy": "Working",
-    "terminal.statusDisabled": "Disabled",
     "about.text1":
       "A self-hosted AI chat app running on Termux, with a settings page for provider, model, endpoint, prompt, and response parameters.",
     "about.text2":
       "API keys are stored only on the server in a settings file that is not committed to Git.",
     "page.settings": "Settings",
-    "page.terminal": "Terminal",
     "page.schedule": "Scheduled jobs",
     "page.logs": "System logs",
     "page.about": "About",
@@ -1293,26 +1237,6 @@ let currentScheduleSelected = "";
 let currentScheduleEditingId = "";
 let currentFallbackModels = [];
 let currentFallbackSelected = "";
-let terminalInfo = null;
-let terminalCwd = ".";
-let terminalBusy = false;
-let terminalBooted = false;
-const TERMINAL_HISTORY_STORAGE = "ai-control-center-terminal-history";
-const terminalHistory = [];
-let terminalHistoryIndex = -1;
-try {
-  const storedHistory = JSON.parse(
-    localStorage.getItem(TERMINAL_HISTORY_STORAGE) || "[]",
-  );
-  if (Array.isArray(storedHistory)) {
-    terminalHistory.push(
-      ...storedHistory.filter((item) => typeof item === "string"),
-    );
-  }
-} catch (error) {
-  /* ignore malformed local history */
-}
-terminalHistoryIndex = terminalHistory.length;
 function setModelStatus(key, vars = {}, title = "") {
   modelStatus = { key, vars, title };
   $("model_status").textContent = t(key, vars);
@@ -2266,13 +2190,6 @@ async function approveToolRequest(event) {
 }
 document.querySelectorAll("nav button").forEach((button) =>
   button.addEventListener("click", () => {
-    if (
-      button.dataset.view === "terminal" &&
-      terminalInfo?.enabled === false
-    ) {
-      showNotice(t("terminal.disabled"), true);
-      return;
-    }
     document
       .querySelectorAll("nav button")
       .forEach((b) => b.classList.remove("active"));
@@ -2287,7 +2204,6 @@ document.querySelectorAll("nav button").forEach((button) =>
       loadAuthSessions();
       loadServerStatus();
     }
-    if (button.dataset.view === "terminal") openTerminalView();
     if (button.dataset.view === "schedule") loadSchedules();
     if (button.dataset.view === "logs") loadLogs();
     closeSidebar();
@@ -2449,203 +2365,6 @@ $("delete-logs").addEventListener("click", async () => {
     button.disabled = false;
   }
 });
-function terminalPrompt() {
-  if (!terminalInfo) return "$";
-  const scope = terminalInfo.scope || "~";
-  const cwd =
-    terminalCwd && terminalCwd !== "."
-      ? `${scope}/${terminalCwd}`
-      : scope;
-  return `${terminalInfo.user}@${terminalInfo.host}:${cwd}$`;
-}
-function terminalCwdLabel() {
-  const scope = terminalInfo?.scope || "~";
-  return terminalCwd && terminalCwd !== "."
-    ? `${scope}/${terminalCwd}`
-    : scope;
-}
-function appendTerminalLine(text, kind = "stdout") {
-  const output = $("terminal-output");
-  const line = document.createElement("div");
-  line.className = `terminal-line terminal-${kind}`;
-  line.textContent = text;
-  output.appendChild(line);
-  output.scrollTop = output.scrollHeight;
-}
-function appendTerminalBlock(text, kind) {
-  const normalized = String(text ?? "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/\n+$/, "");
-  if (normalized) appendTerminalLine(normalized, kind);
-}
-function appendTerminalCommand(command) {
-  const output = $("terminal-output");
-  const line = document.createElement("div");
-  line.className = "terminal-line terminal-command";
-  const prompt = document.createElement("span");
-  prompt.className = "terminal-prompt-mark";
-  prompt.textContent = `${terminalPrompt()} `;
-  line.appendChild(prompt);
-  line.appendChild(document.createTextNode(command));
-  output.appendChild(line);
-  output.scrollTop = output.scrollHeight;
-}
-function updateTerminalUi() {
-  if (!terminalInfo) {
-    $("terminal-status-text").textContent = t("terminal.connecting");
-    return;
-  }
-  const enabled = terminalInfo.enabled !== false;
-  $("terminal-dot").className = `terminal-dot${
-    !enabled ? " offline" : terminalBusy ? " busy" : ""
-  }`;
-  $("terminal-status-text").textContent = !enabled
-    ? t("terminal.statusDisabled")
-    : terminalBusy
-      ? t("terminal.statusBusy")
-      : t("terminal.statusIdle");
-  $("terminal-prompt").textContent = enabled ? terminalPrompt() : "$";
-  $("terminal-cwd").textContent = enabled
-    ? t("terminal.cwd", { cwd: terminalCwdLabel() })
-    : "";
-  $("terminal-input").disabled = !enabled || terminalBusy;
-  $("terminal-run").disabled = !enabled || terminalBusy;
-  $("terminal-scope").textContent = terminalInfo.scope
-    ? t("terminal.scope", { scope: terminalInfo.scope })
-    : "";
-}
-function applyTerminalEnabled(enabled) {
-  const navButton = document.querySelector('nav button[data-view="terminal"]');
-  if (!navButton) return;
-  const isEnabled = enabled !== false;
-  if (terminalInfo) terminalInfo.enabled = isEnabled;
-  navButton.hidden = !isEnabled;
-  if (!isEnabled && activeView() === "terminal") {
-    document.querySelector('nav button[data-view="chat"]')?.click();
-  }
-}
-async function refreshTerminalAvailability() {
-  try {
-    const response = await fetch("/api/terminal/info");
-    if (!response.ok) return;
-    terminalInfo = await response.json();
-    terminalCwd = terminalInfo.cwd || terminalCwd || ".";
-    applyTerminalEnabled(terminalInfo.enabled !== false);
-  } catch (error) {
-    /* Keep the tab visible; openTerminalView will report the error. */
-  }
-}
-async function openTerminalView() {
-  if (!terminalInfo) {
-    try {
-      const response = await fetch("/api/terminal/info");
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      terminalInfo = await response.json();
-      terminalCwd = terminalInfo.cwd || ".";
-      applyTerminalEnabled(terminalInfo.enabled !== false);
-    } catch (error) {
-      terminalInfo = {
-        enabled: false,
-        user: "user",
-        host: "server",
-        scope: "~",
-      };
-      appendTerminalLine(
-        t("terminal.error", { message: error.message }),
-        "error",
-      );
-    }
-  }
-  if (!terminalBooted) {
-    terminalBooted = true;
-    appendTerminalLine(
-      terminalInfo.enabled
-        ? t("terminal.welcome")
-        : t("terminal.disabled"),
-      "notice",
-    );
-  }
-  updateTerminalUi();
-  if (terminalInfo.enabled) $("terminal-input").focus();
-}
-function clearTerminal() {
-  $("terminal-output").innerHTML = "";
-  if (terminalInfo?.enabled) {
-    appendTerminalLine(t("terminal.welcome"), "notice");
-  }
-}
-function rememberTerminalCommand(command) {
-  if (terminalHistory[terminalHistory.length - 1] !== command) {
-    terminalHistory.push(command);
-    if (terminalHistory.length > 100) terminalHistory.shift();
-  }
-  terminalHistoryIndex = terminalHistory.length;
-  try {
-    localStorage.setItem(
-      TERMINAL_HISTORY_STORAGE,
-      JSON.stringify(terminalHistory),
-    );
-  } catch (error) {
-    /* local storage is optional */
-  }
-}
-async function runTerminalCommand() {
-  const input = $("terminal-input");
-  const command = input.value.trim();
-  if (!command || terminalBusy || !terminalInfo?.enabled) return;
-  if (command === "clear" || command === "cls") {
-    input.value = "";
-    clearTerminal();
-    return;
-  }
-  input.value = "";
-  appendTerminalCommand(command);
-  rememberTerminalCommand(command);
-  terminalBusy = true;
-  updateTerminalUi();
-  try {
-    const response = await fetch("/api/terminal/exec", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command, cwd: terminalCwd }),
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
-      throw new Error(data.error || `HTTP ${response.status}`);
-    }
-    terminalCwd = data.cwd || terminalCwd;
-    appendTerminalBlock(data.stdout, "stdout");
-    appendTerminalBlock(data.stderr, "stderr");
-    if (!data.stdout && !data.stderr && !data.changed_directory) {
-      appendTerminalLine(t("terminal.noOutput"), "meta");
-    }
-    if (data.timed_out) {
-      appendTerminalLine(t("terminal.timeout"), "error");
-    }
-    if (data.truncated) {
-      appendTerminalLine(t("terminal.truncated"), "meta");
-    }
-    if (data.returncode !== 0) {
-      appendTerminalLine(
-        t("terminal.exitCode", { code: data.returncode }),
-        "meta",
-      );
-    }
-  } catch (error) {
-    appendTerminalLine(
-      t("terminal.error", { message: error.message }),
-      "error",
-    );
-  } finally {
-    terminalBusy = false;
-    updateTerminalUi();
-    if (terminalInfo?.enabled) input.focus();
-  }
-}
-$("terminal-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  runTerminalCommand();
-});
 $("chat-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const content = $("input").value.trim();
@@ -2687,35 +2406,6 @@ $("chat-form").addEventListener("submit", async (event) => {
     return;
   }
   await sendChatMessage(content);
-});
-$("terminal-clear").addEventListener("click", clearTerminal);
-$("terminal-input").addEventListener("keydown", (event) => {
-  if (event.key === "ArrowUp") {
-    event.preventDefault();
-    if (!terminalHistory.length) return;
-    terminalHistoryIndex = Math.max(0, terminalHistoryIndex - 1);
-    const value = terminalHistory[terminalHistoryIndex] || "";
-    $("terminal-input").value = value;
-    $("terminal-input").setSelectionRange(value.length, value.length);
-  } else if (event.key === "ArrowDown") {
-    event.preventDefault();
-    terminalHistoryIndex = Math.min(
-      terminalHistory.length,
-      terminalHistoryIndex + 1,
-    );
-    const value =
-      terminalHistoryIndex >= terminalHistory.length
-        ? ""
-        : terminalHistory[terminalHistoryIndex] || "";
-    $("terminal-input").value = value;
-    $("terminal-input").setSelectionRange(value.length, value.length);
-  } else if (
-    (event.ctrlKey || event.metaKey) &&
-    event.key.toLowerCase() === "l"
-  ) {
-    event.preventDefault();
-    clearTerminal();
-  }
 });
 function resizeInput() {
   const el = $("input");
@@ -4184,9 +3874,7 @@ async function loadSettings() {
   if ((s.provider ?? "openai") === "gemini") loadGeminiCapabilities();
   else renderGeminiCapabilities(geminiCapabilityReport);
   $("discord_enabled").checked = !!s.discord_enabled;
-  $("terminal_enabled").checked = s.terminal_enabled !== false;
   $("machine_access").checked = s.machine_access !== false;
-  applyTerminalEnabled(s.terminal_enabled !== false);
   $("discord_prefix").value = s.discord_prefix ?? "!ai";
   $("discord_allowed_channels").value = Array.isArray(
     s.discord_allowed_channels,
@@ -4248,7 +3936,6 @@ function collectSettingsBody() {
     discord_prefix: $("discord_prefix").value,
     discord_allowed_channels: $("discord_allowed_channels").value,
     discord_allowed_users: $("discord_allowed_users").value,
-    terminal_enabled: $("terminal_enabled").checked,
     machine_access: $("machine_access").checked,
   };
 }
@@ -5923,7 +5610,6 @@ function applyTranslations() {
   renderServerStatus();
   renderNetworkState();
   renderLogs();
-  updateTerminalUi();
   $("schedule-timezone").textContent =
     currentScheduleTimezone || t("schedule.loading");
   if (
@@ -5956,4 +5642,3 @@ loadChatMeta();
 loadHistoryList();
 loadSchedules();
 loadAuthSessions();
-refreshTerminalAvailability();

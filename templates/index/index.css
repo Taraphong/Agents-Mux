@@ -1990,173 +1990,6 @@ body:not(.light-theme) .history-actions .history-action:hover {
   background: transparent;
   color: #ffffff;
 }
-#terminal-view {
-  --terminal-bg: var(--panel);
-  --terminal-bar: var(--panel-hi);
-  --terminal-border: var(--line);
-  --terminal-text: var(--text);
-  --terminal-dim: var(--dim);
-  --terminal-accent: var(--mint);
-  --terminal-danger: #fda4af;
-  --terminal-notice: var(--cyan);
-  --terminal-warning-bg: rgba(251, 191, 36, 0.08);
-  --terminal-warning-border: rgba(251, 191, 36, 0.35);
-  --terminal-warning-text: #fcd34d;
-}
-body.light-theme #terminal-view {
-  --terminal-bg: #f8fbff;
-  --terminal-bar: #e7edf5;
-  --terminal-border: #cbd5e1;
-  --terminal-text: #172033;
-  --terminal-dim: #607089;
-  --terminal-accent: #087f5b;
-  --terminal-danger: #b4233d;
-  --terminal-notice: #176b9a;
-  --terminal-warning-bg: #fff8e6;
-  --terminal-warning-border: #e9c26f;
-  --terminal-warning-text: #7a5200;
-}
-#terminal-view.active {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-.terminal-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 100%;
-  min-height: 0;
-}
-.terminal-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-.terminal-toolbar h2 {
-  margin: 0 0 4px;
-}
-.terminal-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  flex: none;
-}
-.terminal-warning {
-  padding: 8px 12px;
-  border: 1px solid var(--terminal-warning-border);
-  border-radius: 6px;
-  background: var(--terminal-warning-bg);
-  color: var(--terminal-warning-text);
-  font-size: 0.8rem;
-  line-height: 1.55;
-}
-.terminal-window {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 260px;
-  overflow: hidden;
-  border: 1px solid var(--terminal-border);
-  border-radius: 8px;
-  background: var(--terminal-bg);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.terminal-window:focus-within {
-  border-color: rgba(129, 140, 248, 0.6);
-  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.12);
-}
-.terminal-output {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 14px 16px;
-  color: var(--terminal-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.84rem;
-  line-height: 1.6;
-}
-.terminal-line {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.terminal-line.terminal-command {
-  color: var(--terminal-text);
-}
-.terminal-line.terminal-command .terminal-prompt-mark {
-  color: var(--terminal-accent);
-}
-.terminal-line.terminal-stdout {
-  color: var(--terminal-text);
-}
-.terminal-line.terminal-stderr,
-.terminal-line.terminal-error {
-  color: var(--terminal-danger);
-}
-.terminal-line.terminal-meta {
-  color: var(--terminal-dim);
-  font-size: 0.74rem;
-}
-.terminal-line.terminal-notice {
-  color: var(--terminal-notice);
-}
-.terminal-input-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--terminal-border);
-  background: var(--terminal-bar);
-}
-.terminal-prompt {
-  max-width: 55%;
-  overflow: hidden;
-  color: var(--terminal-accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.8rem;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.terminal-input-row input {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 2px !important;
-  border: 0 !important;
-  background: transparent !important;
-  color: var(--terminal-text) !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.86rem;
-  outline: none;
-}
-.terminal-input-row input::placeholder {
-  color: var(--terminal-dim);
-}
-.terminal-status {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  color: var(--dim);
-  font-size: 0.74rem;
-}
-.terminal-status .terminal-dot {
-  color: var(--terminal-accent);
-}
-.terminal-status .terminal-dot.offline {
-  color: var(--terminal-warning-text);
-}
-.terminal-status .terminal-dot.busy {
-  color: var(--terminal-notice);
-}
-@media (max-width: 720px) {
-  .terminal-toolbar {
-    flex-direction: column;
-  }
-  .terminal-warning {
-    font-size: 0.76rem;
-  }
-}
 .chat-form {
   position: relative;
 }
@@ -3496,7 +3329,6 @@ body.light-theme .status.offline {
 .modal,
 .chat-form,
 .logs-list,
-.terminal-window,
 .settings-rail,
 .slash-menu,
 .update-log,
@@ -4009,7 +3841,7 @@ body.light-theme .log-details {
   color: var(--muted);
 }
 
-/* --- Schedule, logs, terminal, settings extras --------------------- */
+/* --- Schedule, logs, settings extras ------------------------------- */
 .cron-help,
 body.light-theme .cron-help,
 .cron-help code,
@@ -4104,39 +3936,6 @@ body.light-theme .logs-filter button.active {
 body.light-theme .logs-filter button.active {
   border-color: rgba(0, 0, 0, 0.32);
   color: #000000;
-}
-#terminal-view,
-body.light-theme #terminal-view {
-  --terminal-bg: var(--glass-3);
-  --terminal-bar: var(--glass-4);
-  --terminal-border: var(--glass-border);
-  --terminal-text: var(--text);
-  --terminal-dim: var(--muted);
-  --terminal-accent: var(--text);
-  --terminal-danger: var(--text);
-  --terminal-notice: var(--text);
-  --terminal-warning-bg: var(--chip-bg);
-  --terminal-warning-border: var(--line);
-  --terminal-warning-text: var(--muted);
-}
-.terminal-window,
-.terminal-window:focus-within {
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--glass-shadow-soft), var(--glass-edge);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  background: var(--glass-3);
-}
-.terminal-window:focus-within {
-  border-color: rgba(255, 255, 255, 0.5);
-}
-body.light-theme .terminal-window:focus-within {
-  border-color: rgba(0, 0, 0, 0.45);
-}
-.terminal-warning,
-body.light-theme .terminal-warning {
-  border-radius: 12px;
 }
 .auth-key-output,
 body.light-theme .auth-key-output {
@@ -4242,10 +4041,9 @@ body.light-theme .notice.error {
     transform: none;
   }
 }
-.card:not(.terminal-card),
+.card,
 form.chat-form,
 .modal,
-.terminal-window,
 .schedule-item,
 .update-metric {
   position: relative;
@@ -4255,10 +4053,9 @@ form.chat-form,
     border-color 0.35s ease;
 }
 /* A slow specular highlight breathing across each pane. */
-.card:not(.terminal-card)::after,
+.card::after,
 form.chat-form::after,
 .modal::after,
-.terminal-window::after,
 .schedule-item::after,
 .update-metric::after {
   content: "";
@@ -4296,7 +4093,7 @@ form.chat-form::after,
     opacity: 0.78;
   }
 }
-.card:not(.terminal-card):hover {
+.card:hover {
   transform: translateY(-2px);
 }
 /* The logo stays still; the continuous motion lives in the backdrop. */
@@ -4351,12 +4148,11 @@ nav button,
   .card::after,
   form.chat-form::after,
   .modal::after,
-  .terminal-window::after,
   .schedule-item::after,
   .update-metric::after {
     animation: none !important;
   }
-  .card:not(.terminal-card):hover {
+  .card:hover {
     transform: none;
   }
 }
@@ -4389,11 +4185,6 @@ select:focus-visible {
   outline-offset: 1px;
   border-color: var(--text);
   box-shadow: var(--ring);
-}
-/* The terminal field resets its outline with a two-class selector. */
-.terminal-input-row input:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 1px;
 }
 /* Keep the composer selects on their own tighter ring. */
 .chat-tools select.composer-select:focus-visible,

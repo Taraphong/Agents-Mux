@@ -34,10 +34,10 @@ This is a volunteer-maintained personal project, so response is **best effort** 
 **In scope**
 
 - Authentication bypass of the device-pairing gate, or reuse of a consumed/expired Pairing Key.
-- Reading secrets (API keys, the Discord token, private keys, session tokens, other users' history) through the web UI, an API response, the web terminal, a tool call, or the app log.
-- Path traversal or escape from the project root through file tools, the terminal, Skills, scheduling, or static asset routes.
+- Reading secrets (API keys, the Discord token, private keys, session tokens, other users' history) through the web UI, an API response, a tool call, or the app log.
+- Path traversal or escape from the project root through file tools, Skills, scheduling, or static asset routes.
 - Cross-site request forgery, cross-site scripting, or cookie handling flaws in the web interface.
-- Remote code execution or command execution outside the documented tool/terminal approval flow.
+- Remote code execution or command execution outside the documented tool approval flow.
 - Incorrect TLS/proxy handling that causes the session cookie to leak or be sent in the clear.
 - Sending a stored provider key to a plain-HTTP endpoint without the explicit `AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP=1` opt-in.
 
@@ -63,23 +63,22 @@ This is a volunteer-maintained personal project, so response is **best effort** 
 | CSRF | State-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) that carry an `Origin` header are rejected with `403` unless the origin matches the request host. Requests without `Origin` (curl, scripts) are allowed by design. |
 | Secret exposure in responses | `GET /api/settings` never returns stored API keys, custom API keys, or the Discord token — only a `••••••••` placeholder plus `has_api_key` / `has_discord_token` flags. Provider errors are redacted before they reach the page or the log. |
 | Provider keys in transit | A model request refuses to send the key over plain HTTP, except to a loopback host (a local OpenAI-compatible server) or when the operator sets `AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP=1`, which is logged. |
-| Logs and terminal output | Log records drop fields named `api_key`, `authorization`, `token`, and `content`; all logged text is scrubbed of configured secrets, `?key=`-style query values, and PEM private-key blocks. The web terminal output and tool output are redacted the same way before they reach the browser or the log. |
+| Logs and tool output | Log records drop fields named `api_key`, `authorization`, `token`, and `content`; all logged text is scrubbed of configured secrets, `?key=`-style query values, and PEM private-key blocks. Tool output is redacted the same way before it reaches the browser or the log. |
 | Local tools | With **Machine access** on (default), `read_file`, `list_files`, `write_file`, `run_command`, `create_skill`, `create_schedule`, and `update_schedule` reach the whole machine, and `run_command` runs through a real shell as the service user (pipes, redirections, and `sudo` when that user may run it without a password). Every tool call — reads included — needs a one-time approval token bound to the exact tool name and arguments (15-minute TTL), and with machine access on no chat command mode can skip it. Known API keys, tokens, and PEM private keys are redacted from tool output. With machine access off, paths return to the project root with `PROTECTED_PARTS` / `PROTECTED_NAMES`, and `run_command` uses the `pwd` / `ls` / `git` allowlist without a shell. Reads and writes are capped at 200 KB. |
 | Skills | Skill names are validated, content is loaded only from `<skills>/<name>/SKILL.md`, and `create_skill` writes only inside the `skills/` folder. A skill is plain instruction text for the model; it grants no new tools. |
-| Web terminal | Real shell, project-root confined (best-effort path guard), 60-second timeout, 100 KB output cap, and sensitive environment variables (names containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL`) are stripped before the process starts. It can be disabled in Settings. |
 | Scheduler | Jobs are validated 5-field cron expressions, stored in `scheduled-jobs.json` (`0600`, ignored by Git, written under a file lock), and run only while the server is up. A job prompt runs with the saved provider/model and the same tool approval rules; an optional Discord channel receives the result. |
 | Update and server control | `POST /api/update/run` and `POST /api/server/action` accept only fixed modes and actions, run the project scripts detached with a quoted argument list (no shell interpolation of user input), require a paired device and a same-origin request, and never receive secrets in their body. `update.sh` never writes `.env`, `.app-settings.json`, `.app-auth.json`, `certs/`, `history/`, `logs/`, `scheduled-jobs.json`, or `.venv`. |
 | Uploads and attachments | Requests are capped by `MAX_CONTENT_LENGTH` (default 8 MB, `AI_WEB_MAX_CONTENT_BYTES`). Attachments are size-checked in the browser (1 MB text, 6 MB binary) and again on the server (6 MB per inline part) before they are forwarded to a provider. |
 | Gemini Live tokens | The browser never receives the Gemini API key. `POST /api/gemini/live-token` mints a single-use, short-lived token (30-minute expiry, one session) and returns the WebSocket URL; the token is the only credential the page sees. |
 | TLS | The app can terminate HTTPS itself with certificate files or an ad-hoc certificate (both generated with `openssl`; ad-hoc files live in `certs/adhoc-*.pem` and are reused), or sit behind a TLS-terminating reverse proxy. `ProxyFix` is enabled only when `AI_WEB_TRUST_PROXY=1`, and that must be set only when the proxy overwrites `X-Forwarded-Proto` / `X-Forwarded-Host` on every request. |
-| Discord bot | Optional and off by default. It never exposes filesystem, command, or terminal tools; only `create_schedule` / `update_schedule` are auto-approved, and only for guild members with the Discord **Administrator** permission. By default any Discord user who can DM the bot or mention it in a guild can chat with the configured model and spend API credit; set **Allowed channels** / **Allowed users** in Settings (or `DISCORD_ALLOWED_CHANNEL_IDS` / `DISCORD_ALLOWED_USER_IDS`) to ignore everyone else. |
+| Discord bot | Optional and off by default. It never exposes filesystem or command tools; only `create_schedule` / `update_schedule` are auto-approved, and only for guild members with the Discord **Administrator** permission. By default any Discord user who can DM the bot or mention it in a guild can chat with the configured model and spend API credit; set **Allowed channels** / **Allowed users** in Settings (or `DISCORD_ALLOWED_CHANNEL_IDS` / `DISCORD_ALLOWED_USER_IDS`) to ignore everyone else. |
 
 ## Hardening checklist
 
-- Keep `AI_WEB_AUTH=on`. Set it to `off` only on a fully trusted network, and remember that anyone who can reach the page then gets the terminal and API keys.
+- Keep `AI_WEB_AUTH=on`. Set it to `off` only on a fully trusted network, and remember that anyone who can reach the page then gets the tools and API keys.
 - Serve HTTPS. If you accept a self-signed certificate warning on a hostile network, traffic can be intercepted. Use a certificate from a trusted CA, or install your local CA on each device.
 - Behind a reverse proxy set `AI_WEB_TRUST_PROXY=1` **only** if the proxy strips and overwrites `X-Forwarded-*` headers. Otherwise clients can spoof them.
-- Run the server as an **unprivileged user**, never as root. The terminal and tools run with the server's privileges; the path checks are best-effort, not a sandbox.
+- Run the server as an **unprivileged user**, never as root. The tools run with the server's privileges; the path checks are best-effort, not a sandbox.
 - Do not expose the port to the internet. Use a VPN or a reverse proxy with authentication, and keep it on a trusted LAN/VPN.
 - Keep `.env`, `.app-settings.json`, `.app-auth.json`, `certs/`, `history/`, `logs/`, and `scheduled-jobs.json` readable only by the service user (mode `0600` / `0700`). They are in `.gitignore` — keep it that way.
 - Review **Settings → Security** regularly, revoke devices you no longer use, and rotate provider keys if one was ever pasted into a chat, a log, or a commit.
@@ -99,7 +98,7 @@ This is a volunteer-maintained personal project, so response is **best effort** 
 ## Known limitations
 
 - **No encryption at rest.** `.env`, `.app-settings.json`, `history/`, and `scheduled-jobs.json` are plaintext. Anyone with read access to the server's filesystem can read the API keys and every conversation.
-- **The terminal and tools are not a sandbox.** They run as the service user. Run on a dedicated, unprivileged account and do not co-locate unrelated secrets on the same machine.
+- **The tools are not a sandbox.** They run as the service user. Run on a dedicated, unprivileged account and do not co-locate unrelated secrets on the same machine.
 - **Machine access is a boundary, not a sandbox.** With it on, an approved call can read or change anything the service user can reach, and `sudo` reaches root when the service user has passwordless sudo or the app runs as root. Read each approval prompt before clicking it; turn Machine access off to return to project-only paths and the command allowlist.
 - **The operator can redirect keys.** `Base URL` is configurable, so whoever can edit Settings can point a provider request at another endpoint (HTTPS, unless loopback or the insecure-HTTP opt-in applies). Paired devices are fully trusted.
 - **Prompt injection is possible.** Model output is not trusted input. Tool use requires approval, but an approved command runs as-is.

@@ -186,7 +186,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
 - ถ้าแก้ `.env` แล้วไม่เห็นผล ให้แก้ใน Settings แทน หรือกด **Reset** ที่ด้านล่างของ Settings (ลบ `.app-settings.json`) แล้วรีสตาร์ตเซิร์ฟเวอร์
 - API key ที่บันทึกผ่าน Settings จะถูกใช้ก่อน key ใน `.env` เสมอ
 
-ค่าอื่น ๆ — system prompt, temperature, model, ระดับการคิด, Discord bot, allowlist, สวิตช์ Terminal, สิทธิ์เข้าถึงเครื่อง — ตั้งใน **Settings** และเก็บเฉพาะใน `.app-settings.json` บนเครื่องของคุณ
+ค่าอื่น ๆ — system prompt, temperature, model, ระดับการคิด, Discord bot, allowlist, สิทธิ์เข้าถึงเครื่อง — ตั้งใน **Settings** และเก็บเฉพาะใน `.app-settings.json` บนเครื่องของคุณ
 
 > `.env`, `.app-settings.json`, `.app-auth.json`, `certs/`, `history/`, `logs/` และ `scheduled-jobs.json` ไม่ถูก commit เข้า Git ห้ามส่งไฟล์เหล่านี้ให้ใคร เพราะมี API key, สถานะการจับคู่ และประวัติการสนทนา
 

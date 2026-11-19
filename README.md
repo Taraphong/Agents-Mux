@@ -15,7 +15,7 @@ Self-hosted AI chat that runs on Termux (Android), Linux, or macOS and is used t
 - **Pairing**: the page is protected by single-use Pairing Keys and revocable device sessions.
 - **Conversation history** organized by date, with rename, pin, lock/unlock, and delete.
 - **Local tools**: the model can list, read, and write files and run shell commands on the server, with one approval per call.
-- **Web terminal**, **cron-style scheduler**, **system/agent log viewer**, **in-page updater**, and **server start/stop/restart**.
+- **Cron-style scheduler**, **system/agent log viewer**, **in-page updater**, and **server start/stop/restart**.
 - **Gemini extras**: capability report, Decisions API, managed agents, and short-lived Live API tokens.
 - **Discord bot** with channel and user allowlists.
 - **HTTP/HTTPS switching** from the page, with certificate files or an ad-hoc certificate.
@@ -141,7 +141,7 @@ The Settings view is grouped into cards:
 - **Gemini** — capability report for the stored key (multimodal, Live, Decisions, agents), Decisions runner, managed-agent runner, and a Live API start button that mints a short-lived token in the browser.
 - **Agent** — agent name, role, system prompt, memory-review instructions, and the skills selected for every conversation.
 - **Response** — response language (`auto`, Thai, English), response style, markdown, clarifying questions, temperature, top-p, max tokens, streaming, thinking level, and the fallback model.
-- **Integrations** — machine access, the Discord bot (token, prefix, allowlists), and the terminal switch.
+- **Integrations** — machine access and the Discord bot (token, prefix, allowlists).
 - **Security** — Pairing Keys and connected devices, with per-device revoke and sign-out.
 - **Update** — installed build, a dry-run check, a real update, and the update log.
 - **Server** — start, stop, and restart through `start_web.sh`, plus PID and uptime.
@@ -165,12 +165,6 @@ Every call — reads included — needs a single-use approval in the chat, bound
 Turn **Settings → Machine access** off to restrict tools to the project folder and to the `pwd` / `ls` / `git status|diff|log` allowlist (no shell).
 
 > ⚠️ An approved command runs with the privileges of the user running the app — including `sudo` when that user may use it without a password. Read each command before approving it.
-
-## Terminal
-
-The **Terminal** page runs shell commands on the server as the user running the app. It starts in the project folder, supports `cd` inside the project, has a 60-second timeout and a 100 KB output cap, strips credential-like environment variables, and redacts known secrets. It can be disabled in Settings.
-
-> ⚠️ The terminal runs with the app user's privileges. With pairing enabled only paired devices can open it; with `AI_WEB_AUTH=off` anyone who can reach the page can use it.
 
 ## Scheduler
 
@@ -235,7 +229,7 @@ The app can terminate HTTPS itself; `openssl` is the only requirement.
 | Path | Contents | Committed |
 | --- | --- | --- |
 | `app.py` | Flask server, API, tools, scheduler, Discord bot | yes |
-| `templates/index/` | Chat page HTML, CSS, JS (chat, settings, schedule, logs, terminal, about) | yes |
+| `templates/index/` | Chat page HTML, CSS, JS (chat, settings, schedule, logs, about) | yes |
 | `templates/pair/` | Pairing page HTML, CSS, JS | yes |
 | `skills/` | Skills, one `<name>/SKILL.md` per skill | yes (unless you add your own) |
 | `install.sh`, `start_web.sh`, `update.sh` | Installer, process control, updater | yes |

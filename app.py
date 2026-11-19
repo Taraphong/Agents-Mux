@@ -2,7 +2,6 @@ import os
 import asyncio
 import base64
 import fcntl
-import getpass
 import gzip
 import hashlib
 import hmac
@@ -122,9 +121,9 @@ _SCHEDULER_START_LOCK = threading.Lock()
 _SCHEDULER_LOCK_HANDLE: Any = None
 PROTECTED_NAMES = {".env", ".app-settings.json", ".app-auth.json"}
 PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__", "certs"}
-TERMINAL_TIMEOUT_SECONDS = 60
-TERMINAL_MAX_OUTPUT_BYTES = 100_000
-TERMINAL_SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
+COMMAND_TIMEOUT_SECONDS = 60
+COMMAND_MAX_OUTPUT_BYTES = 100_000
+SENSITIVE_ENV_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
 
 
 # Device pairing: the server generates single-use keys, the client sends a key
@@ -302,7 +301,6 @@ DEFAULT_SETTINGS = {
     "discord_allowed_channels": [
         item.strip() for item in os.getenv("DISCORD_ALLOWED_CHANNEL_IDS", "").split(",") if item.strip()
     ],
-    "terminal_enabled": True,
     "machine_access": True,
     "custom_api_keys": {},
 }
@@ -483,6 +481,7 @@ def load_settings() -> dict[str, Any]:
         except (OSError, json.JSONDecodeError):
             pass
     settings = migrate_legacy_api_key(settings)
+    settings.pop("terminal_enabled", None)
     settings["custom_api_keys"] = stored_custom_api_keys(settings)
     return settings
 
@@ -1137,12 +1136,12 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             # that neither the snapshot nor the redaction knows.
             with SETTINGS_LOCK:
                 try:
-                    secrets_before_read = terminal_secret_values()
+                    secrets_before_read = secret_values()
                 except (OSError, ValueError):
                     secrets_before_read = []
                 content = path.read_text(encoding="utf-8", errors="replace")
                 content = redact_secrets(content)
-                content = redact_terminal_output(content, secrets_before_read)
+                content = redact_command_output(content, secrets_before_read)
         else:
             content = path.read_text(encoding="utf-8", errors="replace")
         result = {"tool": name, "path": display_tool_path(path), "content": content, "scope": "machine" if machine_access else "project"}
@@ -1185,16 +1184,16 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             # A real shell with the app user's privileges: any binary, pipes,
             # sudo (when the user may run it without a password prompt), and
             # any path on the machine. The approval click is the boundary.
-            returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_terminal_process(command, PROJECT_ROOT)
+            returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_shell_process(command, PROJECT_ROOT)
             if timed_out:
                 returncode = 124
-            secrets_found = terminal_secret_values(launch_secrets)
+            secrets_found = secret_values(launch_secrets)
             result = {
                 "tool": name,
-                "command": redact_terminal_output(command, secrets_found),
+                "command": redact_command_output(command, secrets_found),
                 "returncode": returncode,
-                "stdout": redact_terminal_output(stdout, secrets_found),
-                "stderr": redact_terminal_output(stderr, secrets_found),
+                "stdout": redact_command_output(stdout, secrets_found),
+                "stderr": redact_command_output(stderr, secrets_found),
                 "timed_out": timed_out,
                 "truncated": truncated,
                 "duration_ms": duration_ms,
@@ -1204,7 +1203,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
                 "tool.success" if returncode == 0 else "tool.failed",
                 f"Command finished ({returncode})",
                 tool=name,
-                command=redact_terminal_output(command, secrets_found)[:300],
+                command=redact_command_output(command, secrets_found)[:300],
                 duration_ms=duration_ms,
             )
             return result
@@ -1217,18 +1216,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
     raise ValueError("Unknown tool")
 
 
-def terminal_settings() -> dict[str, Any]:
-    """Return the settings used by the web terminal."""
-    return load_settings()
-
-
-def terminal_is_enabled(settings: dict[str, Any] | None = None) -> bool:
-    """Return whether the web terminal is enabled in settings."""
-    settings = settings if settings is not None else terminal_settings()
-    return bool(settings.get("terminal_enabled", True))
-
-
-def terminal_shell() -> str:
+def command_shell() -> str:
     """Pick an available POSIX shell, including Termux where /bin/sh may not exist."""
     for candidate in (os.getenv("SHELL"), shutil.which("bash"), shutil.which("sh"), "/system/bin/sh", "/bin/sh"):
         if candidate and Path(candidate).exists():
@@ -1236,7 +1224,7 @@ def terminal_shell() -> str:
     return "sh"
 
 
-def terminal_environment() -> tuple[dict[str, str], list[str]]:
+def command_environment() -> tuple[dict[str, str], list[str]]:
     """Inherit the server environment without exposing credentials to commands.
 
     Returns the child environment plus the custom key values injected into it,
@@ -1246,7 +1234,7 @@ def terminal_environment() -> tuple[dict[str, str], list[str]]:
     env = {
         name: value
         for name, value in os.environ.items()
-        if not any(part in name.upper() for part in TERMINAL_SENSITIVE_ENV_PARTS)
+        if not any(part in name.upper() for part in SENSITIVE_ENV_PARTS)
     }
     # Extra keys saved in Settings are exposed by name so a skill or command
     # can use e.g. "$WEATHER_API_KEY" without the value ever reaching the chat.
@@ -1265,9 +1253,9 @@ def terminal_environment() -> tuple[dict[str, str], list[str]]:
     return env, injected
 
 
-def terminal_secret_values(extra: list[str] | None = None) -> list[str]:
-    """Collect secret values that terminal output must never expose."""
-    settings = terminal_settings()
+def secret_values(extra: list[str] | None = None) -> list[str]:
+    """Collect secret values that command output must never expose."""
+    settings = load_settings()
     values = {value for value in stored_api_keys(settings).values() if value}
     values.update(stored_custom_api_keys(settings).values())
     if extra:
@@ -1276,7 +1264,7 @@ def terminal_secret_values(extra: list[str] | None = None) -> list[str]:
     if discord_token:
         values.add(discord_token)
     for name, value in os.environ.items():
-        if value and len(value) >= 8 and any(part in name.upper() for part in TERMINAL_SENSITIVE_ENV_PARTS):
+        if value and len(value) >= 8 and any(part in name.upper() for part in SENSITIVE_ENV_PARTS):
             values.add(value)
     return sorted(values, key=len, reverse=True)
 
@@ -1286,10 +1274,10 @@ PEM_MARKER_PATTERN = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|-----END [A-Z0-9 ]*PRIVATE KEY-----"
 )
 # How far before a truncated capture tail to look for an opening BEGIN line.
-TERMINAL_PEM_LOOKBACK_BYTES = 8192
+PEM_LOOKBACK_BYTES = 8192
 
 
-def terminal_pem_state(text: str, inside: bool = False) -> bool:
+def pem_state(text: str, inside: bool = False) -> bool:
     """Report whether the text ends inside a private key block."""
     for match in PEM_MARKER_PATTERN.finditer(text):
         inside = match.group(0).startswith("-----BEGIN")
@@ -1318,41 +1306,13 @@ def mask_unterminated_pem(text: str, starts_inside: bool = False) -> str:
     return text
 
 
-def redact_terminal_output(text: str, secrets_found: list[str]) -> str:
-    """Replace known secrets and any private key block in terminal output."""
+def redact_command_output(text: str, secrets_found: list[str]) -> str:
+    """Replace known secrets and any private key block in command output."""
     for secret in secrets_found:
         text = text.replace(secret, "••••••••")
     # mask_unterminated_pem walks the BEGIN/END markers instead of running a
     # DOTALL regex over the whole capture, so large output cannot go quadratic.
     return mask_unterminated_pem(text)
-
-
-SHELL_PATH_SEPARATOR_PATTERN = re.compile(r"[;&|<>()`$\s=]+")
-
-
-def ensure_terminal_paths_allowed(command: str) -> None:
-    """Reject terminal commands whose arguments point at protected project paths.
-
-    The web terminal runs through a real shell, so each token is split on the
-    shell operators (`;`, `|`, `&`, redirections, `$`, `=`) before the protected
-    names are checked, so `cd .env; ls` is checked as `cd .env`. This is still a
-    best-effort guard: a path assembled at runtime can slip past it, so the real
-    boundary is running the server as an unprivileged user. Output is
-    additionally scrubbed of API keys and PEM private keys before it leaves the
-    server.
-    """
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        tokens = command.split()
-    for token in tokens:
-        for fragment in SHELL_PATH_SEPARATOR_PATTERN.split(token):
-            candidate = fragment.replace("\\", "/").strip()
-            if not candidate or candidate.startswith("-"):
-                continue
-            parts = [part for part in candidate.split("/") if part not in {"", "."}]
-            if any(part in PROTECTED_PARTS or part in PROTECTED_NAMES for part in parts):
-                raise PermissionError("The terminal does not allow access to files or folders holding secrets")
 
 
 SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
@@ -1365,27 +1325,27 @@ def redact_secrets(text: str, api_key: str | None = None) -> str:
     if api_key:
         value = value.replace(api_key, "••••••••")
     try:
-        secrets_found = terminal_secret_values()
+        secrets_found = secret_values()
     except (OSError, ValueError):
         secrets_found = []
-    return redact_terminal_output(value, secrets_found)
+    return redact_command_output(value, secrets_found)
 
 
-def read_terminal_capture(handle: Any) -> tuple[str, bool]:
+def read_command_capture(handle: Any) -> tuple[str, bool]:
     """Read at most the tail of a captured stream so runaway output cannot exhaust memory."""
     handle.flush()
     handle.seek(0, os.SEEK_END)
     size = handle.tell()
-    start = max(0, size - TERMINAL_MAX_OUTPUT_BYTES)
+    start = max(0, size - COMMAND_MAX_OUTPUT_BYTES)
     cut = start > 0
     # A private key block may open before the tail starts, so derive the
     # redaction state from a bounded window in front of it instead of relying on
     # the BEGIN line being inside the returned text.
     starts_inside = False
     if cut:
-        lookback_start = max(0, start - TERMINAL_PEM_LOOKBACK_BYTES)
+        lookback_start = max(0, start - PEM_LOOKBACK_BYTES)
         handle.seek(lookback_start)
-        starts_inside = terminal_pem_state(
+        starts_inside = pem_state(
             handle.read(start - lookback_start).decode("utf-8", errors="replace")
         )
     handle.seek(start)
@@ -1397,55 +1357,8 @@ def read_terminal_capture(handle: Any) -> tuple[str, bool]:
     return text, cut
 
 
-def resolve_terminal_cwd(raw_path: Any) -> Path:
-    """Resolve a terminal working directory inside the project root."""
-    value = str(raw_path or ".").strip() or "."
-    if value in {"~", "~/"}:
-        candidate = PROJECT_ROOT
-    else:
-        if value.startswith("~/"):
-            value = value[2:]
-        candidate = normalized_path_under(
-            value, PROJECT_ROOT, "The terminal is restricted to the project folder"
-        )
-    relative_text = os.path.relpath(str(candidate), str(PROJECT_ROOT))
-    relative_parts: list[str] = [] if relative_text == os.curdir else relative_text.split(os.sep)
-    if any(part in PROTECTED_PARTS for part in relative_parts):
-        raise PermissionError("The terminal may not enter folders holding secrets")
-    cwd_text = os.path.normpath(str(candidate))
-    if cwd_text == PROJECT_ROOT_TEXT:
-        cwd_text = PROJECT_ROOT_TEXT + os.sep
-    if not cwd_text.startswith(PROJECT_ROOT_TEXT + os.sep):
-        raise PermissionError("The terminal is restricted to the project folder")
-    candidate = Path(cwd_text)
-    if not candidate.exists():
-        raise FileNotFoundError(f"Folder not found: {raw_path}")
-    if not candidate.is_dir():
-        raise ValueError("This path is not a folder")
-    return candidate
-
-
-def relative_terminal_cwd(path: Path) -> str:
-    """Render a terminal working directory relative to the project root."""
-    relative = path.relative_to(PROJECT_ROOT)
-    return "." if str(relative) == "." else relative.as_posix()
-
-
-def terminal_identity() -> tuple[str, str]:
-    """Return the shell user and host name shown in the terminal header."""
-    try:
-        user = getpass.getuser()
-    except (KeyError, OSError):
-        user = str(os.getenv("USER") or "user")
-    try:
-        host = socket.gethostname() or "server"
-    except OSError:
-        host = "server"
-    return user, host
-
-
-def terminal_group_alive(pgid: int) -> bool:
-    """Report whether any process of a terminal command's group still runs."""
+def process_group_alive(pgid: int) -> bool:
+    """Report whether any process of a command's group still runs."""
     try:
         os.killpg(pgid, 0)
     except ProcessLookupError:
@@ -1455,25 +1368,24 @@ def terminal_group_alive(pgid: int) -> bool:
     return True
 
 
-def kill_terminal_group(pgid: int) -> None:
-    """Kill every process left in a terminal command's group."""
+def kill_process_group(pgid: int) -> None:
+    """Kill every process left in a command's group."""
     try:
         os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
         pass
 
 
-def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
+def run_shell_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
     """Run a command with capped output and a hard timeout for the whole process group."""
     started_at = time.perf_counter()
     timed_out = False
-    env, injected_secrets = terminal_environment()
+    env, injected_secrets = command_environment()
     if not command.strip():
         raise ValueError("Type a command")
-    # The page presents this as a terminal, and ensure_terminal_paths_allowed()
-    # already screens shell syntax, so run it through the real shell: pipes,
-    # redirections, globs and variables have to behave as typed.
-    argv = [terminal_shell(), "-c", command]
+    # Agent commands run through the real shell so pipes, redirections, globs
+    # and variables behave as typed; approval is the boundary.
+    argv = [command_shell(), "-c", command]
     with tempfile.TemporaryFile() as out_file, tempfile.TemporaryFile() as err_file:
         process = subprocess.Popen(
             argv,
@@ -1486,113 +1398,29 @@ def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, 
         )
         # The group is its own session, so its id is the leader's pid.
         pgid = process.pid
-        deadline = time.monotonic() + TERMINAL_TIMEOUT_SECONDS
+        deadline = time.monotonic() + COMMAND_TIMEOUT_SECONDS
         try:
-            process.wait(timeout=TERMINAL_TIMEOUT_SECONDS)
+            process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             timed_out = True
-            kill_terminal_group(pgid)
+            kill_process_group(pgid)
             process.wait()
         # A shell that exits still leaves `cmd &` jobs running in the group, and
         # they keep the capture files open. They get the same deadline, then the
         # group is killed so nothing outlives the timeout.
-        while terminal_group_alive(pgid):
+        while process_group_alive(pgid):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 # The shell already exited, so the job outlived the deadline:
                 # report it as a timeout instead of the shell's status 0.
-                kill_terminal_group(pgid)
+                kill_process_group(pgid)
                 timed_out = True
                 break
             time.sleep(min(0.05, remaining))
-        stdout, stdout_cut = read_terminal_capture(out_file)
-        stderr, stderr_cut = read_terminal_capture(err_file)
+        stdout, stdout_cut = read_command_capture(out_file)
+        stderr, stderr_cut = read_command_capture(err_file)
     duration_ms = round((time.perf_counter() - started_at) * 1000)
     return process.returncode, stdout, stderr, timed_out, stdout_cut or stderr_cut, duration_ms, injected_secrets
-
-
-TERMINAL_COMPOUND_PATTERN = re.compile(r"[;&|<>`$\n]")
-
-
-def parse_standalone_cd(command: str) -> str | None:
-    """Return the folder for a standalone `cd`, or None for the shell to run.
-
-    shlex keeps a quoted path such as `cd "my folder"` as one argument, so the
-    quoted form persists too. A command list (`cd subdir; pwd`) or an expansion
-    is left to the shell instead of being read as one literal path.
-    """
-    if TERMINAL_COMPOUND_PATTERN.search(command):
-        return None
-    try:
-        tokens = shlex.split(command, posix=True)
-    except ValueError:
-        return None
-    if not tokens or tokens[0] != "cd":
-        return None
-    if len(tokens) > 2:
-        raise ValueError("cd accepts one path at a time")
-    return tokens[1] if len(tokens) == 2 else ""
-
-
-def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
-    """Run one web terminal command and return its output and new cwd."""
-    settings = terminal_settings()
-    if not terminal_is_enabled(settings):
-        raise PermissionError("The terminal is disabled in Settings")
-    stripped = command.strip()
-    if not stripped:
-        raise ValueError("Type a command")
-    if len(stripped) > 4000:
-        raise ValueError("The command is too long (4000 characters max)")
-    ensure_terminal_paths_allowed(stripped)
-
-    changed_directory = False
-    # Only a standalone `cd` is handled here so the directory can persist;
-    # anything with shell syntax goes to the shell like a real terminal.
-    cd_target = parse_standalone_cd(stripped)
-    if cd_target is not None:
-        if cd_target in {"", "~"}:
-            new_cwd = PROJECT_ROOT
-        else:
-            new_cwd = resolve_terminal_cwd(cd_target)
-        cwd = new_cwd
-        changed_directory = True
-        result = {
-            "command": stripped,
-            "cwd": relative_terminal_cwd(cwd),
-            "returncode": 0,
-            "stdout": "",
-            "stderr": "",
-            "timed_out": False,
-            "truncated": False,
-            "changed_directory": changed_directory,
-            "duration_ms": 0,
-        }
-    else:
-        returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_terminal_process(stripped, cwd)
-        if timed_out:
-            returncode = 124
-        secrets_found = terminal_secret_values(launch_secrets)
-        result = {
-            "command": stripped,
-            "cwd": relative_terminal_cwd(cwd),
-            "returncode": returncode,
-            "stdout": redact_terminal_output(stdout, secrets_found),
-            "stderr": redact_terminal_output(stderr, secrets_found),
-            "timed_out": timed_out,
-            "truncated": truncated,
-            "changed_directory": changed_directory,
-            "duration_ms": duration_ms,
-        }
-        log_event(
-            "tool.terminal",
-            f"Terminal command finished ({returncode})",
-            command=redact_terminal_output(stripped, secrets_found)[:300],
-            returncode=returncode,
-            duration_ms=duration_ms,
-            timed_out=timed_out,
-        )
-    return result
 
 
 def parse_tool_request(answer: str) -> dict[str, Any] | None:
@@ -2265,8 +2093,6 @@ STATUS_MESSAGES = {
         "tool_invalid_payload": "ข้อมูลเครื่องมือไม่ถูกต้อง",
         "tool_approval_invalid": "คำขออนุมัติไม่ถูกต้องหรือหมดอายุ กรุณาขอใหม่อีกครั้ง",
         "tool_failed": "ใช้เครื่องมือไม่สำเร็จ กรุณาตรวจสอบพารามิเตอร์แล้วลองใหม่",
-        "command_required": "ต้องระบุคำสั่ง",
-        "terminal_failed": "คำสั่ง Terminal ถูกปฏิเสธหรือทำงานไม่สำเร็จ",
         "log_clear_failed": "ลบ log ไม่สำเร็จ",
         "schedule_name_required": "กรุณาระบุชื่องานและ prompt",
         "schedule_invalid": "รูปแบบ schedule ไม่ถูกต้อง (ต้องเป็น cron 5 ช่อง)",
@@ -2342,8 +2168,6 @@ STATUS_MESSAGES = {
         "tool_invalid_payload": "Invalid tool payload",
         "tool_approval_invalid": "The approval request is invalid or expired; request it again",
         "tool_failed": "The tool could not run; check the parameters and try again",
-        "command_required": "A command is required",
-        "terminal_failed": "The terminal command was refused or failed",
         "log_clear_failed": "Could not clear the log",
         "schedule_name_required": "Provide a job name and prompt",
         "schedule_invalid": "Invalid schedule (a 5-field cron expression is required)",
@@ -2423,7 +2247,7 @@ def api_rate_limited(bucket: str, client: str, limit: int, window: float = 60.0)
 
 
 # Per-minute budgets for the endpoints that cost money or touch the machine.
-API_RATE_BUDGETS = {"chat": 30, "tools": 60, "terminal": 60, "test": 10}
+API_RATE_BUDGETS = {"chat": 30, "tools": 60, "test": 10}
 
 
 def rate_limit_response(bucket: str):
@@ -4122,7 +3946,7 @@ def apply_settings_update():
     body = request.get_json(silent=True) or {}
     current = load_settings()
     previous_provider = normalize_provider(current.get("provider"))
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "gemini_live_model", "gemini_agent", "gemini_decision_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "terminal_enabled", "machine_access"}
+    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "gemini_live_model", "gemini_agent", "gemini_decision_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "machine_access"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -4158,7 +3982,6 @@ def apply_settings_update():
         }), 400
     current["discord_allowed_users"] = allowed_users
     current["discord_allowed_channels"] = allowed_channels
-    current["terminal_enabled"] = bool(current.get("terminal_enabled", True))
     current["machine_access"] = bool(current.get("machine_access", True))
     raw_skills = current.get("skills")
     available_skill_names = {item["name"] for item in list_skills()}
