@@ -5,6 +5,8 @@ place; shared helpers, the settings store, the auth store and the Flask app
 remain in app.py, which registers this blueprint.
 """
 
+import hmac
+
 from flask import Blueprint, jsonify, redirect, render_template, request
 
 from app import (
