@@ -4,6 +4,7 @@ The handlers were split out of app.py so the page-specific code stays in one
 place; shared helpers, the settings store, the auth store and the Flask app
 remain in app.py, which registers this blueprint.
 """
+
 from flask import Blueprint, jsonify, redirect, render_template, request
 
 from app import (
@@ -14,7 +15,6 @@ from app import (
     AUTH_SESSION_COOKIE_HTTP,
     AUTH_SESSION_COOKIE_NAMES,
     AUTH_SESSION_DAYS,
-    app,
     auth_now,
     auth_session_tokens,
     consume_pairing_key,
@@ -22,15 +22,16 @@ from app import (
     current_auth_session,
     generate_pairing_key,
     hash_auth_token,
-    hmac,
     load_auth_state,
     log_event,
     no_store,
     pairing_attempt_allowed,
     prune_auth_state,
     record_pairing_failure,
+    request_language,
     revoke_auth_session,
     save_auth_state,
+    status_message,
 )
 
 pair_bp = Blueprint("pair", __name__)
@@ -69,16 +70,16 @@ def auth_pair():
     body = request.get_json(silent=True) or {}
     client_ip = request.remote_addr or "unknown"
     if not pairing_attempt_allowed(client_ip):
-        return jsonify({"error": "Too many pairing attempts. Please wait a few minutes and try again."}), 429
+        return jsonify({"error": status_message(request_language(), "pairing_rate_limited")}), 429
     if not consume_pairing_key(body.get("key")):
         record_pairing_failure(client_ip)
-        return jsonify({"error": "This Pairing Key is invalid, expired, or already used."}), 401
+        return jsonify({"error": status_message(request_language(), "pairing_key_invalid")}), 401
     token = create_auth_session(
         label=str(body.get("label") or ""),
         user_agent=request.headers.get("User-Agent", ""),
         client_ip=client_ip,
     )
-    log_event("auth.paired", "จับคู่อุปกรณ์ใหม่สำเร็จ", ip=client_ip)
+    log_event("auth.paired", "Paired a new device", ip=client_ip)
     response = jsonify({"ok": True, "redirect": "/"})
     cookie_name = AUTH_SESSION_COOKIE if request.is_secure else AUTH_SESSION_COOKIE_HTTP
     response.set_cookie(
@@ -122,10 +123,10 @@ def auth_sessions_list():
 def auth_create_pairing_key():
     """Generate a fresh pairing key for a new device from an authorized session."""
     if not AUTH_ENABLED:
-        return jsonify({"error": "Web auth is disabled. Set AI_WEB_AUTH=on to use pairing keys."}), 400
+        return jsonify({"error": status_message(request_language(), "auth_disabled")}), 400
     body = request.get_json(silent=True) or {}
     record = generate_pairing_key(str(body.get("label") or ""))
-    log_event("auth.pairing_key", "สร้าง Pairing Key ใหม่")
+    log_event("auth.pairing_key", "Created a new Pairing Key")
     return jsonify({"ok": True, **record}), 201
 
 
@@ -156,6 +157,6 @@ def auth_logout():
 def auth_revoke_session(session_id: str):
     """Revoke one paired device by id."""
     if not revoke_auth_session(session_id):
-        return jsonify({"error": "Device not found"}), 404
-    log_event("auth.revoked", "ยกเลิกอุปกรณ์ที่เชื่อมต่อ", session=session_id)
+        return jsonify({"error": status_message(request_language(), "device_not_found")}), 404
+    log_event("auth.revoked", "Revoked a connected device", session=session_id)
     return jsonify({"ok": True})

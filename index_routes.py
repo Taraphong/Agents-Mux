@@ -4,7 +4,8 @@ The handlers were split out of app.py so the page-specific code stays in one
 place; shared helpers, settings, history and the Flask app remain in app.py,
 which registers this blueprint.
 """
-from flask import Blueprint, abort, jsonify, redirect, render_template, request, send_from_directory
+
+from flask import Blueprint, abort, jsonify, render_template, request, send_from_directory
 
 from app import (
     APPROVAL_TTL_SECONDS,
@@ -50,7 +51,6 @@ from app import (
     UPDATE_SCRIPT,
     _write_history_record,
     agent_profile_prompt,
-    app,
     append_history_messages,
     apply_settings_update,
     apply_tls_environment,
@@ -90,6 +90,7 @@ from app import (
     re,
     read_history_file,
     redact_secrets,
+    request_language,
     request_tool_approval,
     requests,
     resolve_terminal_cwd,
@@ -158,24 +159,24 @@ def tools_execute():
     arguments = body.get("arguments", {})
     approval_id = body.get("approval_id")
     if not isinstance(name, str) or not isinstance(arguments, dict):
-        log_event("tool.invalid", "ข้อมูลเครื่องมือไม่ถูกต้อง")
-        return jsonify({"ok": False, "error": "ข้อมูลเครื่องมือไม่ถูกต้อง"}), 400
+        log_event("tool.invalid", "Invalid tool payload")
+        return jsonify({"ok": False, "error": status_message(request_language(), "tool_invalid_payload")}), 400
     canonical_name = TOOL_ALIASES.get(name, name)
     approved = False
     if canonical_name in approval_required_tools():
         approved = consume_tool_approval(approval_id, name, arguments)
         if not approved:
-            log_event("tool.denied", f"ปฏิเสธ {name} เพราะไม่มีการอนุมัติที่ถูกต้อง", tool=name)
-            return jsonify({"ok": False, "error": "คำขออนุมัติไม่ถูกต้องหรือหมดอายุ กรุณาขอใหม่อีกครั้ง"}), 403
+            log_event("tool.denied", f"Denied {name} because there is no valid approval", tool=name)
+            return jsonify({"ok": False, "error": status_message(request_language(), "tool_approval_invalid")}), 403
     try:
         result = run_local_tool(name, arguments, approved=approved)
         return jsonify({"ok": True, "result": result})
     except (FileNotFoundError, PermissionError, ValueError, OSError, subprocess.SubprocessError) as exc:
-        log_event("tool.error", f"ใช้ {name} ไม่สำเร็จ", tool=name, error=str(exc))
+        log_event("tool.error", f"{name} failed", tool=name, error=str(exc))
         # ``approved`` means the single-use token was already consumed above, so
         # the client must ask for a new approval instead of offering a retry
         # with a token this endpoint will reject.
-        return jsonify({"ok": False, "error": "ใช้เครื่องมือไม่สำเร็จ กรุณาตรวจสอบพารามิเตอร์แล้วลองใหม่", "approval_consumed": approved}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "tool_failed"), "approval_consumed": approved}), 400
 
 
 @index_bp.get("/api/terminal/info")
@@ -200,14 +201,14 @@ def terminal_exec():
     body = request.get_json(silent=True) or {}
     command = body.get("command")
     if not isinstance(command, str):
-        return jsonify({"ok": False, "error": "ต้องระบุคำสั่ง"}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "command_required")}), 400
     try:
         cwd = resolve_terminal_cwd(body.get("cwd", "."))
         result = execute_terminal_command(command, cwd)
         return jsonify({"ok": True, **result})
     except (PermissionError, FileNotFoundError, ValueError, OSError, subprocess.SubprocessError) as exc:
-        log_event("tool.terminal_error", "Terminal รันคำสั่งไม่สำเร็จ", error=str(exc))
-        return jsonify({"ok": False, "error": "คำสั่ง Terminal ถูกปฏิเสธหรือทำงานไม่สำเร็จ"}), 400
+        log_event("tool.terminal_error", "The terminal command failed", error=str(exc))
+        return jsonify({"ok": False, "error": status_message(request_language(), "terminal_failed")}), 400
 
 
 @index_bp.get("/api/logs")
@@ -227,7 +228,7 @@ def logs_delete():
             APP_LOGS.clear()
             LOG_FILE.unlink(missing_ok=True)
     except OSError:
-        return jsonify({"ok": False, "error": "ลบ log ไม่สำเร็จ"}), 500
+        return jsonify({"ok": False, "error": status_message(request_language(), "log_clear_failed")}), 500
     return jsonify({"ok": True, "deleted": deleted})
 
 
@@ -244,14 +245,14 @@ def schedules_create():
     name = str(body.get("name", "")).strip()
     prompt = str(body.get("prompt", "")).strip()
     if not name or not prompt:
-        return jsonify({"error": "กรุณาระบุชื่องานและ prompt"}), 400
+        return jsonify({"error": status_message(request_language(), "schedule_name_required")}), 400
     try:
         schedule = validate_cron(body.get("schedule", ""))
     except (TypeError, ValueError):
-        return jsonify({"error": "รูปแบบ schedule ไม่ถูกต้อง (ต้องเป็น cron 5 ช่อง)"}), 400
+        return jsonify({"error": status_message(request_language(), "schedule_invalid")}), 400
     discord_channel_id = str(body.get("discord_channel_id", "")).strip()[:30]
     if discord_channel_id and not discord_channel_id.isdigit():
-        return jsonify({"error": "Discord Channel ID ต้องเป็นตัวเลข"}), 400
+        return jsonify({"error": status_message(request_language(), "schedule_channel_invalid")}), 400
     job = {"id": str(uuid.uuid4()), "conversation_id": str(uuid.uuid4()), "name": name[:100], "schedule": schedule, "prompt": prompt[:10_000], "model": str(body.get("model", "")).strip()[:200], "discord_channel_id": discord_channel_id, "enabled": bool(body.get("enabled", True)), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "last_run_at": None, "last_status": None, "last_error": ""}
     with SCHEDULE_LOCK:
         jobs = load_schedules()
@@ -268,12 +269,12 @@ def schedules_update(job_id: str):
         jobs = load_schedules()
         job = next((item for item in jobs if item.get("id") == job_id), None)
         if not job:
-            return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
+            return jsonify({"error": status_message(request_language(), "schedule_not_found")}), 404
         if "schedule" in body:
             try:
                 job["schedule"] = validate_cron(body["schedule"])
             except (TypeError, ValueError):
-                return jsonify({"error": "รูปแบบ schedule ไม่ถูกต้อง (ต้องเป็น cron 5 ช่อง)"}), 400
+                return jsonify({"error": status_message(request_language(), "schedule_invalid")}), 400
         if "name" in body:
             job["name"] = str(body["name"]).strip()[:100] or job["name"]
         if "prompt" in body:
@@ -283,7 +284,7 @@ def schedules_update(job_id: str):
         if "discord_channel_id" in body:
             discord_channel_id = str(body["discord_channel_id"]).strip()[:30]
             if discord_channel_id and not discord_channel_id.isdigit():
-                return jsonify({"error": "Discord Channel ID ต้องเป็นตัวเลข"}), 400
+                return jsonify({"error": status_message(request_language(), "schedule_channel_invalid")}), 400
             job["discord_channel_id"] = discord_channel_id
         if "enabled" in body:
             job["enabled"] = bool(body["enabled"])
@@ -297,10 +298,10 @@ def schedules_run(job_id: str):
     jobs = load_schedules()
     job = next((item for item in jobs if item.get("id") == job_id), None)
     if not job:
-        return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
+        return jsonify({"error": status_message(request_language(), "schedule_not_found")}), 404
     with SCHEDULE_RUNNING_LOCK:
         if job_id in SCHEDULE_RUNNING:
-            return jsonify({"error": "งานนี้กำลังทำงานอยู่"}), 409
+            return jsonify({"error": status_message(request_language(), "schedule_running")}), 409
         SCHEDULE_RUNNING.add(job_id)
     try:
         threading.Thread(target=execute_schedule, args=(job,), daemon=True).start()
@@ -318,15 +319,9 @@ def schedules_delete(job_id: str):
         jobs = load_schedules()
         remaining = [job for job in jobs if job.get("id") != job_id]
         if len(remaining) == len(jobs):
-            return jsonify({"error": "ไม่พบงานตามเวลา"}), 404
+            return jsonify({"error": status_message(request_language(), "schedule_not_found")}), 404
         save_schedules(remaining)
     return jsonify({"ok": True})
-
-
-@index_bp.errorhandler(413)
-def request_too_large(_error):
-    """Answer an oversized upload with JSON instead of Werkzeug's HTML page."""
-    return jsonify({"error": "ข้อมูลที่ส่งมีขนาดใหญ่เกินกว่าที่อนุญาต"}), 413
 
 
 @index_bp.get("/templates/<page>/<filename>")
@@ -393,10 +388,10 @@ def skill_get(name: str):
     try:
         path = skill_path(name)
         if not path.exists():
-            return jsonify({"error": "ไม่พบ Skill"}), 404
+            return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
         return jsonify({"name": path.parent.name, "content": path.read_text(encoding="utf-8")[:20_000]})
     except (OSError, ValueError):
-        return jsonify({"error": "อ่าน Skill ไม่สำเร็จ"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_read_failed")}), 400
 
 
 @index_bp.post("/api/skills")
@@ -407,7 +402,7 @@ def skills_create():
         result = run_local_tool("create_skill", {"name": body.get("name", ""), "content": body.get("content", "")}, approved=True)
         return jsonify(result), 201
     except (OSError, PermissionError, ValueError):
-        return jsonify({"error": "สร้าง Skill ไม่สำเร็จ"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_create_failed")}), 400
 
 
 @index_bp.put("/api/skills/<name>")
@@ -416,15 +411,15 @@ def skills_update(name: str):
     body = request.get_json(silent=True) or {}
     content = body.get("content", "")
     if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
-        return jsonify({"error": "เนื้อหา Skill ไม่ถูกต้องหรือใหญ่เกินขนาดที่อนุญาต"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_content_invalid")}), 400
     try:
         path = skill_path(name)
         if not path.exists():
-            return jsonify({"error": "ไม่พบ Skill"}), 404
+            return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
         path.write_text(content.strip() + "\n", encoding="utf-8")
         return jsonify({"ok": True, "name": path.parent.name})
     except (OSError, ValueError):
-        return jsonify({"error": "บันทึก Skill ไม่สำเร็จ"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_save_failed")}), 400
 
 
 @index_bp.delete("/api/skills/<name>")
@@ -433,11 +428,11 @@ def skills_delete(name: str):
     try:
         path = skill_path(name)
         if not path.exists():
-            return jsonify({"error": "ไม่พบ Skill"}), 404
+            return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
         shutil.rmtree(path.parent)
         return jsonify({"ok": True, "name": path.parent.name})
     except (OSError, ValueError):
-        return jsonify({"error": "ลบ Skill ไม่สำเร็จ"}), 400
+        return jsonify({"error": status_message(request_language(), "skill_delete_failed")}), 400
 
 
 @index_bp.get("/api/status")
@@ -470,10 +465,10 @@ def history_get(conversation_id: str):
     """Return one full conversation record by id."""
     path = find_history_file(conversation_id)
     if not path or not path.exists():
-        return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+        return jsonify({"error": status_message(request_language(), "history_not_found")}), 404
     record = read_history_file(path)
     if record is None:
-        return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+        return jsonify({"error": status_message(request_language(), "history_corrupt")}), 409
     payload = dict(record)
     # A pending approval restored from disk needs the server clock to be
     # measured against; the browser clock cannot be trusted for that.
@@ -492,15 +487,15 @@ def history_clear_approval(conversation_id: str):
     body = request.get_json(silent=True) or {}
     message_id = body.get("message_id")
     if not isinstance(message_id, str) or not message_id:
-        return jsonify({"ok": False, "error": "ต้องระบุ message_id"}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "history_message_id_required")}), 400
     # find_history_file already rejects anything that is not a conversation id.
     with HISTORY_LOCK:
         path = find_history_file(conversation_id)
         if not path or not path.exists():
-            return jsonify({"ok": False, "error": "ไม่พบประวัติการสนทนา"}), 404
+            return jsonify({"ok": False, "error": status_message(request_language(), "history_not_found")}), 404
         record = read_history_file(path)
         if record is None:
-            return jsonify({"ok": False, "error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+            return jsonify({"ok": False, "error": status_message(request_language(), "history_corrupt")}), 409
         stored = record.get("messages") if isinstance(record.get("messages"), list) else []
         cleared = False
         for message in stored:
@@ -522,13 +517,13 @@ def history_update(conversation_id: str):
     with HISTORY_LOCK:
         path = find_history_file(conversation_id)
         if not path or not path.exists():
-            return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+            return jsonify({"error": status_message(request_language(), "history_not_found")}), 404
         record = read_history_file(path)
         if record is None:
-            return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+            return jsonify({"error": status_message(request_language(), "history_corrupt")}), 409
         body = request.get_json(silent=True) or {}
         if record.get("locked") and {"title", "messages"} & set(body):
-            return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนแก้ไข"}), 423
+            return jsonify({"error": status_message(request_language(), "history_locked_edit")}), 423
         if "title" in body:
             title = str(body["title"]).strip()
             if title:
@@ -540,20 +535,20 @@ def history_update(conversation_id: str):
         if "messages" in body:
             new_messages = body.get("messages")
             if not isinstance(new_messages, list):
-                return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
+                return jsonify({"error": status_message(request_language(), "history_invalid")}), 400
             if len(new_messages) > 5000:
-                return jsonify({"error": "จำนวนข้อความมากเกินไป"}), 400
+                return jsonify({"error": status_message(request_language(), "history_too_many_messages")}), 400
             safe_roles = {"user", "assistant"}
             sanitized_messages = []
             for item in new_messages:
                 if not isinstance(item, dict):
-                    return jsonify({"error": "รูปแบบข้อความไม่ถูกต้อง"}), 400
+                    return jsonify({"error": status_message(request_language(), "history_invalid_message")}), 400
                 role = str(item.get("role", "")).strip().lower()
                 content = item.get("content")
                 if role not in safe_roles:
-                    return jsonify({"error": "พบ role ที่ไม่อนุญาตในประวัติ"}), 400
+                    return jsonify({"error": status_message(request_language(), "history_unsupported_role")}), 400
                 if not isinstance(content, str):
-                    return jsonify({"error": "รูปแบบข้อความไม่ถูกต้อง"}), 400
+                    return jsonify({"error": status_message(request_language(), "history_invalid_message")}), 400
                 sanitized_messages.append({"role": role, "content": content[:20000]})
             # Editing a prompt replaces the stored list with the sanitized one.
             record["messages"] = sanitized_messages
@@ -568,12 +563,12 @@ def history_delete(conversation_id: str):
     with HISTORY_LOCK:
         path = find_history_file(conversation_id)
         if not path or not path.exists():
-            return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+            return jsonify({"error": status_message(request_language(), "history_not_found")}), 404
         record = read_history_file(path)
         if record is None:
-            return jsonify({"error": "ไฟล์ประวัติเสียหายหรืออ่านไม่ได้ กรุณาตรวจสอบไฟล์ในโฟลเดอร์ history"}), 409
+            return jsonify({"error": status_message(request_language(), "history_corrupt")}), 409
         if record.get("locked"):
-            return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนลบ"}), 423
+            return jsonify({"error": status_message(request_language(), "history_locked_delete")}), 423
         path.unlink()
         return jsonify({"ok": True})
 
@@ -585,13 +580,13 @@ def history_append(conversation_id: str):
     messages = body.get("messages")
     generation = body.get("generation")
     if not isinstance(messages, list) or not messages:
-        return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
+        return jsonify({"error": status_message(request_language(), "history_invalid")}), 400
     try:
         record = append_history_messages(conversation_id, messages, generation)
     except HistoryConflict:
-        return jsonify({"error": "เกิดความขัดแย้งข้อมูล: บันทึกถูกปรับปรุงโดยผู้อื่น กรุณาโหลดใหม่"}), 409
+        return jsonify({"error": status_message(request_language(), "history_conflict")}), 409
     if record is None:
-        return jsonify({"error": "ไม่พบประวัติการสนทนา"}), 404
+        return jsonify({"error": status_message(request_language(), "history_not_found")}), 404
     return jsonify(record)
 
 
@@ -600,11 +595,11 @@ def history_save():
     """Store a conversation payload sent by the web UI."""
     body = request.get_json(silent=True) or {}
     if not isinstance(body.get("messages"), list):
-        return jsonify({"error": "รูปแบบประวัติไม่ถูกต้อง"}), 400
+        return jsonify({"error": status_message(request_language(), "history_invalid")}), 400
     try:
         return jsonify(save_history(body))
     except HistoryLocked:
-        return jsonify({"error": "ประวัตินี้ถูกล็อก กรุณาปลดล็อกก่อนบันทึกทับ"}), 423
+        return jsonify({"error": status_message(request_language(), "history_locked_save")}), 423
 
 
 @index_bp.get("/api/models")
@@ -659,7 +654,7 @@ def settings_test():
     provider = normalize_provider(settings.get("provider"))
     STATUS_CACHE.clear()
     try:
-        messages = clean_messages([{"role": "user", "content": "ตอบคำว่า OK สั้น ๆ"}], settings)
+        messages = clean_messages([{"role": "user", "content": "Reply with a short OK"}], settings)
         answer, _usage = call_provider(messages, settings)
         STATUS_CACHE.clear()
         return jsonify({"ok": True, "answer": answer, "provider": provider})
@@ -682,10 +677,10 @@ def settings_test():
                 detail = exc.response.text
             detail = detail[:300]
         api_key = get_api_key(provider, settings)
-        message = redact_secrets(detail, api_key=api_key) if detail else "ตรวจสอบ API key, โมเดล และ Base URL อีกครั้ง"
+        message = redact_secrets(detail, api_key=api_key) if detail else status_message(request_language(), "test_connection_hint")
         return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: {message}"}), 502
     except (requests.RequestException, KeyError, IndexError, RuntimeError):
-        return jsonify({"ok": False, "provider": provider, "error": f"{PROVIDER_LABELS[provider]}: เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"}), 502
+        return jsonify({"ok": False, "provider": provider, "error": status_message(request_language(), "test_connection_failed", label=PROVIDER_LABELS[provider])}), 502
 
 
 @index_bp.get("/api/gemini/capabilities")
@@ -933,7 +928,7 @@ def server_tls_update():
         except OSError as exc:
             return jsonify({"ok": False, "error": status_message(language, "env_write_failed", error=str(exc))}), 500
         apply_tls_environment(values)
-    log_event("system.tls_saved", "บันทึกโหมดการเชื่อมต่อจากหน้าเว็บ", mode=mode, kind=https_kind)
+    log_event("system.tls_saved", "Saved the connection mode from the web page", mode=mode, kind=https_kind)
     return no_store(jsonify({
         "ok": True,
         "mode": mode,
@@ -981,7 +976,7 @@ def server_action():
             "action": action,
             "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
-    log_event("system.server_action", "สั่งควบคุมเซิร์ฟเวอร์จากหน้าเว็บ", action=action)
+    log_event("system.server_action", "Server control requested from the web page", action=action)
     return no_store(jsonify({"ok": True, "action": action, "pid": child.pid})), 202
 
 
@@ -1005,17 +1000,17 @@ def update_run():
     body = request.get_json(silent=True) or {}
     mode = str(body.get("mode") or "apply").strip().lower()
     if mode not in UPDATE_MODES:
-        return jsonify({"ok": False, "error": "โหมดอัปเดตไม่ถูกต้อง"}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "update_mode_invalid")}), 400
     if not update_script_ready():
-        return jsonify({"ok": False, "error": "ไม่พบสคริปต์ update.sh ที่รันได้ในโฟลเดอร์โปรเจกต์"}), 400
+        return jsonify({"ok": False, "error": status_message(request_language(), "update_script_missing")}), 400
     # Check the same view GET /api/update reports, so a job that is still running
     # after a server restart is not truncated and replaced by a second updater.
     if update_job_snapshot()["running"]:
-        return jsonify({"ok": False, "error": "มีการอัปเดตกำลังทำงานอยู่"}), 409
+        return jsonify({"ok": False, "error": status_message(request_language(), "update_busy")}), 409
     with UPDATE_JOB_LOCK:
         process = UPDATE_JOB.get("process")
         if process and process.poll() is None:
-            return jsonify({"ok": False, "error": "มีการอัปเดตกำลังทำงานอยู่"}), 409
+            return jsonify({"ok": False, "error": status_message(request_language(), "update_busy")}), 409
         args = [str(UPDATE_SCRIPT)]
         if mode == "check":
             # A dry run only compares files, so it must not write or restart.
@@ -1035,7 +1030,7 @@ def update_run():
                     env={**os.environ, "AI_WEB_UPDATE_FROM_WEB": "1"},
                 )
         except OSError:
-            return jsonify({"ok": False, "error": "เริ่มอัปเดตไม่สำเร็จ กรุณาดู log ของระบบ"}), 500
+            return jsonify({"ok": False, "error": status_message(request_language(), "update_start_failed")}), 500
         started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         UPDATE_JOB.clear()
         UPDATE_JOB.update({
@@ -1049,7 +1044,7 @@ def update_run():
         })
         save_update_status({"mode": mode, "started_at": started_at, "pid": new_process.pid})
     threading.Thread(target=watch_update_job, args=(new_process,), daemon=True).start()
-    log_event("system.update_started", "เริ่มอัปเดตระบบจากหน้าเว็บ", mode=mode)
+    log_event("system.update_started", "Started a system update from the web page", mode=mode)
     return jsonify({"ok": True, "mode": mode, "pid": new_process.pid}), 202
 
 
@@ -1059,14 +1054,14 @@ def chat():
     body = request.get_json(silent=True) or {}
     messages = body.get("messages", [])
     if not messages or not isinstance(messages, list):
-        return jsonify({"error": "กรุณาส่งข้อความ"}), 400
+        return jsonify({"error": status_message(request_language(), "chat_message_required")}), 400
 
     provider = "openai"
     # Bound before the try block: the error handlers below must never raise a
     # NameError that hides the real cause.
     settings: dict[str, Any] = {}
     try:
-        log_event("chat.start", "เริ่มประมวลผลข้อความ", message_count=len(messages))
+        log_event("chat.start", "Started processing a message", message_count=len(messages))
         settings = load_settings()
         provider = str(settings.get("provider", "openai")).lower()
         request_skills = body.get("skills")
@@ -1090,7 +1085,7 @@ def chat():
             part for part in (
                 settings.get("system_prompt", ""),
                 agent_profile_prompt(settings),
-                f"แนวทางทบทวนความจำ:\n{settings.get('memory_review', '')}" if settings.get("memory_review") else "",
+                f"Memory review guidance:\n{settings.get('memory_review', '')}" if settings.get("memory_review") else "",
                 selected_skill_prompt(settings),
                 TOOL_INSTRUCTIONS,
             ) if part
@@ -1147,7 +1142,7 @@ def chat():
             try:
                 tool_requests = parse_tool_requests(answer)
             except ValueError as exc:
-                log_event("tool.parse_failed", "ข้าม tool_call ที่ไม่สมบูรณ์", error=str(exc))
+                log_event("tool.parse_failed", "Skipped an incomplete tool_call", error=str(exc))
                 tool_requests = []
             if not tool_requests:
                 break
@@ -1170,7 +1165,7 @@ def chat():
             ):
                 approval_id, approval_expires_at = request_tool_approval(approval_request["name"], approval_request["arguments"])
                 return jsonify({
-                    "answer": "AI ขอใช้เครื่องมือที่ต้องได้รับอนุมัติก่อน",
+                    "answer": "The AI requested a tool that needs approval first",
                     "provider": provider,
                     "tool_request": approval_request,
                     "approval_id": approval_id,
@@ -1194,21 +1189,21 @@ def chat():
                 results.append(result)
             messages.extend([
                 {"role": "assistant", "content": answer},
-                {"role": "user", "content": f"ผลการใช้เครื่องมือ:\n{json.dumps(results, ensure_ascii=False)}\n\nตอบผู้ใช้เป็นข้อความธรรมดา อธิบายชื่อและหน้าที่ของแต่ละ Skill ที่ตรวจพบ ห้ามแสดง tool_call หรือ JSON"},
+                {"role": "user", "content": f"Tool results:\n{json.dumps(results, ensure_ascii=False)}\n\nAnswer the user in plain text, describing the name and purpose of each detected Skill. Never show a tool_call or JSON."},
             ])
             answer, usage = call_provider(messages, settings)
         duration_ms = round((time.perf_counter() - started_at) * 1000)
-        log_event("chat.success", "ตอบข้อความสำเร็จ", provider=provider, model=settings["model"], duration_ms=duration_ms)
+        log_event("chat.success", "Replied successfully", provider=provider, model=settings["model"], duration_ms=duration_ms)
         return jsonify({"answer": answer, "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
-        log_event("provider.error", "ผู้ให้บริการตอบกลับด้วย HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
+        log_event("provider.error", "The provider answered with an HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
         api_key = safe_stored_api_key(provider, settings)
         if exc.response is not None and exc.response.status_code in {429, 503}:
-            provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "ผู้ให้บริการ")
-            return jsonify({"error": f"{provider_label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น"}), 503
-        fallback_detail = "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล"
+            provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "The provider")
+            return jsonify({"error": status_message(request_language(), "chat_busy", label=provider_label)}), 503
+        fallback_detail = status_message(request_language(), "chat_provider_error")
         detail = redact_secrets(exc.response.text if exc.response is not None else fallback_detail, api_key=api_key)[:500]
-        return jsonify({"error": f"เรียก API ไม่สำเร็จ: {detail}"}), 502
+        return jsonify({"error": status_message(request_language(), "chat_api_failed", detail=detail)}), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
-        log_event("chat.error", "ประมวลผลข้อความไม่สำเร็จ", error=str(exc))
-        return jsonify({"error": "ประมวลผลข้อความไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"}), 500
+        log_event("chat.error", "Could not process the message", error=str(exc))
+        return jsonify({"error": status_message(request_language(), "chat_failed")}), 500
