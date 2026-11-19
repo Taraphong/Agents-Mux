@@ -472,6 +472,8 @@ const I18N = {
     "tool.done": "ทำงานแล้ว",
     "tool.error": "ใช้เครื่องมือไม่สำเร็จ",
     "tool.expired": "คำขออนุมัติหมดอายุ กรุณาส่งข้อความใหม่",
+    "tool.failedAfterApproval":
+      "ใช้เครื่องมือไม่สำเร็จ: {message} (คำขออนุมัตินี้ถูกใช้แล้ว กรุณาส่งข้อความใหม่)",
     "tool.retry": "ลองอีกครั้ง ({message})",
     "tool.resultPrefix": "ผลการใช้เครื่องมือ:",
     "attachment.tooLarge": "ไฟล์ใหญ่เกิน 1 MB",
@@ -1044,6 +1046,8 @@ const I18N = {
     "tool.done": "Done",
     "tool.error": "The tool could not run",
     "tool.expired": "Approval expired. Please send a new message.",
+    "tool.failedAfterApproval":
+      "The tool failed: {message} (this approval was already used, please send a new message)",
     "tool.retry": "Try again ({message})",
     "tool.resultPrefix": "Tool result:",
     "attachment.tooLarge": "File is larger than 1 MB",
@@ -1645,7 +1649,10 @@ async function runSlashCommand(raw) {
           );
           return { handled: true };
         }
-        const disable = ["off", "none", "disabled"].includes(
+        // "ปิด" is the Thai word for off and stays an alias so an existing
+        // habit of typing it keeps disabling fallback instead of being saved
+        // as a model ID.
+        const disable = ["off", "none", "disabled", "ปิด"].includes(
           rest.toLowerCase(),
         );
         const response = await fetch("/api/settings", {
@@ -2222,8 +2229,8 @@ async function approveToolRequest(event) {
       const error = new Error(data.error || t("tool.error"));
       // 403 is a rejected or already used token. A 400 is fatal too when the
       // server reports that the token was consumed before the tool failed.
-      error.fatal =
-        response.status === 403 || Boolean(data.approval_consumed);
+      error.consumed = Boolean(data.approval_consumed);
+      error.fatal = response.status === 403 || error.consumed;
       throw error;
     }
     if (meta) delete meta.approval_running;
@@ -2247,9 +2254,13 @@ async function approveToolRequest(event) {
   } catch (error) {
     if (meta) delete meta.approval_running;
     button.disabled = Boolean(error.fatal);
-    button.textContent = error.fatal
-      ? t("tool.expired")
-      : t("tool.retry", { message: error.message });
+    // A consumed approval whose tool then failed carries the real tool error;
+    // show it and ask for a new approval instead of the expired label.
+    button.textContent = error.consumed
+      ? t("tool.failedAfterApproval", { message: error.message })
+      : error.fatal
+        ? t("tool.expired")
+        : t("tool.retry", { message: error.message });
     if (error.fatal) clearApprovalState(meta, targetConversationId);
   }
 }
@@ -3284,8 +3295,11 @@ async function sendChatMessage(content, requestedSkills = null) {
 function scheduleStatusText(value) {
   const status = String(value || "").trim();
   if (!status) return t("schedule.neverRun");
-  if (status === "success") return t("schedule.success");
-  if (status === "failed") return t("schedule.failed");
+  // Jobs saved before the upgrade kept the Thai status values on disk.
+  if (status === "success" || status === "สำเร็จ")
+    return t("schedule.success");
+  if (status === "failed" || status === "ล้มเหลว")
+    return t("schedule.failed");
   return status;
 }
 function renderSchedules(items) {

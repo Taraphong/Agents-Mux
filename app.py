@@ -33,6 +33,7 @@ from collections import deque
 import requests
 from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory
+from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.serving import (
     ThreadedWSGIServer,
@@ -2191,15 +2192,24 @@ def status_message(language: str, key: str, **kwargs: Any) -> str:
     return template.format(**kwargs)
 
 
-def request_language() -> str:
+def request_language(allow_body: bool = True) -> str:
     """Pick the response language the current page asked for."""
     value = request.headers.get("X-Interface-Language")
     if not value:
         value = request.args.get("lang")
-    if not value:
-        body = request.get_json(silent=True)
-        if isinstance(body, dict):
-            value = body.get("lang")
+    if not value and allow_body:
+        # Reading an oversized body raises RequestEntityTooLarge again, which
+        # would turn the 413 handler (or a rejection made while handling one)
+        # into a 500, so the body is only parsed when it fits and cannot raise.
+        limit = app.config.get("MAX_CONTENT_LENGTH")
+        length = request.content_length
+        if not (limit and length and length > limit):
+            try:
+                body = request.get_json(silent=True)
+            except HTTPException:
+                body = None
+            if isinstance(body, dict):
+                value = body.get("lang")
     return normalize_language(value)
 
 
@@ -3047,7 +3057,7 @@ def start_discord_bot() -> None:
         probe_settings = dict(settings)
         probe_settings["provider"] = provider
         probe_settings["model"] = model
-        return await asyncio.to_thread(provider_readiness, probe_settings, "th")
+        return await asyncio.to_thread(provider_readiness, probe_settings, "en")
 
     async def ask_agent(
         context_key: str,
@@ -3878,7 +3888,7 @@ def reject_cross_site_mutation():
 @app.errorhandler(413)
 def request_too_large(_error):
     """Answer an oversized upload with JSON instead of Werkzeug's HTML page."""
-    return jsonify({"error": status_message(request_language(), "body_too_large")}), 413
+    return jsonify({"error": status_message(request_language(allow_body=False), "body_too_large")}), 413
 
 
 @app.before_request
