@@ -815,10 +815,17 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
 
     Machine access is the documented default; without this resolver the tools
     advertised as machine-scoped still refused every path outside the project.
+    The parent is resolved through realpath before ".." is collapsed, so a
+    symlinked folder cannot turn an approved write into a different file; the
+    final component may still be missing because write_file creates it.
     """
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("A path is required")
-    candidate = Path(os.path.abspath(os.path.expanduser(raw_path.strip())))
+    expanded = os.path.expanduser(raw_path.strip())
+    parent_text, name = os.path.split(expanded)
+    resolved_parent = os.path.realpath(parent_text or os.curdir)
+    candidate_text = os.path.normpath(os.path.join(resolved_parent, name))
+    candidate = Path(candidate_text)
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
@@ -1052,6 +1059,13 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
 
     if name == "read_file":
         machine_access = machine_access_enabled()
+        # Snapshot the secrets before the read: a settings save that lands
+        # between the read and the redaction would otherwise drop a key from
+        # the list and let it through into the transcript.
+        try:
+            secrets_before_read = terminal_secret_values() if machine_access else []
+        except (OSError, ValueError):
+            secrets_before_read = []
         if machine_access:
             path = resolve_machine_path(arguments.get("path", ""), must_exist=True)
         else:
@@ -1069,6 +1083,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             # Whole-machine reads must not copy stored credentials into the chat
             # transcript or the saved conversation history.
             content = redact_secrets(content)
+            content = redact_terminal_output(content, secrets_before_read)
         result = {"tool": name, "path": display_tool_path(path), "content": content, "scope": "machine" if machine_access else "project"}
         log_event("tool.success", f"Used {name}", tool=name, path=result["path"])
         return result
@@ -1366,6 +1381,25 @@ def terminal_identity() -> tuple[str, str]:
     return user, host
 
 
+def terminal_group_alive(pgid: int) -> bool:
+    """Report whether any process of a terminal command's group still runs."""
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def kill_terminal_group(pgid: int) -> None:
+    """Kill every process left in a terminal command's group."""
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
     """Run a command with capped output and a hard timeout for the whole process group."""
     started_at = time.perf_counter()
@@ -1387,19 +1421,51 @@ def run_terminal_process(command: str, cwd: Path) -> tuple[int, str, str, bool, 
             env=env,
             start_new_session=True,
         )
+        # The group is its own session, so its id is the leader's pid.
+        pgid = process.pid
+        deadline = time.monotonic() + TERMINAL_TIMEOUT_SECONDS
         try:
             process.wait(timeout=TERMINAL_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             timed_out = True
-            try:
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                process.kill()
+            kill_terminal_group(pgid)
             process.wait()
+        # A shell that exits still leaves `cmd &` jobs running in the group, and
+        # they keep the capture files open. They get the same deadline, then the
+        # group is killed so nothing outlives the timeout.
+        while terminal_group_alive(pgid):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                kill_terminal_group(pgid)
+                break
+            time.sleep(min(0.05, remaining))
         stdout, stdout_cut = read_terminal_capture(out_file)
         stderr, stderr_cut = read_terminal_capture(err_file)
     duration_ms = round((time.perf_counter() - started_at) * 1000)
     return process.returncode, stdout, stderr, timed_out, stdout_cut or stderr_cut, duration_ms, injected_secrets
+
+
+TERMINAL_COMPOUND_PATTERN = re.compile(r"[;&|<>`$\n]")
+
+
+def parse_standalone_cd(command: str) -> str | None:
+    """Return the folder for a standalone `cd`, or None for the shell to run.
+
+    shlex keeps a quoted path such as `cd "my folder"` as one argument, so the
+    quoted form persists too. A command list (`cd subdir; pwd`) or an expansion
+    is left to the shell instead of being read as one literal path.
+    """
+    if TERMINAL_COMPOUND_PATTERN.search(command):
+        return None
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        return None
+    if not tokens or tokens[0] != "cd":
+        return None
+    if len(tokens) > 2:
+        raise ValueError("cd accepts one path at a time")
+    return tokens[1] if len(tokens) == 2 else ""
 
 
 def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
@@ -1415,21 +1481,14 @@ def execute_terminal_command(command: str, cwd: Path) -> dict[str, Any]:
     ensure_terminal_paths_allowed(stripped)
 
     changed_directory = False
-    # Only a bare `cd` or `cd <one-path>` is handled here so the directory can
-    # persist; anything with shell syntax goes to the shell like a real terminal.
-    cd_match = re.fullmatch(r"cd(?:\s+(\S+))?", stripped)
-    if cd_match:
-        target = (cd_match.group(1) or "").strip()
-        if target in {"", "~"}:
+    # Only a standalone `cd` is handled here so the directory can persist;
+    # anything with shell syntax goes to the shell like a real terminal.
+    cd_target = parse_standalone_cd(stripped)
+    if cd_target is not None:
+        if cd_target in {"", "~"}:
             new_cwd = PROJECT_ROOT
         else:
-            try:
-                tokens = shlex.split(target)
-            except ValueError as exc:
-                raise ValueError("Invalid path format for cd") from exc
-            if len(tokens) != 1:
-                raise ValueError("cd accepts one path at a time")
-            new_cwd = resolve_terminal_cwd(tokens[0])
+            new_cwd = resolve_terminal_cwd(cd_target)
         cwd = new_cwd
         changed_directory = True
         result = {

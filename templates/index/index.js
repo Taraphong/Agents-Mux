@@ -4900,13 +4900,22 @@ let activeServerAction = "";
 // kept in sessionStorage so reloading the page before the restart still points
 // at the new address instead of polling the old origin until it times out.
 const PENDING_SCHEME_KEY = "ai-web-pending-scheme";
-let pendingSchemeUrl = sessionStorage.getItem(PENDING_SCHEME_KEY) || "";
+let pendingSchemeUrl = "";
+try {
+  pendingSchemeUrl = sessionStorage.getItem(PENDING_SCHEME_KEY) || "";
+} catch (error) {
+  // Storage is blocked; the restart address is kept in memory only.
+}
 function setPendingSchemeUrl(url) {
   pendingSchemeUrl = url || "";
-  if (pendingSchemeUrl) {
-    sessionStorage.setItem(PENDING_SCHEME_KEY, pendingSchemeUrl);
-  } else {
-    sessionStorage.removeItem(PENDING_SCHEME_KEY);
+  try {
+    if (pendingSchemeUrl) {
+      sessionStorage.setItem(PENDING_SCHEME_KEY, pendingSchemeUrl);
+    } else {
+      sessionStorage.removeItem(PENDING_SCHEME_KEY);
+    }
+  } catch (error) {
+    // Storage is blocked; the in-memory value still drives this page.
   }
 }
 function applyServerStatus(data) {
@@ -4926,8 +4935,18 @@ function applyServerStatus(data) {
   if (serverState.scheme && currentMode !== serverState.scheme) {
     const port = serverState.port || Number(location.port) || 5000;
     setPendingSchemeUrl(`${serverState.scheme}://${location.hostname}:${port}/`);
-  } else if (pendingSchemeUrl && pendingSchemeUrl.startsWith(location.origin)) {
-    setPendingSchemeUrl("");
+  } else if (pendingSchemeUrl) {
+    const pendingMode = pendingSchemeUrl.startsWith("https://") ? "https" : "http";
+    const savedMode = serverState.tls?.mode || "";
+    // Drop the saved address once this page already runs on it, or when the
+    // mode saved in Settings no longer matches it: storage is per origin, so
+    // HTTP -> HTTPS -> HTTP would otherwise keep the first switch's address.
+    if (
+      pendingSchemeUrl.startsWith(location.origin) ||
+      (savedMode && pendingMode !== savedMode)
+    ) {
+      setPendingSchemeUrl("");
+    }
   }
 }
 function serverUptimeText(seconds) {
