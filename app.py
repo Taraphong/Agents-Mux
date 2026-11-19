@@ -815,17 +815,15 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
 
     Machine access is the documented default; without this resolver the tools
     advertised as machine-scoped still refused every path outside the project.
-    The parent is resolved through realpath before ".." is collapsed, so a
-    symlinked folder cannot turn an approved write into a different file; the
-    final component may still be missing because write_file creates it.
+    The whole path is resolved through realpath before ".." is collapsed, so
+    neither a symlinked folder nor a symlinked final file can turn an approved
+    write into a different file. realpath keeps components that do not exist
+    yet, so write_file can still create a new file.
     """
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("A path is required")
     expanded = os.path.expanduser(raw_path.strip())
-    parent_text, name = os.path.split(expanded)
-    resolved_parent = os.path.realpath(parent_text or os.curdir)
-    candidate_text = os.path.normpath(os.path.join(resolved_parent, name))
-    candidate = Path(candidate_text)
+    candidate = Path(os.path.realpath(expanded))
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
@@ -861,12 +859,12 @@ def protected_write_target(path: Path) -> bool:
         return True
     if any(part in PROTECTED_PARTS for part in parts):
         return True
-    try:
-        resolved = path.expanduser().resolve()
-    except OSError:
-        return False
+    # The caller resolves the target (realpath) before comparing, so the text
+    # is already canonical and a symlinked destination was checked above.
+    candidate_text = os.path.normpath(str(path))
     for target in configured_secret_targets():
-        if resolved == target or target in resolved.parents:
+        target_text = str(target)
+        if candidate_text == target_text or candidate_text.startswith(target_text + os.sep):
             return True
     return False
 
@@ -1099,13 +1097,6 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
 
     if name == "read_file":
         machine_access = machine_access_enabled()
-        # Snapshot the secrets before the read: a settings save that lands
-        # between the read and the redaction would otherwise drop a key from
-        # the list and let it through into the transcript.
-        try:
-            secrets_before_read = terminal_secret_values() if machine_access else []
-        except (OSError, ValueError):
-            secrets_before_read = []
         if machine_access:
             path = resolve_machine_path(arguments.get("path", ""), must_exist=True)
         else:
@@ -1118,12 +1109,22 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             raise ValueError("This path is not a file")
         if path.stat().st_size > TOOL_MAX_READ_BYTES:
             raise ValueError("The file is larger than the allowed read size")
-        content = path.read_text(encoding="utf-8", errors="replace")
         if machine_access:
             # Whole-machine reads must not copy stored credentials into the chat
-            # transcript or the saved conversation history.
-            content = redact_secrets(content)
-            content = redact_terminal_output(content, secrets_before_read)
+            # transcript or the saved conversation history. The snapshot, the
+            # read and the redaction share SETTINGS_LOCK with the settings
+            # writers: a save that lands mid-read would otherwise add a key
+            # that neither the snapshot nor the redaction knows.
+            with SETTINGS_LOCK:
+                try:
+                    secrets_before_read = terminal_secret_values()
+                except (OSError, ValueError):
+                    secrets_before_read = []
+                content = path.read_text(encoding="utf-8", errors="replace")
+                content = redact_secrets(content)
+                content = redact_terminal_output(content, secrets_before_read)
+        else:
+            content = path.read_text(encoding="utf-8", errors="replace")
         result = {"tool": name, "path": display_tool_path(path), "content": content, "scope": "machine" if machine_access else "project"}
         log_event("tool.success", f"Used {name}", tool=name, path=result["path"])
         return result
