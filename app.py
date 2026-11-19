@@ -831,16 +831,44 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
     return candidate
 
 
+def configured_secret_targets() -> list[Path]:
+    """Return the settings, auth, history and certificate paths in use."""
+    targets = [SETTINGS_FILE, AUTH_FILE, HISTORY_ROOT]
+    for name in ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY"):
+        value = os.getenv(name, "").strip()
+        if value:
+            targets.append(Path(value))
+    resolved: list[Path] = []
+    for target in targets:
+        try:
+            resolved.append(target.expanduser().resolve())
+        except OSError:
+            continue
+    return resolved
+
+
 def protected_write_target(path: Path) -> bool:
     """Return True when a write would touch a secret or machine-specific file.
 
     These files hold API keys, pairing state, certificates and conversation
     history, so no tool may overwrite them even when machine access is on.
+    The settings, auth, history and certificate locations can be moved with
+    environment variables, so the configured paths are compared as well: a
+    write to a custom settings file must stay blocked like the default one.
     """
     parts = [part for part in path.parts if part not in {"/", "", "."}]
     if any(part in PROTECTED_NAMES for part in parts):
         return True
-    return any(part in PROTECTED_PARTS for part in parts)
+    if any(part in PROTECTED_PARTS for part in parts):
+        return True
+    try:
+        resolved = path.expanduser().resolve()
+    except OSError:
+        return False
+    for target in configured_secret_targets():
+        if resolved == target or target in resolved.parents:
+            return True
+    return False
 
 
 def display_tool_path(path: Path) -> str:
