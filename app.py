@@ -3261,7 +3261,7 @@ def start_discord_bot() -> None:
                             details["failed"] = "; ".join(failures)[:300]
                         log_event("discord.commands", "Cleared duplicate guild slash commands", **details)
                     # A guild that never succeeded is retried on the next READY event.
-                    uncleared = len(self.guilds) - len(cleared_guilds)
+                    uncleared = sum(1 for guild in self.guilds if guild.id not in cleared_guilds)
             if uncleared:
                 log_event(
                     "discord.error",
