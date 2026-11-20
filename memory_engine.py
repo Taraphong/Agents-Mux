@@ -58,6 +58,9 @@ MAX_DAILY_MESSAGES = 40
 MAX_CANDIDATES_PER_RUN = 400
 MAX_LLM_ITEMS = 25
 MAX_LLM_CALLS = 4
+# A reasoning model spends part of the budget on hidden thinking, so a small cap
+# came back as an empty answer and every theme fell back to raw text.
+MEMORY_LLM_MAX_TOKENS = 4_096
 MEMORY_HEADING = "## Long-term memory"
 DREAMS_HEADING = "## Dreams"
 DREAMS_MAX_BYTES = 400_000
@@ -716,6 +719,21 @@ def _is_slash_command(text: str) -> bool:
     return bool(_SLASH_RE.match(text.strip()))
 
 
+_TOOL_ARTIFACT_RE = re.compile(
+    r"^\s*(?:tool result|tool output|tool_result|tool_output|tool call|tool_call)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_tool_artifact(text: str) -> bool:
+    """Whether a user turn actually carries machine output from a tool.
+
+    The chat stores tool results as a user turn, so without this guard every
+    tool dump became a candidate and its JSON head became the theme.
+    """
+    return bool(_TOOL_ARTIFACT_RE.match(text or ""))
+
+
 def _day_note_path(date_text: str | None) -> Path:
     """Return the daily note path for an ISO date."""
     stamp = date_text if date_text and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_text) else now_local().strftime("%Y-%m-%d")
@@ -811,6 +829,8 @@ def light_sleep(
                 continue
             if role == "user" and _is_slash_command(text):
                 continue
+            if role == "user" and _is_tool_artifact(text):
+                continue
             message_hash = _hash(f"{conversation_id}:{index}:{compare_text(text)}")
             cursor = connection.execute(
                 "INSERT OR IGNORE INTO message (conversation_id, idx, role, text, norm_hash, ts) "
@@ -895,7 +915,9 @@ def _llm_settings(settings: dict[str, Any], config: dict[str, Any]) -> dict[str,
     if config.get("base_url"):
         result["base_url"] = config["base_url"]
     result["temperature"] = 0.2
-    result["max_tokens"] = min(int(result.get("max_tokens") or 1200), 1200)
+    result["max_tokens"] = max(
+        MEMORY_LLM_MAX_TOKENS, int(result.get("max_tokens") or 0)
+    )
     result["thinking_level"] = "off"
     result["stream"] = False
     return result
@@ -1383,6 +1405,12 @@ def run(
             promoted = [item for item in promoted if item["id"] in written_ids]
         else:
             stats["promoted"] = len(promoted)
+        # An empty answer means the model had nothing usable to say within its
+        # budget; the local heuristics already covered the run, so treat it as
+        # a skip instead of marking the whole night as degraded.
+        if stats["llm_error"] == "empty_model_answer":
+            stats["llm_skipped"] = True
+            stats["llm_error"] = ""
         if stats["llm_error"]:
             status = "degraded"
         if not dry_run:
