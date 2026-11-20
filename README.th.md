@@ -15,6 +15,7 @@
 - **ประวัติการสนทนา** แยกตามวัน/เวลา เปลี่ยนชื่อ ปักหมุด ล็อก/ปลดล็อก และลบได้
 - **เครื่องมือบนเครื่อง**: โมเดลสามารถ list/read/write ไฟล์ และรันคำสั่ง shell บนเซิร์ฟเวอร์ โดยต้องอนุมัติทุกครั้ง
 - **Scheduler แบบ cron**, **หน้า Log ระบบ/Agent**, **อัปเดตจากหน้าเว็บ** และ **สั่ง start/stop/restart เซิร์ฟเวอร์**
+- **ระบบคัดกรองความจำ**: ระยะ Light/REM/Deep ทำงานตอนเครื่องว่าง เพื่อย่อยประวัติแชทเป็น `MEMORY.md` (และ `DREAMS.md` ที่อ่านเล่นได้) โดยคำนวณคะแนนในเครื่อง และให้โมเดลช่วยสรุปความหมายได้ตามต้องการ
 - **ฟีเจอร์เสริมของ Gemini**: รายงาน capabilities, Decisions API, managed agents และ Live API token อายุสั้น
 - **Discord bot** พร้อม allowlist ของช่องและผู้ใช้
 - **สลับ HTTP/HTTPS จากหน้าเว็บ** ด้วยไฟล์ใบรับรองหรือใบรับรองชั่วคราว
@@ -97,6 +98,7 @@ python app.py
 | `AI_WEB_MAX_CONTENT_BYTES` | ขนาดสูงสุดของ request body (ค่าเริ่มต้น 8 MB) |
 | `AI_WEB_LOG_MAX_ENTRIES` | จำนวนรายการ log ในหน่วยความจำ (ค่าเริ่มต้น `1000`) |
 | `AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_SCHEDULE_FILE`, `AI_WEB_WORKSPACE_DIR` | เปลี่ยนที่เก็บข้อมูล |
+| `AI_WEB_MEMORY_DIR`, `AI_WEB_MEMORY_FILE`, `AI_WEB_DREAMS_FILE`, `AI_WEB_MEMORY_DB`, `AI_WEB_MEMORY_VEC_EXT` | ที่เก็บ vault ความจำ ไฟล์ Markdown ดัชนี SQLite และไลบรารี `sqlite-vec` (ไม่บังคับ) |
 
 ## หน้าแชต
 
@@ -175,6 +177,18 @@ path แบบ relative ที่ส่งให้ `list_files`, `read_file`, `
 - งานแต่ละงานมีบทสนทนาของตัวเองในประวัติ พร้อมเวลาและสถานะการรันครั้งล่าสุดและข้อผิดพลาด
 - `AI_WEB_ENABLE_SCHEDULER=1` เปิด Scheduler เมื่อแอปรันใต้ WSGI ภายนอก
 
+## ระบบความจำ
+
+หน้า **Memory** รันตัวกรองเบื้องหลังที่ย่อยบทสนทนาเป็นความจำระยะยาว โดยไม่อยู่บนเส้นทางแชต: ยังไม่มีการดึงความจำมาใส่คำตอบ
+
+- **Light Sleep** อ่านประวัติใหม่ ตัดข้อความซ้ำแบบตรงตัวและใกล้เคียง เขียน `memory/YYYY-MM-DD.md` และพักผู้สมัครไว้ให้คะแนน
+- **REM Sleep** วิเคราะห์ย้อนหลัง 7 วัน (ปรับได้) จัดกลุ่มหัวข้อที่พูดซ้ำ และตั้งชื่อธีมด้วยโมเดลที่ตั้งไว้
+- **Deep Sleep** คำนวณคะแนนด้วยโค้ดในเครื่อง (ความใหม่ ความถี่ ความสำคัญจากโมเดล ความแปลกใหม่ และคำสั่ง “จำไว้” ชัดเจน) โปรโมตเฉพาะรายการที่ถึงเกณฑ์ (ค่าเริ่มต้น `0.65`) ลง `MEMORY.md` และเขียนสรุปคืนนั้นลง `DREAMS.md`
+- ตารางเวลาเริ่มต้นคือ `0 3 * * *` โดยรอให้เครื่องว่างตามเวลาที่ตั้ง (15 นาที) และลองซ้ำได้ถึงเวลา `06:00` จึงไม่แย่งทรัพยากรกับการใช้งาน
+- เก็บข้อมูลสองชั้น: Markdown ธรรมดาใน `memory/`, `MEMORY.md`, `DREAMS.md` (เปิด/แก้ใน Obsidian ได้) และ `.app-memory.db` ไฟล์ SQLite ที่เก็บคะแนน vector และดัชนี FTS5 โดยไม่ต้องมี database server
+- ถ้ามี `vec0.so` ของ `sqlite-vec` ที่ `vendor/sqlite-vec/vec0.so` จะใช้เป็นดัชนี vector ถ้าไม่มีจะเก็บ vector ในไฟล์ SQLite เดียวกันและเทียบใน Python ส่วน FTS5 ใช้เมื่อ SQLite ของเครื่องรองรับ
+- ปิด **ให้โมเดลช่วยสรุปความหมาย** เพื่อรันออฟไลน์ทั้งหมด (ความสำคัญจะมาจาก heuristic ในเครื่อง) ทุกรายการที่โปรโมตมี marker ซ่อนใน `MEMORY.md` จึงกด **ลืม** เพื่อลบออกจากทั้งสองชั้นได้
+
 ## Log
 
 หน้า **Logs** แสดงเหตุการณ์ของระบบและกิจกรรมของ agent/เครื่องมือล่าสุด: การเรียกผู้ให้บริการ, การอนุมัติเครื่องมือ, งานตามเวลา และการสั่งเซิร์ฟเวอร์ โดยไม่แสดง API key หรือเนื้อหาไฟล์
@@ -230,6 +244,7 @@ path แบบ relative ที่ส่งให้ `list_files`, `read_file`, `
 | Path | เนื้อหา | commit ไว้ |
 | --- | --- | --- |
 | `app.py` | เซิร์ฟเวอร์ Flask, API, เครื่องมือ, Scheduler, Discord bot | ใช่ |
+| `memory_engine.py` | ระบบคัดกรองความจำเบื้องหลัง (Light/REM/Deep) | ใช่ |
 | `templates/index/` | HTML, CSS, JS ของหน้าแชต (chat, settings, schedule, logs, about) | ใช่ |
 | `templates/pair/` | HTML, CSS, JS ของหน้าจับคู่ | ใช่ |
 | `skills/` | Skill หนึ่งไฟล์ `<name>/SKILL.md` ต่อหนึ่ง Skill | ใช่ (ยกเว้น Skill ที่คุณเพิ่มเอง) |
@@ -241,5 +256,7 @@ path แบบ relative ที่ส่งให้ `list_files`, `read_file`, `
 | `history/` | ประวัติการสนทนา | ไม่ |
 | `logs/` | log ของแอปและเซิร์ฟเวอร์ | ไม่ |
 | `scheduled-jobs.json` | งานตามเวลา | ไม่ |
+| `memory/`, `MEMORY.md`, `DREAMS.md` | บันทึกประจำวันและความจำระยะยาวที่โปรโมตแล้ว | ไม่ |
+| `.app-memory.db` | ดัชนีความจำ SQLite: คะแนน, vector, FTS5 | ไม่ |
 
-ห้าม commit `.env`, `.app-settings.json`, `.app-auth.json`, `certs/` (โดยเฉพาะ `key.pem`), `history/`, `logs/` หรือ `scheduled-jobs.json` และห้ามคัดลอกไฟล์เหล่านี้ข้ามเครื่อง
+ห้าม commit `.env`, `.app-settings.json`, `.app-auth.json`, `certs/` (โดยเฉพาะ `key.pem`), `history/`, `logs/`, `scheduled-jobs.json`, `memory/`, `MEMORY.md`, `DREAMS.md` หรือ `.app-memory.db` และห้ามคัดลอกไฟล์เหล่านี้ข้ามเครื่อง

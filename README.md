@@ -16,6 +16,7 @@ Self-hosted AI chat that runs on Termux (Android), Linux, or macOS and is used t
 - **Conversation history** organized by date, with rename, pin, lock/unlock, and delete.
 - **Local tools**: the model can list, read, and write files and run shell commands on the server, with one approval per call.
 - **Cron-style scheduler**, **system/agent log viewer**, **in-page updater**, and **server start/stop/restart**.
+- **Memory consolidation**: nightly Light/REM/Deep phases turn chat history into `MEMORY.md` (and a readable `DREAMS.md`) while the machine is idle, with local scoring and optional model summaries.
 - **Gemini extras**: capability report, Decisions API, managed agents, and short-lived Live API tokens.
 - **Discord bot** with channel and user allowlists.
 - **HTTP/HTTPS switching** from the page, with certificate files or an ad-hoc certificate.
@@ -98,6 +99,7 @@ python app.py
 | `AI_WEB_MAX_CONTENT_BYTES` | Request body cap (default 8 MB) |
 | `AI_WEB_LOG_MAX_ENTRIES` | In-memory log window (default `1000`) |
 | `AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_SCHEDULE_FILE`, `AI_WEB_WORKSPACE_DIR` | Storage path overrides |
+| `AI_WEB_MEMORY_DIR`, `AI_WEB_MEMORY_FILE`, `AI_WEB_DREAMS_FILE`, `AI_WEB_MEMORY_DB`, `AI_WEB_MEMORY_VEC_EXT` | Memory vault, Markdown files, SQLite index and optional `sqlite-vec` library |
 
 ## The chat page
 
@@ -176,6 +178,18 @@ The **Schedule** page stores cron-style jobs (5-field cron) in `scheduled-jobs.j
 - Jobs keep their own conversation in the history, with the last run time, status, and error.
 - `AI_WEB_ENABLE_SCHEDULER=1` enables the scheduler when the app runs under an external WSGI server.
 
+## Memory consolidation
+
+The **Memory** page runs a background filter that turns conversations into long-term memory. It is not on the chat path: nothing is retrieved into replies yet.
+
+- **Light Sleep** ingests new history, drops exact and near duplicates, writes `memory/YYYY-MM-DD.md` and stages candidates.
+- **REM Sleep** looks back 7 days (configurable), groups repeated topics, and labels their themes with the configured model.
+- **Deep Sleep** scores every candidate with local code (recency, frequency, model importance, novelty, an explicit "remember this"), promotes the ones above the threshold (default `0.65`) into `MEMORY.md`, and writes the night's summary to `DREAMS.md`.
+- The default schedule is `0 3 * * *`. The run waits for the configured idle time (15 minutes) and keeps retrying until the catch-up time (`06:00`), so it never competes with a conversation.
+- Storage is two-tier: plain Markdown in `memory/`, `MEMORY.md`, `DREAMS.md` (open or edit them in Obsidian) plus `.app-memory.db`, a SQLite file holding scores, vectors and the FTS5 keyword index. No database server is involved.
+- When a `sqlite-vec` `vec0.so` is present at `vendor/sqlite-vec/vec0.so` it backs the vector index; otherwise vectors stay in the same SQLite file and are compared in Python. FTS5 is used when the local SQLite build provides it.
+- Turning **Let a model help summarise** off runs the whole filter offline; importance then comes from local heuristics. Every promoted entry keeps a hidden marker in `MEMORY.md`, so **Forget** can remove it from both tiers.
+
 ## Logs
 
 The **Logs** page shows recent system events and agent/tool activity: provider calls, tool approvals, schedules, and server actions. It never shows API keys or file content.
@@ -231,6 +245,7 @@ The app can terminate HTTPS itself; `openssl` is the only requirement.
 | Path | Contents | Committed |
 | --- | --- | --- |
 | `app.py` | Flask server, API, tools, scheduler, Discord bot | yes |
+| `memory_engine.py` | Background memory consolidation (Light/REM/Deep) | yes |
 | `templates/index/` | Chat page HTML, CSS, JS (chat, settings, schedule, logs, about) | yes |
 | `templates/pair/` | Pairing page HTML, CSS, JS | yes |
 | `skills/` | Skills, one `<name>/SKILL.md` per skill | yes (unless you add your own) |
@@ -242,5 +257,7 @@ The app can terminate HTTPS itself; `openssl` is the only requirement.
 | `history/` | Conversation history | no |
 | `logs/` | Application and server logs | no |
 | `scheduled-jobs.json` | Scheduled jobs | no |
+| `memory/`, `MEMORY.md`, `DREAMS.md` | Daily notes and promoted long-term memory | no |
+| `.app-memory.db` | SQLite memory index: scores, vectors, FTS5 | no |
 
-Never commit `.env`, `.app-settings.json`, `.app-auth.json`, `certs/` (especially `key.pem`), `history/`, `logs/`, or `scheduled-jobs.json`, and never copy them between machines.
+Never commit `.env`, `.app-settings.json`, `.app-auth.json`, `certs/` (especially `key.pem`), `history/`, `logs/`, `scheduled-jobs.json`, `memory/`, `MEMORY.md`, `DREAMS.md`, or `.app-memory.db`, and never copy them between machines.

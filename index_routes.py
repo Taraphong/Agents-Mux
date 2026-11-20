@@ -7,6 +7,7 @@ which registers this blueprint.
 
 from flask import Blueprint, abort, jsonify, render_template, request, send_from_directory
 
+import memory_engine
 from app import (
     APPROVAL_TTL_SECONDS,
     APP_LOGS,
@@ -287,6 +288,69 @@ def schedules_delete(job_id: str):
             return jsonify({"error": status_message(request_language(), "schedule_not_found")}), 404
         save_schedules(remaining)
     return jsonify({"ok": True})
+
+
+@index_bp.get("/api/memory/status")
+def memory_status_get():
+    """Report the memory engine state, counts and capabilities."""
+    return jsonify(memory_engine.status(load_settings()))
+
+
+@index_bp.get("/api/memory/entries")
+def memory_entries_get():
+    """List promoted memories and the newest dream log text."""
+    return jsonify({"items": memory_engine.entries(), "dreams": memory_engine.recent_dreams()})
+
+
+@index_bp.post("/api/memory/run")
+def memory_run_post():
+    """Run the consolidation phases now, optionally as a dry run."""
+    limited = rate_limit_response("chat")
+    if limited:
+        return limited
+    body = request.get_json(silent=True) or {}
+    language = request_language()
+    dry_run = bool(body.get("dry_run"))
+    try:
+        result = memory_engine.run(
+            trigger="manual",
+            dry_run=dry_run,
+            settings=load_settings(),
+            language=language,
+        )
+        return jsonify(result)
+    except RuntimeError as exc:
+        if str(exc) == "memory_busy":
+            return jsonify({"error": status_message(language, "memory_busy")}), 409
+        log_event("memory.error", "Memory run failed", error=redact_secrets(str(exc))[:300])
+        return jsonify({"error": status_message(language, "memory_run_failed", error=redact_secrets(str(exc))[:200])}), 500
+    except Exception as exc:  # noqa: BLE001 - report the real reason to the page
+        log_event("memory.error", "Memory run failed", error=redact_secrets(str(exc))[:300])
+        return jsonify({"error": status_message(language, "memory_run_failed", error=redact_secrets(str(exc))[:200])}), 500
+
+
+@index_bp.delete("/api/memory/entries/<memory_id>")
+def memory_entry_delete(memory_id: str):
+    """Forget one promoted memory in both tiers."""
+    try:
+        removed = memory_engine.forget(memory_id)
+    except OSError:
+        return jsonify({"error": status_message(request_language(), "memory_forget_failed")}), 500
+    if not removed:
+        return jsonify({"error": status_message(request_language(), "memory_not_found")}), 404
+    return jsonify({"ok": True})
+
+
+@index_bp.post("/api/memory/reindex")
+def memory_reindex_post():
+    """Rebuild the SQLite index from the history folder."""
+    language = request_language()
+    try:
+        return jsonify(memory_engine.reindex())
+    except RuntimeError:
+        return jsonify({"error": status_message(language, "memory_busy")}), 409
+    except Exception as exc:  # noqa: BLE001 - surface the reason instead of a 500 page
+        return jsonify({"error": status_message(language, "memory_reindex_failed", error=redact_secrets(str(exc))[:200])}), 500
 
 
 @index_bp.get("/templates/<page>/<filename>")

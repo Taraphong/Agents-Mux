@@ -97,7 +97,8 @@ This is a volunteer-maintained personal project, so response is **best effort** 
 
 ## Known limitations
 
-- **No encryption at rest.** `.env`, `.app-settings.json`, `history/`, and `scheduled-jobs.json` are plaintext. Anyone with read access to the server's filesystem can read the API keys and every conversation.
+- **No encryption at rest.** `.env`, `.app-settings.json`, `history/`, `scheduled-jobs.json`, `memory/`, `MEMORY.md`, `DREAMS.md`, and `.app-memory.db` are plaintext. Anyone with read access to the server's filesystem can read the API keys, every conversation, and every promoted memory.
+- **Memory runs unattended.** The nightly consolidation sends candidate texts to the configured model for a theme and importance rating unless **Let a model help summarise** is off. The model gets no tools, known credentials are redacted first, and forgetting an entry removes it from `MEMORY.md` and the index - but nothing is encrypted or backed up automatically.
 - **The tools are not a sandbox.** They run as the service user. Run on a dedicated, unprivileged account and do not co-locate unrelated secrets on the same machine.
 - **Machine access is a boundary, not a sandbox.** With it on, an approved call can read or change anything the service user can reach, and `sudo` reaches root when the service user has passwordless sudo or the app runs as root. Read each approval prompt before clicking it; turn Machine access off to return to project-only paths and the command allowlist.
 - **The operator can redirect keys.** `Base URL` is configurable, so whoever can edit Settings can point a provider request at another endpoint (HTTPS, unless loopback or the insecure-HTTP opt-in applies). Paired devices are fully trusted.
