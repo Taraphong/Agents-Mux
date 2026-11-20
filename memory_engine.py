@@ -455,12 +455,24 @@ def _vec_state(connection: sqlite3.Connection) -> dict[str, Any]:
 
 
 def ensure_storage() -> None:
-    """Create the Markdown vault and the SQLite index if they do not exist."""
+    """Create the Markdown vault and the SQLite index if they do not exist.
+
+    Re-asserting an existing schema costs a write lock, and a status poll that
+    arrives while a run holds that lock used to fail with "database is locked".
+    The probe below makes the call read-only once the schema is already there.
+    """
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(MEMORY_DIR, 0o700)
     except OSError:
         pass
+    if DATABASE_FILE.exists():
+        try:
+            with _session() as connection:
+                if _get_meta(connection, "fts5_ready", "") != "":
+                    return
+        except sqlite3.DatabaseError:
+            pass
     with _session() as connection:
         connection.executescript(
             """
@@ -536,7 +548,9 @@ def ensure_storage() -> None:
             fts_ready = True
         except sqlite3.DatabaseError:
             fts_ready = False
-        _set_meta(connection, "fts5_ready", "1" if fts_ready else "0")
+        fts_value = "1" if fts_ready else "0"
+        if _get_meta(connection, "fts5_ready", "") != fts_value:
+            _set_meta(connection, "fts5_ready", fts_value)
         if _vec_state(connection)["ready"]:
             try:
                 connection.execute(
@@ -1561,7 +1575,13 @@ def recent_dreams(limit: int = 120) -> str:
 def status(settings: dict[str, Any] | None = None) -> dict[str, Any]:
     """Report the state of the memory system without running anything."""
     config = settings_from(settings)
-    ensure_storage()
+    # A run holds one long write transaction; polling status must read the
+    # committed state instead of queueing behind that lock.
+    try:
+        if not (_RUN_LOCK.locked() and DATABASE_FILE.exists()):
+            ensure_storage()
+    except sqlite3.DatabaseError:
+        pass
     with _session() as connection:
         counts = {
             row["state"]: int(row["count"])
