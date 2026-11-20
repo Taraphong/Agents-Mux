@@ -4047,7 +4047,6 @@ def apply_settings_update():
         except ValueError:
             return jsonify({"error": status_message(request_language(), "custom_key_name_invalid")}), 400
         custom_value = custom_key.get("value")
-        custom_value = custom_key.get("value")
         if isinstance(custom_value, str) and "\x00" in custom_value:
             return jsonify({"error": status_message(request_language(), "custom_key_nul")}), 400
         if isinstance(custom_value, str) and custom_value.strip() and custom_value.strip() != "••••••••":
