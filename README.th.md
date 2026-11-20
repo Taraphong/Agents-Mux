@@ -96,7 +96,7 @@ python app.py
 | `AI_WEB_ENABLE_SCHEDULER` | ตั้งเป็น `1` เพื่อเปิด Scheduler เมื่อรันใต้ WSGI |
 | `AI_WEB_MAX_CONTENT_BYTES` | ขนาดสูงสุดของ request body (ค่าเริ่มต้น 8 MB) |
 | `AI_WEB_LOG_MAX_ENTRIES` | จำนวนรายการ log ในหน่วยความจำ (ค่าเริ่มต้น `1000`) |
-| `AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_SCHEDULE_FILE` | เปลี่ยนที่เก็บข้อมูล |
+| `AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_SCHEDULE_FILE`, `AI_WEB_WORKSPACE_DIR` | เปลี่ยนที่เก็บข้อมูล |
 
 ## หน้าแชต
 
@@ -147,6 +147,8 @@ Skill ที่เรียกผ่านคำสั่ง `/` มีผลเ
 - **เว็บและ HTTPS** — โหมด HTTP/HTTPS, สถานะใบรับรอง และข้อความแจ้งรีสตาร์ตพร้อมที่อยู่ใหม่
 
 ## เครื่องมือบนเครื่องและการอนุมัติ
+
+path แบบ relative ที่ส่งให้ `list_files`, `read_file`, `write_file` และโฟลเดอร์เริ่มต้นของ `run_command` คือโฟลเดอร์ `workspace/` ในโปรเจกต์ (เปลี่ยนได้ด้วย `AI_WEB_WORKSPACE_DIR`) ไฟล์ที่ agent สร้างจึงอยู่รวมกันที่นั่นและไม่ถูก commit
 
 เมื่อ **สิทธิ์เข้าถึงเครื่อง** เปิดอยู่ (ค่าเริ่มต้น) โมเดลใช้เครื่องมือเหล่านี้ได้ทั่วทั้งเครื่อง:
 

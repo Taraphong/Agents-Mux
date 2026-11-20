@@ -96,6 +96,10 @@ ASSET_GZIP_CACHE: dict[tuple[str, int, int], bytes] = {}
 ASSET_GZIP_LOCK = threading.Lock()
 ASSET_GZIP_CACHE_LIMIT = 8
 SKILLS_ROOT = Path(os.getenv("AI_WEB_SKILLS_DIR", "skills"))
+# The AI's own working folder: file tools resolve relative paths here and the
+# unrestricted shell starts here, so the agent works in one place instead of
+# the app's source tree. It is created on start and its files stay out of Git.
+WORKSPACE_ROOT = Path(os.getenv("AI_WEB_WORKSPACE_DIR", "workspace"))
 # CodeQL's py/path-injection query only honours a startswith() prefix check
 # inside the function that performs the file access, so these normalized roots
 # are used by the re-checks written next to those accesses.
@@ -157,7 +161,7 @@ if AUTH_TRUST_PROXY:
     # request.is_secure (and the Secure session cookie) reflects the client.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 TOOL_INSTRUCTIONS = """
-You have full tool access to this machine: absolute paths and ~/... reach anywhere on the machine, and run_command runs through a real shell (including sudo when the user running the app has permission), starting in the project folder.
+You have full tool access to this machine: absolute paths and ~/... reach anywhere on the machine, and run_command runs through a real shell (including sudo when the user running the app has permission), starting in the AI workspace folder (workspace/ inside the app folder). In list_files, read_file and write_file a relative path is also resolved inside that workspace, so put the files you create there.
 Every tool call pauses and waits for the user to approve it in the chat, and one approval covers a single request. Never assume approval or skip asking for it.
 Call format: <tool_call>{"name":"read_file","arguments":{"path":"/etc/hostname"}}</tool_call> or <tool_call>{"name":"list_files","arguments":{"path":"~"}}</tool_call>
 Use write_file to write files, run_command (the older name execute_command also works) to run commands, and list_files/read_file to explore the machine.
@@ -838,6 +842,35 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
     return candidate
 
 
+def workspace_directory() -> Path:
+    """Return the AI workspace folder, creating it on first use."""
+    root = Path(os.path.normpath(str(PROJECT_ROOT / WORKSPACE_ROOT)))
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def workspace_tool_path(raw_path: Any) -> Path:
+    """Resolve a tool path against the AI workspace instead of the app folder.
+
+    A relative path (or no path at all) belongs to the workspace, while an
+    absolute path or one starting with ~ still reaches the rest of the machine
+    when machine access is on.
+    """
+    text = "" if raw_path is None else str(raw_path).strip()
+    if not text or text in {".", "./"}:
+        return workspace_directory()
+    expanded = os.path.expanduser(text)
+    if os.path.isabs(expanded):
+        return Path(os.path.normpath(expanded))
+    return Path(os.path.normpath(os.path.join(str(workspace_directory()), expanded)))
+
+
+try:
+    workspace_directory()
+except OSError as exc:
+    LOGGER.warning("Could not create the AI workspace folder: %s", exc)
+
+
 def configured_secret_targets() -> list[Path]:
     """Return the settings, auth, history and certificate paths in use."""
     # ENV_FILE is included because .env itself can be a symlink: resolving the
@@ -1084,10 +1117,11 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
     if name == "list_files":
         machine_access = machine_access_enabled()
+        requested_path = str(workspace_tool_path(arguments.get("path", ".")))
         if machine_access:
-            root = resolve_machine_path(arguments.get("path", "."), must_exist=True)
+            root = resolve_machine_path(requested_path, must_exist=True)
         else:
-            root = resolve_tool_path(arguments.get("path", "."), must_exist=True)
+            root = resolve_tool_path(requested_path, must_exist=True)
             root_text = os.path.normpath(str(root))
             if root_text == PROJECT_ROOT_TEXT:
                 root_text = PROJECT_ROOT_TEXT + os.sep
@@ -1116,10 +1150,13 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
 
     if name == "read_file":
         machine_access = machine_access_enabled()
+        if not str(arguments.get("path") or "").strip():
+            raise ValueError("A file path is required (relative paths resolve inside the workspace folder)")
+        requested_path = str(workspace_tool_path(arguments.get("path", "")))
         if machine_access:
-            path = resolve_tool_path(arguments.get("path", ""), must_exist=True)
+            path = resolve_tool_path(requested_path, must_exist=True)
         else:
-            path = resolve_project_path(arguments.get("path", ""), must_exist=True)
+            path = resolve_project_path(requested_path, must_exist=True)
             file_text = os.path.normpath(str(path))
             if not file_text.startswith(PROJECT_ROOT_TEXT + os.sep):
                 raise PermissionError("The path is outside the project folder and is not allowed")
@@ -1152,10 +1189,13 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         if not approved:
             raise PermissionError("Writing a file needs approval first")
         machine_access = machine_access_enabled()
+        if not str(arguments.get("path") or "").strip():
+            raise ValueError("A file path is required (relative paths resolve inside the workspace folder)")
+        requested_path = str(workspace_tool_path(arguments.get("path", "")))
         if machine_access:
-            path = resolve_machine_path(arguments.get("path", ""))
+            path = resolve_machine_path(requested_path)
         else:
-            path = resolve_tool_path(arguments.get("path", ""))
+            path = resolve_tool_path(requested_path)
             write_text = os.path.normpath(str(path))
             if not write_text.startswith(PROJECT_ROOT_TEXT + os.sep):
                 raise PermissionError("The path is outside the project folder and is not allowed")
@@ -1184,7 +1224,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             # A real shell with the app user's privileges: any binary, pipes,
             # sudo (when the user may run it without a password prompt), and
             # any path on the machine. The approval click is the boundary.
-            returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_shell_process(command, PROJECT_ROOT)
+            returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_shell_process(command, workspace_directory())
             if timed_out:
                 returncode = 124
             secrets_found = secret_values(launch_secrets)
