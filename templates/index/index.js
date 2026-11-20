@@ -573,6 +573,9 @@ const I18N = {
     "memory.providerLabel": "โมเดลที่ใช้สรุป",
     "memory.providerInherit": "ใช้ provider ที่ตั้งไว้",
     "memory.modelLabel": "ชื่อโมเดล (เว้นว่าง = ใช้ค่าเดิม)",
+    "memory.baseUrlLabel": "Base URL เฉพาะงานสรุปความจำ",
+    "memory.baseUrlHint":
+      "เว้นว่างเพื่อใช้ Base URL เดียวกับแชต ใช้ค่านี้เมื่ออยากให้แชตอยู่บน Cloud แต่สรุปความจำในเครื่อง",
     "memory.localModelHint":
       "รันฟรีในเครื่องได้ผ่าน Ollama หรือ llama-server ที่ http://127.0.0.1 (RAM 1.8 GB ใช้โมเดลเล็กได้เท่านั้น)",
     "memory.saveHint":
@@ -1187,6 +1190,9 @@ const I18N = {
     "memory.providerLabel": "Model used for summaries",
     "memory.providerInherit": "Use the configured provider",
     "memory.modelLabel": "Model name (blank = keep the current one)",
+    "memory.baseUrlLabel": "Base URL for summaries only",
+    "memory.baseUrlHint":
+      "Leave blank to use the chat Base URL. Set it to keep chat on a cloud provider while summaries run locally.",
     "memory.localModelHint":
       "Run free on the machine through Ollama or llama-server on http://127.0.0.1 (with 1.8 GB RAM only a small model fits)",
     "memory.saveHint": "These values are saved with the “Save settings” button below.",
@@ -3164,7 +3170,9 @@ async function loadSchedules() {
   }
 }
 function memoryNumber(id, fallback) {
-  const value = Number($(id).value);
+  const raw = $(id).value.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
   return Number.isFinite(value) ? value : fallback;
 }
 function memoryStatusLabel(value) {
@@ -4202,6 +4210,15 @@ async function loadSettings() {
   $("memory_llm").checked = memory.llm !== false;
   $("memory_provider").value = memory.provider || "";
   $("memory_model").value = memory.model || "";
+  $("memory_base_url").value = memory.base_url || "";
+  // The Memory panel shows the detected capabilities and paths; a status read
+  // fills them without waiting for the user to open the Memory page.
+  fetch("/api/memory/status")
+    .then((response) => (response.ok ? response.json() : null))
+    .then((status) => {
+      if (status) renderMemoryStatus(status);
+    })
+    .catch(() => {});
   $("discord_token").value = "";
   hasDiscordToken = !!s.has_discord_token;
   updateDiscordTokenHint();
@@ -4267,6 +4284,7 @@ function collectSettingsBody() {
       llm: $("memory_llm").checked,
       provider: $("memory_provider").value,
       model: $("memory_model").value.trim(),
+      base_url: $("memory_base_url").value.trim(),
     },
   };
 }

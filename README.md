@@ -188,7 +188,7 @@ The **Memory** page runs a background filter that turns conversations into long-
 - The default schedule is `0 3 * * *`. The run waits for the configured idle time (15 minutes) and keeps retrying until the catch-up time (`06:00`), so it never competes with a conversation.
 - Storage is two-tier: plain Markdown in `memory/`, `MEMORY.md`, `DREAMS.md` (open or edit them in Obsidian) plus `.app-memory.db`, a SQLite file holding scores, vectors and the FTS5 keyword index. No database server is involved.
 - When a `sqlite-vec` `vec0.so` is present at `vendor/sqlite-vec/vec0.so` it backs the vector index; otherwise vectors stay in the same SQLite file and are compared in Python. FTS5 is used when the local SQLite build provides it.
-- Turning **Let a model help summarise** off runs the whole filter offline; importance then comes from local heuristics. Every promoted entry keeps a hidden marker in `MEMORY.md`, so **Forget** can remove it from both tiers.
+- Turning **Let a model help summarise** off runs the whole filter offline; importance then comes from local heuristics. The summary model can also use its own Base URL, so chat stays on a cloud provider while summaries run on a local llama-server or Ollama. Every promoted entry keeps a hidden marker in `MEMORY.md`, so **Forget** can remove it from both tiers.
 
 ## Logs
 

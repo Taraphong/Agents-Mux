@@ -30,7 +30,6 @@ from urllib.parse import urlsplit
 from collections import deque
 
 import requests
-import memory_engine
 from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory
 from werkzeug.exceptions import HTTPException
@@ -42,6 +41,10 @@ from werkzeug.serving import (
 )
 
 load_dotenv()
+
+# Imported after load_dotenv(): the module resolves AI_WEB_MEMORY_* paths at
+# import time, so a value that exists only in .env must already be loaded.
+import memory_engine  # noqa: E402
 
 
 def env_int(name: str, default: int, minimum: int) -> int:

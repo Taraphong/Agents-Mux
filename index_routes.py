@@ -309,6 +309,8 @@ def memory_run_post():
     if limited:
         return limited
     body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        body = {}
     language = request_language()
     dry_run = bool(body.get("dry_run"))
     try:

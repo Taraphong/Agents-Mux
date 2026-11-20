@@ -33,9 +33,10 @@ import time
 import unicodedata
 import uuid
 from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 def _location(name: str, default: str) -> Path:
     """Resolve a configured path relative to the project folder."""
@@ -72,6 +73,7 @@ DEFAULT_MEMORY_SETTINGS: dict[str, Any] = {
     "llm": True,
     "provider": "",
     "model": "",
+    "base_url": "",
     "window_end": "06:00",
     "dedupe": 0.92,
 }
@@ -169,28 +171,58 @@ def _log(event: str, message: str, **details: Any) -> None:
         pass
 
 
+# Shapes that are almost certainly a credential even when the key is not one
+# this installation knows about (a key pasted from another project, a token in
+# a screenshot). Memory is long-lived, so it is better to lose the string.
+_SECRET_SHAPES = (
+    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{16,}"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{20,}"),
+    re.compile(r"\bAKIA[0-9A-Z]{12,}"),
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._-]{20,}"),
+    re.compile(
+        r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+        re.DOTALL,
+    ),
+)
+
+
 def _redact(text: str) -> str:
-    """Strip known credentials before text is stored or summarised."""
+    """Strip credentials before text is stored, indexed or summarised."""
+    value = str(text or "")
     try:
         from app import redact_secrets
 
-        return redact_secrets(str(text))
+        value = redact_secrets(value)
     except Exception:
-        cleaned = re.sub(r"(?i)(sk|pk|ghp|xox[baprs])[-_][A-Za-z0-9_-]{12,}", "[redacted]", str(text))
-        return re.sub(r"(?i)authorization:\s*bearer\s+\S+", "Authorization: Bearer [redacted]", cleaned)
+        pass
+    for pattern in _SECRET_SHAPES:
+        value = pattern.sub("[redacted]", value)
+    return value
 
 
 def normalize_text(text: str) -> str:
-    """Normalise text for hashing, comparison and tokenising."""
+    """Normalise text for storage and display, keeping URLs intact."""
     # NFC, never NFKC: compatibility normalisation splits Thai SARA AM into
     # NIKHAHIT + SARA AA, which corrupts every Thai sentence it touches.
     value = unicodedata.normalize("NFC", str(text or ""))
     value = value.replace("\u200b", "").replace("\ufeff", "")
-    value = _URL_RE.sub(" ", value)
     value = re.sub(r"\[\d{1,2}:\d{2}(?::\d{2})?\]", " ", value)
     value = re.sub(r"[ \t]+", " ", value)
     value = re.sub(r"\n{3,}", "\n\n", value)
     return value.strip()[:MAX_MESSAGE_CHARS]
+
+
+def compare_text(text: str) -> str:
+    """Strip noise that changes per message but not meaning.
+
+    A URL, a timestamp or a run of spaces makes two otherwise identical notes
+    look different. Storage keeps the original text (a remembered link stays
+    usable); hashing and embeddings use this version.
+    """
+    value = _URL_RE.sub(" ", normalize_text(text))
+    return re.sub(r"\s+", " ", value).strip()[:MAX_MESSAGE_CHARS]
 
 
 def message_text(message: Any) -> str:
@@ -224,7 +256,7 @@ def _hash(text: str) -> str:
 def _tokens(text: str) -> list[str]:
     """Split text into comparable tokens, expanding Thai runs into n-grams."""
     tokens: list[str] = []
-    for match in _TOKEN_RE.finditer(normalize_text(text).lower()):
+    for match in _TOKEN_RE.finditer(compare_text(text).lower()):
         token = match.group(0)
         if _THAI_RE.match(token):
             if len(token) <= 3:
@@ -300,7 +332,10 @@ def normalize_settings(raw: Any) -> dict[str, Any]:
 
     def as_bool(key: str) -> None:
         value = result.get(key)
-        result[key] = value if isinstance(value, bool) else bool(value)
+        if isinstance(value, str):
+            result[key] = value.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            result[key] = bool(value)
 
     def as_int(key: str, default: int, minimum: int, maximum: int) -> None:
         try:
@@ -343,6 +378,9 @@ def normalize_settings(raw: Any) -> dict[str, Any]:
 
     result["provider"] = str(result.get("provider") or "").strip().lower()[:40]
     result["model"] = str(result.get("model") or "").strip()[:200]
+    # An endpoint just for memory lets the chat keep using a cloud provider
+    # while summaries run on a local llama-server/Ollama on this machine.
+    result["base_url"] = str(result.get("base_url") or "").strip()[:300]
     return result
 
 
@@ -371,6 +409,22 @@ def _connect() -> sqlite3.Connection:
     except OSError:
         pass
     return connection
+
+
+@contextmanager
+def _session() -> Iterator[sqlite3.Connection]:
+    """Open a connection that commits and closes itself.
+
+    ``with sqlite3.connect(...)`` only commits - it never closes - so using it
+    everywhere leaked one file descriptor per status read and scheduler tick,
+    which on a phone that runs for weeks ends in ``too many open files``.
+    """
+    connection = _connect()
+    try:
+        yield connection
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def _vec_state(connection: sqlite3.Connection) -> dict[str, Any]:
@@ -404,7 +458,7 @@ def ensure_storage() -> None:
         os.chmod(MEMORY_DIR, 0o700)
     except OSError:
         pass
-    with _connect() as connection:
+    with _session() as connection:
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -503,7 +557,7 @@ def _set_meta(connection: sqlite3.Connection, key: str, value: str) -> None:
 def capabilities() -> dict[str, Any]:
     """Report what this machine can actually do, so the UI never guesses."""
     ensure_storage()
-    with _connect() as connection:
+    with _session() as connection:
         version = sqlite3.sqlite_version
         fts5 = _get_meta(connection, "fts5_ready", "0") == "1"
         vec = _vec_state(connection)
@@ -514,6 +568,20 @@ def capabilities() -> dict[str, Any]:
         "vector_error": "" if vec["ready"] else vec["error"],
         "embedding": "local-hashing-256",
     }
+
+
+def safe_capabilities() -> dict[str, Any]:
+    """Capabilities for a response: never let a probe fail a finished run."""
+    try:
+        return capabilities()
+    except Exception:  # noqa: BLE001 - a report must not mask a success
+        return {
+            "sqlite_version": sqlite3.sqlite_version,
+            "fts5": False,
+            "vector": "unknown",
+            "vector_error": "capability probe failed",
+            "embedding": "local-hashing-256",
+        }
 
 
 # --------------------------------------------------------------------------- #
@@ -553,9 +621,16 @@ def _find_candidate(connection: sqlite3.Connection, norm_hash: str) -> sqlite3.R
 
 
 def _merge_candidate(connection: sqlite3.Connection, row: sqlite3.Row, timestamp: str) -> None:
-    """Record another sighting of an already known candidate."""
+    """Record another sighting of an already known candidate.
+
+    A promoted entry must stay promoted and a forgotten one must stay forgotten:
+    setting every sighting back to ``staged`` made the same sentence get scored
+    (and skipped by the marker check) on every run for ever.
+    """
     connection.execute(
-        "UPDATE candidate SET occurrences = occurrences + 1, last_seen = ?, state = 'staged' WHERE id = ?",
+        "UPDATE candidate SET occurrences = occurrences + 1, last_seen = ?, "
+        "state = CASE WHEN state IN ('promoted', 'forgotten') THEN state ELSE 'staged' END "
+        "WHERE id = ?",
         (timestamp, row["id"]),
     )
 
@@ -564,10 +639,13 @@ def _near_duplicate(
     connection: sqlite3.Connection, vector: list[float], threshold: float
 ) -> sqlite3.Row | None:
     """Return the closest recent candidate if it is a near duplicate."""
+    # Comparing against a bounded, recent window keeps a first run over a long
+    # history linear instead of quadratic on a phone.
     rows = connection.execute(
         "SELECT id, text, embedding FROM candidate "
         "WHERE state IN ('staged', 'rejected') AND embedding IS NOT NULL "
-        "ORDER BY last_seen DESC LIMIT 600"
+        "AND last_seen >= ? ORDER BY last_seen DESC LIMIT 300",
+        (_iso(now_local() - timedelta(days=14)),),
     ).fetchall()
     best: sqlite3.Row | None = None
     best_score = threshold
@@ -593,15 +671,16 @@ def _stage_candidate(
 
     Returns ``"new"``, ``"merged"`` or ``"skipped"`` for the run statistics.
     """
-    normalized = normalize_text(text)
-    if len(normalized) < 20:
+    normalized = normalize_text(_redact(text))
+    comparison = compare_text(normalized)
+    if len(comparison) < 20:
         return "skipped"
-    norm_hash = _hash(normalized.lower())
+    norm_hash = _hash(comparison.lower())
     existing = _find_candidate(connection, norm_hash)
     if existing is not None:
         _merge_candidate(connection, existing, timestamp)
         return "merged"
-    vector = embed(normalized)
+    vector = embed(comparison)
     near = _near_duplicate(connection, vector, dedupe)
     if near is not None:
         _merge_candidate(connection, near, timestamp)
@@ -614,7 +693,7 @@ def _stage_candidate(
             conversation_id,
             message_index,
             normalized[:MAX_MESSAGE_CHARS],
-            context[:600],
+            _redact(context)[:600],
             norm_hash,
             timestamp,
             timestamp,
@@ -688,6 +767,8 @@ def light_sleep(
         "notes_written": 0,
     }
     now = now_local()
+    fts_ready = _get_meta(connection, "fts5_ready", "0") == "1"
+    vec_ready = _vec_state(connection)["ready"]
     for path, record in _iter_history():
         conversation_id = _conversation_id(record, path)
         title = str(record.get("title") or "Conversation")
@@ -715,12 +796,14 @@ def light_sleep(
             role = str(message.get("role") or "")
             if role not in {"user", "assistant"}:
                 continue
-            text = normalize_text(message_text(message))
+            # A key pasted into a chat must never reach the index, the nightly
+            # prompt or a Markdown file, so redaction happens before storage.
+            text = _redact(normalize_text(message_text(message)))
             if len(text) < 8:
                 continue
             if role == "user" and _is_slash_command(text):
                 continue
-            message_hash = _hash(f"{conversation_id}:{index}:{text}")
+            message_hash = _hash(f"{conversation_id}:{index}:{compare_text(text)}")
             cursor = connection.execute(
                 "INSERT OR IGNORE INTO message (conversation_id, idx, role, text, norm_hash, ts) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -729,15 +812,15 @@ def light_sleep(
             inserted = cursor.rowcount > 0
             if inserted:
                 stats["messages"] += 1
-                vector = embed(text)
+                vector = embed(compare_text(text))
                 message_id = cursor.lastrowid
                 connection.execute("UPDATE message SET embedding = ? WHERE id = ?", (_pack(vector), message_id))
-                if _get_meta(connection, "fts5_ready", "0") == "1":
+                if fts_ready:
                     try:
                         connection.execute("INSERT INTO message_fts(rowid, text) VALUES (?, ?)", (message_id, text))
                     except sqlite3.DatabaseError:
                         pass
-                if _vec_state(connection)["ready"]:
+                if vec_ready:
                     try:
                         connection.execute(
                             "INSERT INTO message_vec(rowid, embedding) VALUES (?, ?)",
@@ -801,6 +884,8 @@ def _llm_settings(settings: dict[str, Any], config: dict[str, Any]) -> dict[str,
         result["provider"] = config["provider"]
     if config.get("model"):
         result["model"] = config["model"]
+    if config.get("base_url"):
+        result["base_url"] = config["base_url"]
     result["temperature"] = 0.2
     result["max_tokens"] = min(int(result.get("max_tokens") or 1200), 1200)
     result["thinking_level"] = "off"
@@ -835,10 +920,11 @@ def _llm_available(settings: dict[str, Any], config: dict[str, Any]) -> bool:
     try:
         import app
 
-        provider = app.normalize_provider(config.get("provider") or settings.get("provider") or "openai")
-        if app.key_is_configured(provider, settings):
+        llm = _llm_settings(settings, config)
+        provider = app.normalize_provider(llm.get("provider"))
+        if app.key_is_configured(provider, llm):
             return True
-        return app.endpoint_is_loopback(app.get_base_url(provider, settings))
+        return app.endpoint_is_loopback(app.get_base_url(provider, llm))
     except Exception:
         return False
 
@@ -907,6 +993,12 @@ def rem_sleep(
     """
     now = now_local()
     window_start = now - timedelta(days=int(config["lookback_days"]))
+    # Clusters are rebuilt every run, so old ones are only noise: keep the last
+    # couple of windows for context and drop the rest.
+    connection.execute(
+        "DELETE FROM cluster WHERE created_at < ?",
+        (_iso(now - timedelta(days=max(14, int(config["lookback_days"]) * 2))),),
+    )
     rows = connection.execute(
         "SELECT * FROM candidate WHERE state IN ('staged', 'rejected') AND last_seen >= ? "
         "ORDER BY occurrences DESC, last_seen DESC LIMIT ?",
@@ -915,7 +1007,7 @@ def rem_sleep(
     stats["candidates_in_window"] = len(rows)
     groups: list[dict[str, Any]] = []
     for row in rows:
-        vector = _unpack(row["embedding"]) or embed(row["text"])
+        vector = _unpack(row["embedding"]) or embed(compare_text(row["text"]))
         placed = False
         for group in groups:
             if cosine(vector, group["centroid"]) >= 0.80:
@@ -933,15 +1025,22 @@ def rem_sleep(
     model_reply: dict[str, dict[str, Any]] = {}
     stats["llm_skipped"] = bool(config["llm"]) and not _llm_available(settings, config)
     if config["llm"] and not stats["llm_skipped"]:
-        payload = [
-            {
+        # The prompt is capped by size as well as by count: a small local model
+        # has a 2-4k context, and a 25-item prompt would silently truncate.
+        payload: list[dict[str, Any]] = []
+        budget = 9_000
+        for row in rows:
+            item = {
                 "id": row["id"],
                 "text": row["text"][:600],
                 "context": (row["context"] or "")[:300],
                 "seen": row["occurrences"],
             }
-            for row in rows[:MAX_LLM_ITEMS]
-        ]
+            size = len(item["text"]) + len(item["context"])
+            if len(payload) >= MAX_LLM_ITEMS or size > budget:
+                break
+            payload.append(item)
+            budget -= size
         model_reply, error = _ask_model(settings, config, payload, language)
         stats["llm_calls"] = 1 if payload else 0
         stats["llm_error"] = error
@@ -1010,13 +1109,12 @@ def score_candidates(
     connection: sqlite3.Connection,
     config: dict[str, Any],
     model_reply: dict[str, dict[str, Any]],
-    settings: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], int]:
     """Score every candidate and return the passing ones plus the count."""
     now = now_local()
     lookback = max(1, int(config["lookback_days"]))
     existing = entries()
-    promoted_vectors = [(item["text"], embed(item["text"])) for item in existing]
+    promoted_vectors = [(item["text"], embed(compare_text(item["text"]))) for item in existing]
     cluster_themes = {
         row["id"]: str(row["theme"] or row["label"] or "")
         for row in connection.execute("SELECT id, theme, label FROM cluster")
@@ -1027,7 +1125,7 @@ def score_candidates(
     ).fetchall()
     results: list[dict[str, Any]] = []
     for row in rows:
-        vector = _unpack(row["embedding"]) or embed(row["text"])
+        vector = _unpack(row["embedding"]) or embed(compare_text(row["text"]))
         last_seen = _parse_dt(row["last_seen"]) or now
         age_days = max(0.0, (now - last_seen).total_seconds() / 86400)
         recency = max(0.0, 1.0 - age_days / lookback)
@@ -1085,13 +1183,24 @@ def score_candidates(
                 }
             )
     results.sort(key=lambda item: item["score"], reverse=True)
-    return results, len(rows)
+    # Two near-identical notes can reach the threshold in the same night; only
+    # the first one becomes a memory, the other stays staged.
+    unique: list[dict[str, Any]] = []
+    accepted: list[list[float]] = []
+    for item in results:
+        vector = embed(compare_text(item["text"]))
+        if any(cosine(vector, other) >= 0.90 for other in accepted):
+            continue
+        accepted.append(vector)
+        unique.append(item)
+    return unique, len(rows)
 
 
 def _ensure_heading(path: Path, heading: str, header: str) -> None:
     """Create a Markdown file with a heading once, never rewriting user edits."""
     if path.exists():
         return
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"{header}\n\n{heading}\n", encoding="utf-8")
     try:
         os.chmod(path, 0o600)
@@ -1241,7 +1350,7 @@ def run(
         stats["themes"] = list(
             dict.fromkeys(group["theme"][:40] for group in list(rem.values())[:5])
         )
-        scored, evaluated = score_candidates(connection, config, model_reply, settings or {})
+        scored, evaluated = score_candidates(connection, config, model_reply)
         stats["scored"] = evaluated
         stats["passed"] = len(scored)
         # Items that are already in MEMORY.md must not be counted as new wins in
@@ -1297,7 +1406,7 @@ def run(
                 {"id": item["id"], "text": item["text"][:400], "score": item["score"], "theme": item.get("theme") or ""}
                 for item in promoted
             ],
-            "capabilities": capabilities(),
+            "capabilities": safe_capabilities(),
         }
     except Exception as exc:  # noqa: BLE001 - reported to the page and the log
         error = _redact(str(exc))[:500]
@@ -1325,10 +1434,15 @@ def entries() -> list[dict[str, Any]]:
         body = match.group("body").strip()
         if body.startswith("- "):
             body = body[2:]
+        try:
+            score_value = float(match.group("score"))
+        except ValueError:
+            # A hand-edited marker must not break the whole list.
+            score_value = 0.0
         items.append(
             {
                 "id": match.group("id"),
-                "score": float(match.group("score")),
+                "score": score_value,
                 "date": match.group("date"),
                 "sources": [part for part in match.group("sources").split(",") if part],
                 "text": body.strip(),
@@ -1355,9 +1469,12 @@ def forget(memory_id: str) -> bool:
         return False
     MEMORY_FILE.write_text(updated, encoding="utf-8")
     try:
-        with _connect() as connection:
+        with _session() as connection:
+            # Drop the vector too: a forgotten memory must not keep influencing
+            # novelty checks through a stale embedding.
             connection.execute(
-                "UPDATE candidate SET state = 'forgotten', memory_id = NULL WHERE memory_id = ? OR id = ?",
+                "UPDATE candidate SET state = 'forgotten', memory_id = NULL, embedding = NULL "
+                "WHERE memory_id = ? OR id = ?",
                 (memory_id, memory_id),
             )
     except sqlite3.DatabaseError:
@@ -1379,7 +1496,7 @@ def status(settings: dict[str, Any] | None = None) -> dict[str, Any]:
     """Report the state of the memory system without running anything."""
     config = settings_from(settings)
     ensure_storage()
-    with _connect() as connection:
+    with _session() as connection:
         counts = {
             row["state"]: int(row["count"])
             for row in connection.execute("SELECT state, COUNT(*) AS count FROM candidate GROUP BY state")
@@ -1404,6 +1521,7 @@ def status(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "llm": bool(config["llm"]),
         "provider": config["provider"],
         "model": config["model"],
+        "base_url": config["base_url"],
         "window_end": config["window_end"],
         "running": is_running(),
         "idle_seconds": int(idle_seconds()),
@@ -1427,26 +1545,31 @@ def status(settings: dict[str, Any] | None = None) -> dict[str, Any]:
 
 def reindex() -> dict[str, int]:
     """Drop the derived index and build it again from the history folder."""
-    if is_running():
+    # Take the same lock a run takes: rebuilding the index halfway through a
+    # consolidation would interleave two writers on the same tables.
+    if not _RUN_LOCK.acquire(blocking=False):
         raise RuntimeError("memory_busy")
-    ensure_storage()
-    with _connect() as connection:
-        connection.execute("DELETE FROM message")
-        connection.execute("DELETE FROM candidate")
-        connection.execute("DELETE FROM cluster")
-        connection.execute("DELETE FROM source")
-        try:
-            connection.execute("DELETE FROM message_fts")
-        except sqlite3.DatabaseError:
-            pass
-        if _vec_state(connection)["ready"]:
+    try:
+        ensure_storage()
+        with _session() as connection:
+            connection.execute("DELETE FROM message")
+            connection.execute("DELETE FROM candidate")
+            connection.execute("DELETE FROM cluster")
+            connection.execute("DELETE FROM source")
             try:
-                connection.execute("DELETE FROM message_vec")
+                connection.execute("DELETE FROM message_fts")
             except sqlite3.DatabaseError:
                 pass
-        _set_meta(connection, "last_ingest_at", "")
-    _log("memory.reindex", "Rebuilt the memory index from history")
-    return {"ok": True}
+            if _vec_state(connection)["ready"]:
+                try:
+                    connection.execute("DELETE FROM message_vec")
+                except sqlite3.DatabaseError:
+                    pass
+            _set_meta(connection, "last_ingest_at", "")
+        _log("memory.reindex", "Rebuilt the memory index from history")
+        return {"ok": True}
+    finally:
+        _RUN_LOCK.release()
 
 
 # --------------------------------------------------------------------------- #
@@ -1458,6 +1581,21 @@ def _minutes(text: str) -> int:
     """Convert an ``HH:MM`` string to minutes after midnight."""
     hour, minute = text.split(":")
     return int(hour) * 60 + int(minute)
+
+
+def _cron_start_minutes(schedule: str) -> int:
+    """Minute-of-day of a cron schedule, or 0 when the fields are not plain.
+
+    ``*/30 3 * * *`` is a valid expression whose minute field is not a number;
+    reading it with int() used to raise on every scheduler tick.
+    """
+    fields = str(schedule).split()
+    if len(fields) != 5:
+        return 0
+    try:
+        return int(fields[1]) * 60 + int(fields[0])
+    except ValueError:
+        return 0
 
 
 def _due_today(connection: sqlite3.Connection, now: datetime) -> bool:
@@ -1479,18 +1617,29 @@ def scheduler_tick() -> None:
             return
         now = now_local()
         minute_key = now.strftime("%Y-%m-%d %H:%M")
-        with _connect() as connection:
+        today_text = now.strftime("%Y-%m-%d")
+        start_minutes = _cron_start_minutes(config["schedule"])
+        end_minutes = _minutes(config["window_end"])
+        if end_minutes <= start_minutes:
+            end_minutes = 23 * 60 + 59
+        now_minutes = now.hour * 60 + now.minute
+        with _session() as connection:
             if app.cron_matches(config["schedule"], now) and _get_meta(connection, "due_key") != minute_key:
                 _set_meta(connection, "due_key", minute_key)
-                _set_meta(connection, "due_date", now.strftime("%Y-%m-%d"))
+                _set_meta(connection, "due_date", today_text)
                 _log("memory.due", "Memory consolidation became due", schedule=config["schedule"])
+            # Catch-up: a phone asleep at the scheduled minute (or a server
+            # started inside the window) still consolidates once it is awake.
+            if (
+                _get_meta(connection, "due_date") != today_text
+                and _get_meta(connection, "last_run_date") != today_text
+                and start_minutes <= now_minutes <= end_minutes
+            ):
+                _set_meta(connection, "due_date", today_text)
+                _log("memory.due", "Memory consolidation became due (catch-up)", schedule=config["schedule"])
             if not _due_today(connection, now) or is_running():
                 return
-            start_minutes = _minutes(config["schedule"].split()[1] + ":" + config["schedule"].split()[0])
-            end_minutes = _minutes(config["window_end"])
-            if end_minutes <= start_minutes:
-                end_minutes = 23 * 60 + 59
-            if now.hour * 60 + now.minute > end_minutes:
+            if now_minutes > end_minutes:
                 _set_meta(connection, "due_date", "")
                 return
             if idle_seconds() < int(config["idle_minutes"]) * 60:
