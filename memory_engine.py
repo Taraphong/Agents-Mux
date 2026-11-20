@@ -404,7 +404,12 @@ def _connect() -> sqlite3.Connection:
     DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(str(DATABASE_FILE), timeout=20)
     connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA journal_mode=WAL")
+    # Asking for WAL on an already-WAL file still needs a moment with the
+    # write lock, so a status poll during a run stalled here; only switch when
+    # the database is not in WAL yet.
+    mode = str(connection.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+    if mode != "wal":
+        connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA synchronous=NORMAL")
     connection.execute("PRAGMA busy_timeout=10000")
     try:
