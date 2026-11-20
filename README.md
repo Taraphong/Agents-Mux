@@ -97,7 +97,7 @@ python app.py
 | `AI_WEB_ENABLE_SCHEDULER` | Set to `1` to enable the scheduler under WSGI |
 | `AI_WEB_MAX_CONTENT_BYTES` | Request body cap (default 8 MB) |
 | `AI_WEB_LOG_MAX_ENTRIES` | In-memory log window (default `1000`) |
-| `AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_SCHEDULE_FILE` | Storage path overrides |
+| `AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_SCHEDULE_FILE`, `AI_WEB_WORKSPACE_DIR` | Storage path overrides |
 
 ## The chat page
 
@@ -148,6 +148,8 @@ The Settings view is grouped into cards:
 - **Web and HTTPS** — HTTP/HTTPS mode, certificate state, and the restart notice with the new address.
 
 ## Local tools and approvals
+
+Relative paths given to `list_files`, `read_file`, and `write_file`, and the starting folder of `run_command`, are the `workspace/` folder inside the project (override it with `AI_WEB_WORKSPACE_DIR`). The agent keeps the files it creates there, so they stay together and out of Git.
 
 With **Machine access** on (the default) the model can use these tools anywhere on the machine:
 
