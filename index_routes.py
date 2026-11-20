@@ -411,6 +411,10 @@ def status_get():
 def history_list():
     """Return history summaries sorted by most recently updated."""
     records = []
+    # The same conversation can exist more than once when an older build wrote a
+    # relative path under history/history. Keep only the newest copy per id so
+    # the sidebar never lists one conversation twice.
+    positions = {}
     if HISTORY_ROOT.exists():
         for path in HISTORY_ROOT.rglob("*.json"):
             try:
@@ -420,7 +424,16 @@ def history_list():
             if not isinstance(record, dict):
                 # A stray list/scalar JSON file must not break the whole list.
                 continue
-            records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked", "pinned")})
+            item = {key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked", "pinned")}
+            identity = item.get("id")
+            if isinstance(identity, str) and identity:
+                position = positions.get(identity)
+                if position is not None:
+                    if str(item.get("updated_at") or "") >= str(records[position].get("updated_at") or ""):
+                        records[position] = item
+                    continue
+                positions[identity] = len(records)
+            records.append(item)
     # A record whose timestamp is missing or null must not break the whole list.
     records.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
     return jsonify({"items": records})
