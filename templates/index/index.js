@@ -608,6 +608,7 @@ const I18N = {
     "memory.promoted": "ความจำ",
     "memory.index": "ดัชนี",
     "memory.lastRunLine": "รันล่าสุด: {time} · {status}",
+    "memory.lastRunPromoted": "โปรโมต {count} รายการ",
     "memory.neverRun": "ยังไม่เคยรัน",
     "memory.idleMinutes": "{minutes} นาที",
     "memory.statusOk": "สำเร็จ",
@@ -1223,6 +1224,7 @@ const I18N = {
     "memory.promoted": "Memories",
     "memory.index": "Index",
     "memory.lastRunLine": "Last run: {time} · {status}",
+    "memory.lastRunPromoted": "promoted {count}",
     "memory.neverRun": "Never run",
     "memory.idleMinutes": "{minutes} min",
     "memory.statusOk": "Succeeded",
@@ -3169,6 +3171,15 @@ async function loadSchedules() {
     renderSchedules(currentSchedules);
   }
 }
+let memoryStatusCache = null;
+let memoryEntriesCache = { items: [], dreams: "" };
+let memoryLoaded = false;
+function renderMemory() {
+  if (memoryStatusCache) renderMemoryStatus(memoryStatusCache);
+  renderMemoryEntries(memoryEntriesCache.items);
+  $("memory-dreams").textContent =
+    memoryEntriesCache.dreams || t("memory.noDreams");
+}
 function memoryNumber(id, fallback) {
   const raw = $(id).value.trim();
   if (!raw) return fallback;
@@ -3212,7 +3223,9 @@ function renderMemoryStatus(data) {
       })
     : t("memory.neverRun");
   const extra = `${last}${data.running ? ` · ${t("memory.running")}` : ""}${
-    stats.promoted !== undefined ? ` · ${t("memory.promoted")} ${stats.promoted}` : ""
+    stats.promoted !== undefined
+      ? ` · ${t("memory.lastRunPromoted", { count: stats.promoted })}`
+      : ""
   }`;
   $("memory-last-run").textContent = extra;
   $("memory-capability").textContent = t("memory.capability", {
@@ -3260,9 +3273,10 @@ async function loadMemory() {
     const entries = entriesResponse.ok
       ? await entriesResponse.json()
       : { items: [], dreams: "" };
-    renderMemoryStatus(status);
-    renderMemoryEntries(entries.items || []);
-    $("memory-dreams").textContent = entries.dreams || t("memory.noDreams");
+    memoryStatusCache = status;
+    memoryEntriesCache = { items: entries.items || [], dreams: entries.dreams || "" };
+    memoryLoaded = true;
+    renderMemory();
   } catch (error) {
     showNotice(t("memory.error", { error: error.message }), true);
   }
@@ -4327,8 +4341,18 @@ $("save").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    let result = {};
+    try {
+      result = await r.json();
+    } catch (_error) {
+      result = {};
+    }
+    // The server explains why a save was rejected (invalid cron, bad Discord
+    // IDs); showing "Could not save" alone hides the fixable detail.
     showNotice(
-      r.ok ? t("notice.settingsSaved") : t("notice.settingsSaveFailed"),
+      r.ok
+        ? t("notice.settingsSaved")
+        : result.error || t("notice.settingsSaveFailed"),
       !r.ok,
     );
     if (r.ok) {
@@ -5959,6 +5983,9 @@ function applyTranslations() {
   renderServerStatus();
   renderNetworkState();
   renderLogs();
+  // Status cells and entry labels are built from API data, so they have to be
+  // rebuilt on a language switch as well.
+  if (memoryLoaded) renderMemory();
   $("schedule-timezone").textContent =
     currentScheduleTimezone || t("schedule.loading");
   if (

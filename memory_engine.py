@@ -508,6 +508,11 @@ def ensure_storage() -> None:
                 window_end TEXT,
                 created_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS forgotten (
+                text_hash TEXT PRIMARY KEY,
+                forgotten_at TEXT,
+                text TEXT
+            );
             CREATE TABLE IF NOT EXISTS run (
                 id TEXT PRIMARY KEY,
                 started_at TEXT,
@@ -676,6 +681,9 @@ def _stage_candidate(
     if len(comparison) < 20:
         return "skipped"
     norm_hash = _hash(comparison.lower())
+    # A forgotten memory must stay forgotten even after the index is rebuilt.
+    if connection.execute("SELECT 1 FROM forgotten WHERE text_hash = ?", (norm_hash,)).fetchone():
+        return "skipped"
     existing = _find_candidate(connection, norm_hash)
     if existing is not None:
         _merge_candidate(connection, existing, timestamp)
@@ -1146,8 +1154,14 @@ def score_candidates(
             - 0.20 * duplicate_penalty
         )
         score = round(max(0.0, min(1.0, score)), 3)
-        passes = score >= float(config["threshold"]) and (
-            importance >= 0.6 or int(row["occurrences"] or 1) >= 2 or explicit > 0
+        # A memory that already exists must not be promoted again just because
+        # the index was rebuilt and gave the candidate a new id; 0.95 on the
+        # lexical embedding means the same sentence.
+        already_remembered = similarity >= 0.95
+        passes = (
+            not already_remembered
+            and score >= float(config["threshold"])
+            and (importance >= 0.6 or int(row["occurrences"] or 1) >= 2 or explicit > 0)
         )
         breakdown = {
             "recency": round(recency, 3),
@@ -1467,9 +1481,33 @@ def forget(memory_id: str) -> bool:
     updated = pattern.sub("\n", text)
     if updated == text:
         return False
+    # Remember the text itself, not only the index row: after a rebuild the
+    # candidate may be gone, and the entry would otherwise come straight back.
+    remembered = ""
+    for match in _MEMORY_MARKER_RE.finditer(text):
+        if match.group("id") == memory_id:
+            remembered = match.group("body").strip()
+            break
+    plain = re.sub(
+        r"^(?:- )?(?:\*\*[^*]{1,80}\*\*\s*—\s*)?", "", remembered
+    ).strip()
     MEMORY_FILE.write_text(updated, encoding="utf-8")
     try:
         with _session() as connection:
+            row = connection.execute(
+                "SELECT norm_hash, text FROM candidate WHERE memory_id = ? OR id = ?",
+                (memory_id, memory_id),
+            ).fetchone()
+            hashes = []
+            if row is not None:
+                hashes.append((row["norm_hash"], str(row["text"])[:500]))
+            if plain:
+                hashes.append((_hash(compare_text(plain).lower()), plain[:500]))
+            for text_hash, body in hashes:
+                connection.execute(
+                    "INSERT OR REPLACE INTO forgotten(text_hash, forgotten_at, text) VALUES (?, ?, ?)",
+                    (text_hash, _iso(), body),
+                )
             # Drop the vector too: a forgotten memory must not keep influencing
             # novelty checks through a stale embedding.
             connection.execute(
