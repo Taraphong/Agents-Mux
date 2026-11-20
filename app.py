@@ -1154,7 +1154,9 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             raise ValueError("A file path is required (relative paths resolve inside the workspace folder)")
         requested_path = str(workspace_tool_path(arguments.get("path", "")))
         if machine_access:
-            path = resolve_tool_path(requested_path, must_exist=True)
+            # Same scope as list_files and write_file: any path on the machine,
+            # including a workspace folder configured outside the project.
+            path = resolve_machine_path(requested_path, must_exist=True)
         else:
             path = resolve_project_path(requested_path, must_exist=True)
             file_text = os.path.normpath(str(path))
