@@ -568,6 +568,11 @@ const I18N = {
     "memory.thresholdLabel": "เกณฑ์คะแนนขั้นต่ำ",
     "memory.idleLabel": "ต้องว่างอย่างน้อย (นาที)",
     "memory.maxItemsLabel": "โปรโมตสูงสุดต่อคืน",
+    "memory.retrievalLabel": "แนบความจำระยะยาวที่เกี่ยวข้องกับแชท",
+    "memory.retrievalHint":
+      "ใช้เฉพาะรายการที่คำใกล้เคียงกับข้อความล่าสุด และไม่เกินจำนวน/งบตัวอักษรที่ตั้งไว้",
+    "memory.retrievalItemsLabel": "ความจำสูงสุดต่อข้อความ",
+    "memory.retrievalCharsLabel": "งบตัวอักษรของความจำ",
     "memory.includeLockedLabel": "รวมบทสนทนาที่ล็อกไว้",
     "memory.llmLabel": "ให้โมเดลช่วยสรุปความหมาย (ปิดได้เพื่อรันออฟไลน์ 100%)",
     "memory.providerLabel": "โมเดลที่ใช้สรุป",
@@ -1186,6 +1191,11 @@ const I18N = {
     "memory.thresholdLabel": "Minimum score",
     "memory.idleLabel": "Idle for at least (minutes)",
     "memory.maxItemsLabel": "Promote at most per night",
+    "memory.retrievalLabel": "Attach relevant long-term memories to chat",
+    "memory.retrievalHint":
+      "Only entries whose wording overlaps the latest message, within the count and character budget below",
+    "memory.retrievalItemsLabel": "Memories per message",
+    "memory.retrievalCharsLabel": "Memory character budget",
     "memory.includeLockedLabel": "Include locked conversations",
     "memory.llmLabel": "Let a model help summarise (turn off to run fully offline)",
     "memory.providerLabel": "Model used for summaries",
@@ -4241,6 +4251,9 @@ async function loadSettings() {
   $("memory_threshold").value = memory.threshold ?? 0.65;
   $("memory_idle").value = memory.idle_minutes ?? 15;
   $("memory_max_items").value = memory.max_items ?? 25;
+  $("memory_retrieval").checked = memory.retrieval !== false;
+  $("memory_retrieval_items").value = memory.retrieval_items ?? 4;
+  $("memory_retrieval_chars").value = memory.retrieval_chars ?? 800;
   $("memory_include_locked").checked = !!memory.include_locked;
   $("memory_llm").checked = memory.llm !== false;
   $("memory_provider").value = memory.provider || "";
@@ -4315,6 +4328,9 @@ function collectSettingsBody() {
       threshold: memoryNumber("memory_threshold", 0.65),
       idle_minutes: memoryNumber("memory_idle", 15),
       max_items: memoryNumber("memory_max_items", 25),
+      retrieval: $("memory_retrieval").checked,
+      retrieval_items: memoryNumber("memory_retrieval_items", 4),
+      retrieval_chars: memoryNumber("memory_retrieval_chars", 800),
       include_locked: $("memory_include_locked").checked,
       llm: $("memory_llm").checked,
       provider: $("memory_provider").value,

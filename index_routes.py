@@ -58,6 +58,7 @@ from app import (
     apply_settings_update,
     apply_tls_environment,
     approval_required_tools,
+    build_system_prompt,
     call_provider,
     clean_messages,
     compress_response,
@@ -1175,15 +1176,7 @@ def chat():
         command_mode = body.get("command_mode", settings.get("command_mode", "ask"))
         if command_mode not in {"ask", "auto", "fast"}:
             command_mode = "ask"
-        settings["system_prompt"] = "\n\n".join(
-            part for part in (
-                settings.get("system_prompt", ""),
-                agent_profile_prompt(settings),
-                f"Memory review guidance:\n{settings.get('memory_review', '')}" if settings.get("memory_review") else "",
-                selected_skill_prompt(settings),
-                TOOL_INSTRUCTIONS,
-            ) if part
-        )
+        settings["system_prompt"] = build_system_prompt(settings, messages)
         provider = str(settings.get("provider", "openai")).lower()
         messages = clean_messages(messages, settings)
         unsupported = None

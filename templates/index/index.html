@@ -1169,6 +1169,37 @@
                           max="200"
                         /></label
                       >
+                      <label
+                        ><span data-i18n="memory.retrievalItemsLabel"
+                          >ความจำสูงสุดต่อข้อความ</span
+                        ><input
+                          id="memory_retrieval_items"
+                          type="number"
+                          min="1"
+                          max="10"
+                        /></label
+                      >
+                      <label
+                        ><span data-i18n="memory.retrievalCharsLabel"
+                          >งบตัวอักษรของความจำ</span
+                        ><input
+                          id="memory_retrieval_chars"
+                          type="number"
+                          min="200"
+                          max="2000"
+                          step="100"
+                        /><small
+                          class="hint"
+                          data-i18n="memory.retrievalHint"
+                          >ใช้เฉพาะรายการที่คำใกล้เคียงกับข้อความล่าสุด และไม่เกินงบที่ตั้งไว้</small
+                        ></label
+                      >
+                      <label class="full toggle"
+                        ><input id="memory_retrieval" type="checkbox" /><span
+                          data-i18n="memory.retrievalLabel"
+                          >แนบความจำระยะยาวที่เกี่ยวข้องกับแชท</span
+                        ></label
+                      >
                       <label class="full toggle"
                         ><input
                           id="memory_include_locked"
