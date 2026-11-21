@@ -320,7 +320,12 @@ def memory_run_post():
             settings=load_settings(),
             language=language,
         )
-        return jsonify(result)
+        safe_result = dict(result) if isinstance(result, dict) else result
+        if isinstance(safe_result, dict) and isinstance(safe_result.get("stats"), dict):
+            safe_stats = dict(safe_result["stats"])
+            safe_stats["llm_error"] = ""
+            safe_result["stats"] = safe_stats
+        return jsonify(safe_result)
     except RuntimeError as exc:
         if str(exc) == "memory_busy":
             return jsonify({"error": status_message(language, "memory_busy")}), 409
