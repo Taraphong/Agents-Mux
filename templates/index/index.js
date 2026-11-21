@@ -551,6 +551,78 @@ const I18N = {
     "history.deleteFailed": "ลบประวัติไม่สำเร็จ",
     "history.startedNew": "เริ่มบทสนทนาใหม่",
     "history.emptyHint": "เริ่มบทสนทนาใหม่ได้เลยครับ",
+    "nav.memory": "ความจำ",
+    "page.memory": "ความจำ",
+    "settings.group.memory": "ความจำ",
+    "settings.group.memoryDesc":
+      "คัดกรองความจำเบื้องหลังตอนเครื่องว่าง แล้วโปรโมตเฉพาะเรื่องที่ผ่านเกณฑ์ลง MEMORY.md",
+    "memory.settingsTitle": "ระบบคัดกรองความจำ",
+    "memory.settingsHint":
+      "การตัดคำซ้ำ คำนวณคะแนน และเงื่อนไขรันเป็นโค้ดในเครื่องทั้งหมด ส่วนการสรุปความหมายจะส่งให้โมเดลที่เลือก",
+    "memory.enableLabel": "เปิดใช้งานการคัดกรองอัตโนมัติ",
+    "memory.scheduleLabel": "เวลาเริ่ม (cron 5 ช่วง)",
+    "memory.scheduleHint": "ค่าเริ่มต้น 03:00 น. ตาม timezone ของเซิร์ฟเวอร์",
+    "memory.windowEndLabel": "เลื่อนได้ถึงเวลา",
+    "memory.windowEndHint": "ถ้าเครื่องยังไม่ว่าง จะรอจนถึงเวลานี้แล้วข้าม",
+    "memory.lookbackLabel": "วิเคราะห์ย้อนหลัง (วัน)",
+    "memory.thresholdLabel": "เกณฑ์คะแนนขั้นต่ำ",
+    "memory.idleLabel": "ต้องว่างอย่างน้อย (นาที)",
+    "memory.maxItemsLabel": "โปรโมตสูงสุดต่อคืน",
+    "memory.includeLockedLabel": "รวมบทสนทนาที่ล็อกไว้",
+    "memory.llmLabel": "ให้โมเดลช่วยสรุปความหมาย (ปิดได้เพื่อรันออฟไลน์ 100%)",
+    "memory.providerLabel": "โมเดลที่ใช้สรุป",
+    "memory.providerInherit": "ใช้ provider ที่ตั้งไว้",
+    "memory.modelLabel": "ชื่อโมเดล (เว้นว่าง = ใช้ค่าเดิม)",
+    "memory.baseUrlLabel": "Base URL เฉพาะงานสรุปความจำ",
+    "memory.baseUrlHint":
+      "เว้นว่างเพื่อใช้ Base URL เดียวกับแชต ใช้ค่านี้เมื่ออยากให้แชตอยู่บน Cloud แต่สรุปความจำในเครื่อง",
+    "memory.localModelHint":
+      "รันฟรีในเครื่องได้ผ่าน Ollama หรือ llama-server ที่ http://127.0.0.1 (RAM 1.8 GB ใช้โมเดลเล็กได้เท่านั้น)",
+    "memory.saveHint":
+      "ค่าเหล่านี้บันทึกพร้อมปุ่ม “บันทึกการตั้งค่า” ด้านล่าง",
+    "memory.title": "ความจำระยะยาว",
+    "memory.hint":
+      "ระบบจะย่อยบันทึกประจำวันและประวัติแชทเป็นความจำระยะยาวตอนเครื่องว่าง แล้วเขียนเฉพาะเรื่องที่ผ่านเกณฑ์ลง MEMORY.md",
+    "memory.runNow": "รันเลย",
+    "memory.dryRun": "ทดลอง (ไม่โปรโมต)",
+    "memory.reindex": "ล้างดัชนี",
+    "memory.promotedTitle": "สิ่งที่จำได้",
+    "memory.promotedHint":
+      "แต่ละรายการมาจาก MEMORY.md และลบออกจากทั้งสองชั้นข้อมูลได้",
+    "memory.dreamsTitle": "DREAMS.md",
+    "memory.dreamsHint": "สรุปกลางคืนว่าอะไรถูกเลือก อะไรถูกข้าม",
+    "memory.loading": "กำลังโหลด...",
+    "memory.empty": "ยังไม่มีความจำที่ผ่านเกณฑ์ — รันคืนนี้หรือลดเกณฑ์คะแนน",
+    "memory.noDreams": "ยังไม่มีบันทึกกลางคืน",
+    "memory.running": "กำลังทำงาน...",
+    "memory.forget": "ลืม",
+    "memory.forgetConfirm": "กดอีกครั้งเพื่อลบ",
+    "memory.score": "คะแนน",
+    "memory.enabled": "เปิด",
+    "memory.disabled": "ปิด",
+    "memory.schedule": "เวลา",
+    "memory.threshold": "เกณฑ์",
+    "memory.idle": "ว่าง",
+    "memory.messages": "ข้อความ",
+    "memory.conversations": "บทสนทนา",
+    "memory.promoted": "ความจำ",
+    "memory.index": "ดัชนี",
+    "memory.lastRunLine": "รันล่าสุด: {time} · {status}",
+    "memory.lastRunPromoted": "โปรโมต {count} รายการ",
+    "memory.neverRun": "ยังไม่เคยรัน",
+    "memory.idleMinutes": "{minutes} นาที",
+    "memory.statusOk": "สำเร็จ",
+    "memory.statusDegraded": "สำเร็จ (โมเดลขัดข้อง)",
+    "memory.statusFailed": "ล้มเหลว",
+    "memory.runDone": "รันแล้ว: โปรโมต {count} รายการ จาก {messages} ข้อความใหม่",
+    "memory.dryRunDone": "ทดลองเสร็จ: จะโปรโมต {count} รายการ (ยังไม่โปรโมตจริง)",
+    "memory.reindexed": "ล้างดัชนีแล้ว — การรันครั้งถัดไปจะสร้างดัชนีจากประวัติใหม่",
+    "memory.error": "ระบบความจำผิดพลาด: {error}",
+    "memory.capability":
+      "SQLite {version} · FTS5 {fts} · vector {vector} · embedding {embedding}",
+    "memory.paths": "MEMORY.md: {memory} · DREAMS.md: {dreams} · DB: {db}",
+    "memory.llmOn": "ใช้โมเดลสรุป",
+    "memory.llmOff": "ออฟไลน์เต็มรูปแบบ",
   },
   en: {
     "app.title": "AI Control Center",
@@ -1097,6 +1169,76 @@ const I18N = {
     "history.deleteFailed": "Could not delete the conversation",
     "history.startedNew": "Started a new conversation",
     "history.emptyHint": "You can start a new conversation.",
+    "nav.memory": "Memory",
+    "page.memory": "Memory",
+    "settings.group.memory": "Memory",
+    "settings.group.memoryDesc":
+      "Consolidate memory in the background when the machine is idle, and promote only the topics that pass the threshold into MEMORY.md",
+    "memory.settingsTitle": "Memory filter",
+    "memory.settingsHint":
+      "De-duplication, scoring and the promote gate all run in local code; only the semantic summary is sent to the chosen model.",
+    "memory.enableLabel": "Enable automatic consolidation",
+    "memory.scheduleLabel": "Start time (5-field cron)",
+    "memory.scheduleHint": "Defaults to 03:00 in the server timezone",
+    "memory.windowEndLabel": "Catch up until",
+    "memory.windowEndHint": "If the machine is busy, wait until this time and then skip tonight",
+    "memory.lookbackLabel": "Look back (days)",
+    "memory.thresholdLabel": "Minimum score",
+    "memory.idleLabel": "Idle for at least (minutes)",
+    "memory.maxItemsLabel": "Promote at most per night",
+    "memory.includeLockedLabel": "Include locked conversations",
+    "memory.llmLabel": "Let a model help summarise (turn off to run fully offline)",
+    "memory.providerLabel": "Model used for summaries",
+    "memory.providerInherit": "Use the configured provider",
+    "memory.modelLabel": "Model name (blank = keep the current one)",
+    "memory.baseUrlLabel": "Base URL for summaries only",
+    "memory.baseUrlHint":
+      "Leave blank to use the chat Base URL. Set it to keep chat on a cloud provider while summaries run locally.",
+    "memory.localModelHint":
+      "Run free on the machine through Ollama or llama-server on http://127.0.0.1 (with 1.8 GB RAM only a small model fits)",
+    "memory.saveHint": "These values are saved with the “Save settings” button below.",
+    "memory.title": "Long-term memory",
+    "memory.hint":
+      "The engine distils daily notes and chat history into long-term memory while the machine is idle, and writes only the topics that pass the threshold into MEMORY.md",
+    "memory.runNow": "Run now",
+    "memory.dryRun": "Preview (no promotion)",
+    "memory.reindex": "Reset index",
+    "memory.promotedTitle": "What is remembered",
+    "memory.promotedHint": "Each entry comes from MEMORY.md and is removed from both storage tiers",
+    "memory.dreamsTitle": "DREAMS.md",
+    "memory.dreamsHint": "The nightly summary of what was picked and what was skipped",
+    "memory.loading": "Loading...",
+    "memory.empty": "Nothing has passed the threshold yet — run tonight or lower the score",
+    "memory.noDreams": "No nightly notes yet",
+    "memory.running": "Working...",
+    "memory.forget": "Forget",
+    "memory.forgetConfirm": "Click again to delete",
+    "memory.score": "Score",
+    "memory.enabled": "On",
+    "memory.disabled": "Off",
+    "memory.schedule": "Schedule",
+    "memory.threshold": "Threshold",
+    "memory.idle": "Idle",
+    "memory.messages": "Messages",
+    "memory.conversations": "Conversations",
+    "memory.promoted": "Memories",
+    "memory.index": "Index",
+    "memory.lastRunLine": "Last run: {time} · {status}",
+    "memory.lastRunPromoted": "promoted {count}",
+    "memory.neverRun": "Never run",
+    "memory.idleMinutes": "{minutes} min",
+    "memory.statusOk": "Succeeded",
+    "memory.statusDegraded": "Succeeded (model error)",
+    "memory.statusFailed": "Failed",
+    "memory.runDone": "Done: promoted {count} items from {messages} new messages",
+    "memory.dryRunDone": "Preview finished: {count} items would be promoted (nothing promoted)",
+    "memory.reindexed": "Index reset — the next consolidation run rebuilds it from history",
+    "memory.error": "Memory engine error: {error}",
+    "memory.capability":
+      "SQLite {version} · FTS5 {fts} · vector {vector} · embedding {embedding}",
+    "memory.paths": "MEMORY.md: {memory} · DREAMS.md: {dreams} · DB: {db}",
+    "memory.llmOn": "Model summaries on",
+    "memory.llmOff": "Fully offline",
   },
 };
 function getSavedLanguage() {
@@ -1174,6 +1316,9 @@ const SLASH_COMMANDS = [
 let defaultSkills = [];
 let availableSkills = [];
 let pendingSkill = null;
+// Set right before submitting an approved tool result, so the saved turn can be
+// marked as machine output instead of guessing from its first words.
+let pendingToolResult = false;
 let chatBusy = false;
 let chatSessionToken = 0;
 let slashMatches = [];
@@ -2174,6 +2319,7 @@ async function approveToolRequest(event) {
     $("input").value =
       `${t("tool.resultPrefix")}\n${JSON.stringify(data.result, null, 2)}`;
     resizeInput();
+    pendingToolResult = true;
     $("chat-form").requestSubmit();
   } catch (error) {
     if (meta) delete meta.approval_running;
@@ -2205,6 +2351,7 @@ document.querySelectorAll("nav button").forEach((button) =>
       loadServerStatus();
     }
     if (button.dataset.view === "schedule") loadSchedules();
+    if (button.dataset.view === "memory") loadMemory();
     if (button.dataset.view === "logs") loadLogs();
     closeSidebar();
   }),
@@ -2214,6 +2361,7 @@ const SETTINGS_SECTIONS = [
   "agent",
   "response",
   "integrations",
+  "memory",
   "security",
   "update",
   "server",
@@ -2801,6 +2949,8 @@ function attachmentProviderUnsupported() {
     : pendingAttachment;
 }
 async function sendChatMessage(content, requestedSkills = null) {
+  const toolResult = pendingToolResult;
+  pendingToolResult = false;
   const blockedAttachment = attachmentProviderUnsupported();
   if (blockedAttachment) {
     showNotice(
@@ -2852,6 +3002,7 @@ async function sendChatMessage(content, requestedSkills = null) {
       ? [pendingSkill]
       : null;
   if (appliedSkill) userMessage.skill = appliedSkill;
+  if (toolResult) userMessage.tool_result = true;
   messages.push(userMessage);
   addMessage("user", userMessage.content, userMessage, messages.length - 1);
   addTypingIndicator();
@@ -3027,6 +3178,204 @@ async function loadSchedules() {
     renderSchedules(currentSchedules);
   }
 }
+let memoryStatusCache = null;
+let memoryEntriesCache = { items: [], dreams: "" };
+// Two loads can finish out of order; only the newest may update the caches.
+let memoryLoadGeneration = 0;
+let memoryLoaded = false;
+function renderMemory() {
+  if (memoryStatusCache) renderMemoryStatus(memoryStatusCache);
+  renderMemoryEntries(memoryEntriesCache.items);
+  $("memory-dreams").textContent =
+    memoryEntriesCache.dreams || t("memory.noDreams");
+}
+function memoryNumber(id, fallback) {
+  const raw = $(id).value.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+function memoryStatusLabel(value) {
+  if (value === "ok") return t("memory.statusOk");
+  if (value === "degraded") return t("memory.statusDegraded");
+  if (value === "failed") return t("memory.statusFailed");
+  return value || "—";
+}
+function renderMemoryStatus(data) {
+  const caps = data.capabilities || {};
+  const stats = data.last_stats || {};
+  const cells = [
+    [t("memory.schedule"), data.schedule || "—"],
+    [t("memory.threshold"), Number(data.threshold ?? 0).toFixed(2)],
+    [
+      t("memory.idle"),
+      t("memory.idleMinutes", { minutes: data.idle_minutes ?? 0 }),
+    ],
+    [t("memory.messages"), String(data.messages ?? 0)],
+    [t("memory.conversations"), String(data.conversations ?? 0)],
+    [t("memory.promoted"), String(data.promoted_entries ?? 0)],
+    [
+      t("memory.index"),
+      `${caps.vector || "?"} · FTS5 ${caps.fts5 ? "✓" : "✗"}`,
+    ],
+  ];
+  $("memory-status").innerHTML = cells
+    .map(
+      ([label, value]) =>
+        `<div class="memory-stat"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value))}</strong></div>`,
+    )
+    .join("");
+  const last = data.last_run_at
+    ? t("memory.lastRunLine", {
+        time: data.last_run_at,
+        status: memoryStatusLabel(data.last_run_status),
+      })
+    : t("memory.neverRun");
+  const extra = `${last}${data.running ? ` · ${t("memory.running")}` : ""}${
+    stats.promoted !== undefined
+      ? ` · ${t("memory.lastRunPromoted", { count: stats.promoted })}`
+      : ""
+  }`;
+  $("memory-last-run").textContent = extra;
+  $("memory-capability").textContent = t("memory.capability", {
+    version: caps.sqlite_version || "?",
+    fts: caps.fts5 ? "✓" : "✗",
+    vector: caps.vector || "?",
+    embedding: caps.embedding || "?",
+  });
+  const paths = data.paths || {};
+  $("memory-paths").textContent = t("memory.paths", {
+    memory: paths.memory_file || "?",
+    dreams: paths.dreams_file || "?",
+    db: paths.database || "?",
+  });
+}
+function renderMemoryEntries(items) {
+  const list = $("memory-entries");
+  if (!items.length) {
+    list.innerHTML = `<p class="hint">${escapeHtml(t("memory.empty"))}</p>`;
+    return;
+  }
+  list.innerHTML = items
+    .map(
+      (item) => `
+    <div class="memory-entry">
+      <div class="memory-entry-text">${escapeHtml(item.text || "")}</div>
+      <div class="memory-entry-meta">
+        <span>${escapeHtml(t("memory.score"))} ${Number(item.score || 0).toFixed(2)}</span>
+        <span>${escapeHtml(item.date || "")}</span>
+        <button type="button" class="danger" data-memory-id="${escapeHtml(item.id)}">${escapeHtml(t("memory.forget"))}</button>
+      </div>
+    </div>`,
+    )
+    .join("");
+}
+async function loadMemory() {
+  const generation = ++memoryLoadGeneration;
+  $("memory-entries").innerHTML = `<p class="hint">${escapeHtml(t("memory.loading"))}</p>`;
+  try {
+    const [statusResponse, entriesResponse] = await Promise.all([
+      fetch("/api/memory/status"),
+      fetch("/api/memory/entries"),
+    ]);
+    if (!statusResponse.ok) throw new Error(`HTTP ${statusResponse.status}`);
+    // A failed read is not an empty collection: report it instead of showing
+    // "nothing has passed the threshold".
+    if (!entriesResponse.ok) throw new Error(`HTTP ${entriesResponse.status}`);
+    const status = await statusResponse.json();
+    const entries = await entriesResponse.json();
+    // A slower, older refresh must not restore the entries it saw first.
+    if (generation !== memoryLoadGeneration) return;
+    memoryStatusCache = status;
+    memoryEntriesCache = { items: entries.items || [], dreams: entries.dreams || "" };
+    memoryLoaded = true;
+    renderMemory();
+  } catch (error) {
+    if (generation !== memoryLoadGeneration) return;
+    // Keep the last good view (or say what failed) instead of leaving the
+    // loading placeholder on screen.
+    if (memoryLoaded) {
+      renderMemory();
+    } else {
+      $("memory-entries").innerHTML = `<p class="hint">${escapeHtml(t("memory.error", { error: error.message }))}</p>`;
+    }
+    showNotice(t("memory.error", { error: error.message }), true);
+  }
+}
+async function runMemory(dryRun) {
+  const button = dryRun ? $("memory-dry-run") : $("memory-run");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = t("memory.running");
+  try {
+    const response = await fetch("/api/memory/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dry_run: dryRun }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const stats = data.stats || {};
+    showNotice(
+      dryRun
+        ? t("memory.dryRunDone", { count: stats.promoted ?? 0 })
+        : t("memory.runDone", {
+            count: stats.promoted ?? 0,
+            messages: stats.messages ?? 0,
+          }),
+    );
+    await loadMemory();
+  } catch (error) {
+    showNotice(t("memory.error", { error: error.message }), true);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+async function reindexMemory() {
+  const button = $("memory-reindex");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = t("memory.running");
+  try {
+    const response = await fetch("/api/memory/reindex", { method: "POST" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    showNotice(t("memory.reindexed"));
+    await loadMemory();
+  } catch (error) {
+    showNotice(t("memory.error", { error: error.message }), true);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+$("memory-run").addEventListener("click", () => runMemory(false));
+$("memory-dry-run").addEventListener("click", () => runMemory(true));
+$("memory-reindex").addEventListener("click", reindexMemory);
+$("memory-entries").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-memory-id]");
+  if (!button) return;
+  if (button.dataset.confirm !== "1") {
+    button.dataset.confirm = "1";
+    button.textContent = t("memory.forgetConfirm");
+    return;
+  }
+  const memoryId = button.dataset.memoryId;
+  button.disabled = true;
+  try {
+    const response = await fetch(
+      `/api/memory/entries/${encodeURIComponent(memoryId)}`,
+      { method: "DELETE" },
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    await loadMemory();
+  } catch (error) {
+    showNotice(t("memory.error", { error: error.message }), true);
+    button.disabled = false;
+  }
+});
 $("schedule-preset").addEventListener("change", () => {
   if ($("schedule-preset").value)
     $("schedule-expression").value = $("schedule-preset").value;
@@ -3884,6 +4233,27 @@ async function loadSettings() {
   $("discord_allowed_users").value = Array.isArray(s.discord_allowed_users)
     ? s.discord_allowed_users.join(", ")
     : s.discord_allowed_users || "";
+  const memory = s.memory || {};
+  $("memory_enabled").checked = memory.enabled !== false;
+  $("memory_schedule").value = memory.schedule || "0 3 * * *";
+  $("memory_window_end").value = memory.window_end || "06:00";
+  $("memory_lookback").value = memory.lookback_days ?? 7;
+  $("memory_threshold").value = memory.threshold ?? 0.65;
+  $("memory_idle").value = memory.idle_minutes ?? 15;
+  $("memory_max_items").value = memory.max_items ?? 25;
+  $("memory_include_locked").checked = !!memory.include_locked;
+  $("memory_llm").checked = memory.llm !== false;
+  $("memory_provider").value = memory.provider || "";
+  $("memory_model").value = memory.model || "";
+  $("memory_base_url").value = memory.base_url || "";
+  // The Memory panel shows the detected capabilities and paths; a status read
+  // fills them without waiting for the user to open the Memory page.
+  fetch("/api/memory/status")
+    .then((response) => (response.ok ? response.json() : null))
+    .then((status) => {
+      if (status) renderMemoryStatus(status);
+    })
+    .catch(() => {});
   $("discord_token").value = "";
   hasDiscordToken = !!s.has_discord_token;
   updateDiscordTokenHint();
@@ -3937,6 +4307,20 @@ function collectSettingsBody() {
     discord_allowed_channels: $("discord_allowed_channels").value,
     discord_allowed_users: $("discord_allowed_users").value,
     machine_access: $("machine_access").checked,
+    memory: {
+      enabled: $("memory_enabled").checked,
+      schedule: $("memory_schedule").value.trim(),
+      window_end: $("memory_window_end").value.trim() || "06:00",
+      lookback_days: memoryNumber("memory_lookback", 7),
+      threshold: memoryNumber("memory_threshold", 0.65),
+      idle_minutes: memoryNumber("memory_idle", 15),
+      max_items: memoryNumber("memory_max_items", 25),
+      include_locked: $("memory_include_locked").checked,
+      llm: $("memory_llm").checked,
+      provider: $("memory_provider").value,
+      model: $("memory_model").value.trim(),
+      base_url: $("memory_base_url").value.trim(),
+    },
   };
 }
 $("add-custom-key").addEventListener("click", saveCustomApiKey);
@@ -3978,8 +4362,18 @@ $("save").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    let result = {};
+    try {
+      result = await r.json();
+    } catch (_error) {
+      result = {};
+    }
+    // The server explains why a save was rejected (invalid cron, bad Discord
+    // IDs); showing "Could not save" alone hides the fixable detail.
     showNotice(
-      r.ok ? t("notice.settingsSaved") : t("notice.settingsSaveFailed"),
+      r.ok
+        ? t("notice.settingsSaved")
+        : result.error || t("notice.settingsSaveFailed"),
       !r.ok,
     );
     if (r.ok) {
@@ -5610,6 +6004,9 @@ function applyTranslations() {
   renderServerStatus();
   renderNetworkState();
   renderLogs();
+  // Status cells and entry labels are built from API data, so they have to be
+  // rebuilt on a language switch as well.
+  if (memoryLoaded) renderMemory();
   $("schedule-timezone").textContent =
     currentScheduleTimezone || t("schedule.loading");
   if (
