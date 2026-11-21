@@ -585,7 +585,7 @@ const I18N = {
       "ระบบจะย่อยบันทึกประจำวันและประวัติแชทเป็นความจำระยะยาวตอนเครื่องว่าง แล้วเขียนเฉพาะเรื่องที่ผ่านเกณฑ์ลง MEMORY.md",
     "memory.runNow": "รันเลย",
     "memory.dryRun": "ทดลอง (ไม่โปรโมต)",
-    "memory.reindex": "สร้างดัชนีใหม่",
+    "memory.reindex": "ล้างดัชนี",
     "memory.promotedTitle": "สิ่งที่จำได้",
     "memory.promotedHint":
       "แต่ละรายการมาจาก MEMORY.md และลบออกจากทั้งสองชั้นข้อมูลได้",
@@ -616,7 +616,7 @@ const I18N = {
     "memory.statusFailed": "ล้มเหลว",
     "memory.runDone": "รันแล้ว: โปรโมต {count} รายการ จาก {messages} ข้อความใหม่",
     "memory.dryRunDone": "ทดลองเสร็จ: จะโปรโมต {count} รายการ (ยังไม่โปรโมตจริง)",
-    "memory.reindexed": "สร้างดัชนีใหม่แล้ว",
+    "memory.reindexed": "ล้างดัชนีแล้ว — การรันครั้งถัดไปจะสร้างดัชนีจากประวัติใหม่",
     "memory.error": "ระบบความจำผิดพลาด: {error}",
     "memory.capability":
       "SQLite {version} · FTS5 {fts} · vector {vector} · embedding {embedding}",
@@ -1202,7 +1202,7 @@ const I18N = {
       "The engine distils daily notes and chat history into long-term memory while the machine is idle, and writes only the topics that pass the threshold into MEMORY.md",
     "memory.runNow": "Run now",
     "memory.dryRun": "Preview (no promotion)",
-    "memory.reindex": "Rebuild index",
+    "memory.reindex": "Reset index",
     "memory.promotedTitle": "What is remembered",
     "memory.promotedHint": "Each entry comes from MEMORY.md and is removed from both storage tiers",
     "memory.dreamsTitle": "DREAMS.md",
@@ -1232,7 +1232,7 @@ const I18N = {
     "memory.statusFailed": "Failed",
     "memory.runDone": "Done: promoted {count} items from {messages} new messages",
     "memory.dryRunDone": "Preview finished: {count} items would be promoted (nothing promoted)",
-    "memory.reindexed": "Index rebuilt",
+    "memory.reindexed": "Index reset — the next consolidation run rebuilds it from history",
     "memory.error": "Memory engine error: {error}",
     "memory.capability":
       "SQLite {version} · FTS5 {fts} · vector {vector} · embedding {embedding}",
@@ -1316,6 +1316,9 @@ const SLASH_COMMANDS = [
 let defaultSkills = [];
 let availableSkills = [];
 let pendingSkill = null;
+// Set right before submitting an approved tool result, so the saved turn can be
+// marked as machine output instead of guessing from its first words.
+let pendingToolResult = false;
 let chatBusy = false;
 let chatSessionToken = 0;
 let slashMatches = [];
@@ -2316,6 +2319,7 @@ async function approveToolRequest(event) {
     $("input").value =
       `${t("tool.resultPrefix")}\n${JSON.stringify(data.result, null, 2)}`;
     resizeInput();
+    pendingToolResult = true;
     $("chat-form").requestSubmit();
   } catch (error) {
     if (meta) delete meta.approval_running;
@@ -2945,6 +2949,8 @@ function attachmentProviderUnsupported() {
     : pendingAttachment;
 }
 async function sendChatMessage(content, requestedSkills = null) {
+  const toolResult = pendingToolResult;
+  pendingToolResult = false;
   const blockedAttachment = attachmentProviderUnsupported();
   if (blockedAttachment) {
     showNotice(
@@ -2996,6 +3002,7 @@ async function sendChatMessage(content, requestedSkills = null) {
       ? [pendingSkill]
       : null;
   if (appliedSkill) userMessage.skill = appliedSkill;
+  if (toolResult) userMessage.tool_result = true;
   messages.push(userMessage);
   addMessage("user", userMessage.content, userMessage, messages.length - 1);
   addTypingIndicator();
@@ -3173,6 +3180,8 @@ async function loadSchedules() {
 }
 let memoryStatusCache = null;
 let memoryEntriesCache = { items: [], dreams: "" };
+// Two loads can finish out of order; only the newest may update the caches.
+let memoryLoadGeneration = 0;
 let memoryLoaded = false;
 function renderMemory() {
   if (memoryStatusCache) renderMemoryStatus(memoryStatusCache);
@@ -3262,6 +3271,7 @@ function renderMemoryEntries(items) {
     .join("");
 }
 async function loadMemory() {
+  const generation = ++memoryLoadGeneration;
   $("memory-entries").innerHTML = `<p class="hint">${escapeHtml(t("memory.loading"))}</p>`;
   try {
     const [statusResponse, entriesResponse] = await Promise.all([
@@ -3269,15 +3279,26 @@ async function loadMemory() {
       fetch("/api/memory/entries"),
     ]);
     if (!statusResponse.ok) throw new Error(`HTTP ${statusResponse.status}`);
+    // A failed read is not an empty collection: report it instead of showing
+    // "nothing has passed the threshold".
+    if (!entriesResponse.ok) throw new Error(`HTTP ${entriesResponse.status}`);
     const status = await statusResponse.json();
-    const entries = entriesResponse.ok
-      ? await entriesResponse.json()
-      : { items: [], dreams: "" };
+    const entries = await entriesResponse.json();
+    // A slower, older refresh must not restore the entries it saw first.
+    if (generation !== memoryLoadGeneration) return;
     memoryStatusCache = status;
     memoryEntriesCache = { items: entries.items || [], dreams: entries.dreams || "" };
     memoryLoaded = true;
     renderMemory();
   } catch (error) {
+    if (generation !== memoryLoadGeneration) return;
+    // Keep the last good view (or say what failed) instead of leaving the
+    // loading placeholder on screen.
+    if (memoryLoaded) {
+      renderMemory();
+    } else {
+      $("memory-entries").innerHTML = `<p class="hint">${escapeHtml(t("memory.error", { error: error.message }))}</p>`;
+    }
     showNotice(t("memory.error", { error: error.message }), true);
   }
 }

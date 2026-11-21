@@ -323,7 +323,10 @@ def memory_run_post():
         safe_result = dict(result) if isinstance(result, dict) else result
         if isinstance(safe_result, dict) and isinstance(safe_result.get("stats"), dict):
             safe_stats = dict(safe_result["stats"])
-            safe_stats["llm_error"] = ""
+            # The engine already stores a category. Only a known category may
+            # leave the server, so raw exception text can never reach the page.
+            kind = str(safe_stats.get("llm_error") or "")
+            safe_stats["llm_error"] = kind if kind in memory_engine.LLM_ERROR_KINDS else ""
             safe_result["stats"] = safe_stats
         return jsonify(safe_result)
     except RuntimeError as exc:
@@ -339,18 +342,23 @@ def memory_run_post():
 @index_bp.delete("/api/memory/entries/<memory_id>")
 def memory_entry_delete(memory_id: str):
     """Forget one promoted memory in both tiers."""
+    language = request_language()
     try:
         removed = memory_engine.forget(memory_id)
+    except RuntimeError as exc:
+        if str(exc) == "memory_busy":
+            return jsonify({"error": status_message(language, "memory_busy")}), 409
+        return jsonify({"error": status_message(language, "memory_forget_failed")}), 500
     except OSError:
-        return jsonify({"error": status_message(request_language(), "memory_forget_failed")}), 500
+        return jsonify({"error": status_message(language, "memory_forget_failed")}), 500
     if not removed:
-        return jsonify({"error": status_message(request_language(), "memory_not_found")}), 404
+        return jsonify({"error": status_message(language, "memory_not_found")}), 404
     return jsonify({"ok": True})
 
 
 @index_bp.post("/api/memory/reindex")
 def memory_reindex_post():
-    """Rebuild the SQLite index from the history folder."""
+    """Reset the SQLite index; the next consolidation run rebuilds it."""
     language = request_language()
     try:
         return jsonify(memory_engine.reindex())

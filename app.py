@@ -127,7 +127,16 @@ SCHEDULE_RUNNING_LOCK = threading.Lock()
 _SCHEDULER_STARTED = False
 _SCHEDULER_START_LOCK = threading.Lock()
 _SCHEDULER_LOCK_HANDLE: Any = None
-PROTECTED_NAMES = {".env", ".app-settings.json", ".app-auth.json", ".app-memory.db"}
+PROTECTED_NAMES = {
+    ".env",
+    ".app-settings.json",
+    ".app-auth.json",
+    ".app-memory.db",
+    ".app-memory.db-wal",
+    ".app-memory.db-shm",
+    "MEMORY.md",
+    "DREAMS.md",
+}
 PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__", "certs"}
 COMMAND_TIMEOUT_SECONDS = 60
 COMMAND_MAX_OUTPUT_BYTES = 100_000
@@ -779,6 +788,10 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     relative_parts: list[str] = [] if relative_text == os.curdir else relative_text.split(os.sep)
     if any(part in PROTECTED_PARTS for part in relative_parts) or candidate.name in PROTECTED_NAMES:
         raise ValueError("Access to files or folders holding secrets is not allowed")
+    resolved_candidate = candidate.resolve()
+    for target in configured_secret_targets():
+        if resolved_candidate == target or target in resolved_candidate.parents:
+            raise ValueError("Access to files or folders holding secrets is not allowed")
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
@@ -877,10 +890,22 @@ except OSError as exc:
 
 
 def configured_secret_targets() -> list[Path]:
-    """Return the settings, auth, history and certificate paths in use."""
+    """Return the settings, auth, history, memory and certificate paths in use."""
     # ENV_FILE is included because .env itself can be a symlink: resolving the
     # write target would otherwise hide the protected name behind its target.
     targets = [SETTINGS_FILE, AUTH_FILE, HISTORY_ROOT, ENV_FILE]
+    # The memory paths can be moved with AI_WEB_MEMORY_*; the static names above
+    # would then miss them, so the configured locations are compared too.
+    targets.extend(
+        [
+            memory_engine.MEMORY_FILE,
+            memory_engine.DREAMS_FILE,
+            memory_engine.DATABASE_FILE,
+            Path(f"{memory_engine.DATABASE_FILE}-wal"),
+            Path(f"{memory_engine.DATABASE_FILE}-shm"),
+            memory_engine.MEMORY_DIR,
+        ]
+    )
     for name in ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY"):
         value = os.getenv(name, "").strip()
         if value:
@@ -1922,7 +1947,9 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
     """Fetch the available models for a provider, using its API key."""
     provider = normalize_provider(provider)
     key = get_api_key(provider, settings)
-    if not key:
+    # A local llama-server/Ollama serves /models without a key, matching the
+    # rule call_openai() and provider_readiness() use for the chat request.
+    if not key and not keyless_loopback_provider(provider, settings):
         raise RuntimeError("No API key is configured, so the model list cannot be fetched")
     if provider == "gemini":
         response = provider_models_get(
@@ -1954,7 +1981,7 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
     base_url = get_base_url(provider, settings)
     response = provider_models_get(
         f"{base_url}/models",
-        headers={"Authorization": f"Bearer {key}"},
+        headers={"Authorization": f"Bearer {key}"} if key else None,
         timeout=timeout,
     )
     models = response.json().get("data", [])
@@ -2441,6 +2468,17 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
     return {**result, "cached": False}
 
 
+def keyless_loopback_provider(provider: str, settings: dict[str, Any]) -> bool:
+    """Whether a provider is a local endpoint that works without an API key.
+
+    ``call_openai()`` accepts a loopback endpoint with no key (llama-server,
+    Ollama), and Gemini and Anthropic always need one.
+    """
+    return provider not in {"gemini", "anthropic"} and endpoint_is_loopback(
+        get_base_url(provider, settings)
+    )
+
+
 def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[str, Any]:
     """Check locally, then remotely, whether the selected provider and model are usable."""
     provider = normalize_provider(settings.get("provider"))
@@ -2448,10 +2486,15 @@ def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[s
     label = PROVIDER_LABELS[provider]
     key = get_api_key(provider, settings)
     base = {"provider": provider, "model": model}
-    if not key:
+    keyless_local = keyless_loopback_provider(provider, settings)
+    if not key and not keyless_local:
         return {**base, "ready": False, "reason": status_message(language, "missing_key", label=label), "checked": "local"}
     if not model:
         return {**base, "ready": False, "reason": status_message(language, "missing_model", label=label), "checked": "local"}
+    if keyless_local and not key:
+        # A no-key local server is usable, and the request path already accepts
+        # it: without this the page disabled Send for a working setup.
+        return {**base, "ready": True, "reason": "", "checked": "local"}
     if not key_looks_plausible(key, provider, get_base_url(provider, settings)):
         return {**base, "ready": False, "reason": status_message(language, "invalid_key_shape", label=label), "checked": "local"}
     check = provider_key_check(provider, settings, language)
@@ -3866,9 +3909,6 @@ def reject_cross_site_mutation():
     """Refuse state-changing requests that a browser sent from another site."""
     if request.method not in MUTATING_METHODS:
         return None
-    # Any real change from the page or a client means someone is using the app,
-    # so the nightly memory run only starts once the machine has been quiet.
-    memory_engine.touch_activity()
     # Sec-Fetch-Site is set by the browser and cannot be forged by page script,
     # so it catches a cross-site request even when the Origin comparison is
     # defeated by a spoofed or proxy-supplied Host / X-Forwarded-Host.
@@ -3877,14 +3917,17 @@ def reject_cross_site_mutation():
         log_event("security.cross_site", "Rejected a cross-site request", path=request.path, method=request.method, site=fetch_site)
         return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
     origin = request.headers.get("Origin", "").strip()
-    if not origin:
-        # Non-browser clients (curl, scripts) do not send Origin.
-        return None
-    parsed = urlsplit(origin)
-    if parsed.scheme in {"http", "https"} and parsed.netloc.lower() == request.host.lower():
-        return None
-    log_event("security.cross_origin", "Rejected a request from another origin", path=request.path, method=request.method)
-    return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
+    if origin:
+        parsed = urlsplit(origin)
+        if not (parsed.scheme in {"http", "https"} and parsed.netloc.lower() == request.host.lower()):
+            log_event("security.cross_origin", "Rejected a request from another origin", path=request.path, method=request.method)
+            return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
+    # Only a request that will actually be served counts as the owner being
+    # active: recording it before these checks let rejected cross-site requests
+    # postpone the nightly memory run. An unpaired client is rejected below.
+    if not AUTH_ENABLED or current_auth_session():
+        memory_engine.touch_activity()
+    return None
 
 
 @app.errorhandler(413)

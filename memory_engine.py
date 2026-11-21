@@ -106,8 +106,9 @@ _TOKEN_RE = re.compile(r"[0-9A-Za-z_]+|[\u0e00-\u0e7f]+")
 _THAI_RE = re.compile(r"^[\u0e00-\u0e7f]+$")
 _MEMORY_MARKER_RE = re.compile(
     r"<!-- mem:(?P<id>[0-9a-fA-F-]{36}) score=(?P<score>[0-9.]+) "
-    r"date=(?P<date>[^ ]+) sources=(?P<sources>[^ ]*) -->\n"
-    r"(?P<body>(?:(?!<!-- mem:).)*)",
+    r"date=(?P<date>[^ ]+) sources=(?P<sources>[^ ]*)"
+    r"(?: hash=(?P<hash>[0-9a-f]{64}))? -->\n"
+    r"(?P<body>(?:(?!<!-- (?:mem:|/mem:)).)*)",
     re.DOTALL,
 )
 _RUN_LOCK = threading.Lock()
@@ -218,14 +219,20 @@ def normalize_text(text: str) -> str:
 
 
 def compare_text(text: str) -> str:
-    """Strip noise that changes per message but not meaning.
+    """Normalise text for hashing and embeddings.
 
-    A URL, a timestamp or a run of spaces makes two otherwise identical notes
-    look different. Storage keeps the original text (a remembered link stays
-    usable); hashing and embeddings use this version.
+    A timestamp or a run of spaces makes two otherwise identical notes look
+    different, so those are collapsed. Links stay in the comparison: two notes
+    with the same prose but a different link target are not the same memory.
     """
-    value = _URL_RE.sub(" ", normalize_text(text))
-    return re.sub(r"\s+", " ", value).strip()[:MAX_MESSAGE_CHARS]
+    return re.sub(r"\s+", " ", normalize_text(text)).strip()[:MAX_MESSAGE_CHARS]
+
+
+def _link_targets(text: str) -> frozenset[str]:
+    """The distinct link targets in one message, compared case-insensitively."""
+    return frozenset(
+        match.group(0).lower().rstrip(".,;:)]}") for match in _URL_RE.finditer(str(text or ""))
+    )
 
 
 def message_text(message: Any) -> str:
@@ -436,27 +443,43 @@ def _session() -> Iterator[sqlite3.Connection]:
 
 
 def _vec_state(connection: sqlite3.Connection) -> dict[str, Any]:
-    """Load sqlite-vec once and remember whether the index can use it."""
+    """Return whether sqlite-vec can be used on this connection.
+
+    The capability probe is cached, but an extension is registered per
+    connection: a second connection that saw only the cached flag would fail on
+    ``message_vec``, so every caller loads vec0 on its own connection first.
+    """
     with _VEC_LOCK:
-        if _VEC_STATE["checked"]:
-            return dict(_VEC_STATE)
-        state = {"checked": True, "ready": False, "error": ""}
-        if VEC_EXTENSION_FILE.exists():
-            try:
-                connection.enable_load_extension(True)
-                connection.load_extension(str(VEC_EXTENSION_FILE))
-                state["ready"] = True
-            except Exception as exc:  # noqa: BLE001 - capability probe
-                state["error"] = str(exc)[:200]
-            finally:
+        if not _VEC_STATE["checked"]:
+            state = {"checked": True, "ready": False, "error": ""}
+            if VEC_EXTENSION_FILE.exists():
                 try:
-                    connection.enable_load_extension(False)
-                except Exception:
-                    pass
-        else:
-            state["error"] = "vec0.so not installed"
-        _VEC_STATE.update(state)
-        return dict(_VEC_STATE)
+                    connection.enable_load_extension(True)
+                    connection.load_extension(str(VEC_EXTENSION_FILE))
+                    state["ready"] = True
+                except Exception as exc:  # noqa: BLE001 - capability probe
+                    state["error"] = str(exc)[:200]
+                finally:
+                    try:
+                        connection.enable_load_extension(False)
+                    except Exception:
+                        pass
+            else:
+                state["error"] = "vec0.so not installed"
+            _VEC_STATE.update(state)
+        if not _VEC_STATE["ready"]:
+            return dict(_VEC_STATE)
+    try:
+        connection.enable_load_extension(True)
+        connection.load_extension(str(VEC_EXTENSION_FILE))
+        return {"checked": True, "ready": True, "error": ""}
+    except Exception as exc:  # noqa: BLE001 - a failed load disables vectors
+        return {"checked": True, "ready": False, "error": str(exc)[:200]}
+    finally:
+        try:
+            connection.enable_load_extension(False)
+        except Exception:
+            pass
 
 
 def ensure_storage() -> None:
@@ -466,11 +489,15 @@ def ensure_storage() -> None:
     arrives while a run holds that lock used to fail with "database is locked".
     The probe below makes the call read-only once the schema is already there.
     """
+    created = not MEMORY_DIR.exists()
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        os.chmod(MEMORY_DIR, 0o700)
-    except OSError:
-        pass
+    if created:
+        # Only tighten a folder this engine just created: changing the mode of
+        # an existing vault is a change a preview must not make.
+        try:
+            os.chmod(MEMORY_DIR, 0o700)
+        except OSError:
+            pass
     if DATABASE_FILE.exists():
         try:
             with _session() as connection:
@@ -712,6 +739,10 @@ def _stage_candidate(
         return "merged"
     vector = embed(comparison)
     near = _near_duplicate(connection, vector, dedupe)
+    if near is not None and _link_targets(near["text"]) != _link_targets(normalized):
+        # Different links are different memories even when the prose matches;
+        # merging them would silently drop the second target.
+        near = None
     if near is not None:
         _merge_candidate(connection, near, timestamp)
         return "merged"
@@ -738,19 +769,14 @@ def _is_slash_command(text: str) -> bool:
     return bool(_SLASH_RE.match(text.strip()))
 
 
-_TOOL_ARTIFACT_RE = re.compile(
-    r"^\s*(?:tool result|tool output|tool_result|tool_output|tool call|tool_call)\b",
-    re.IGNORECASE,
-)
+def _is_tool_result(message: Any) -> bool:
+    """Whether a stored user turn carries machine output from an approved tool.
 
-
-def _is_tool_artifact(text: str) -> bool:
-    """Whether a user turn actually carries machine output from a tool.
-
-    The chat stores tool results as a user turn, so without this guard every
-    tool dump became a candidate and its JSON head became the theme.
+    The page marks the turn it submits with a tool result, so the filter reads
+    that marker instead of guessing from the first words: a user who writes
+    "Tool output should be archived" must still be indexed and remembered.
     """
-    return bool(_TOOL_ARTIFACT_RE.match(text or ""))
+    return isinstance(message, dict) and bool(message.get("tool_result"))
 
 
 def _day_note_path(date_text: str | None) -> Path:
@@ -763,13 +789,14 @@ def _append_daily_note(
     conversation_id: str,
     title: str,
     date_text: str,
-    updates: list[tuple[str, str]],
+    updates: list[tuple[int, str, str]],
 ) -> bool:
-    """Append one conversation's block to its day note, once.
+    """Append the new turns of one conversation to its day note, once each.
 
-    The block is guarded by a marker so a second run - or a run after the user
-    edited the file in Obsidian - never duplicates or rewrites it. This is why
-    the notes are safe to keep in a normal Markdown vault.
+    The conversation block is guarded by a marker, and every bullet carries a
+    hidden message marker. A later run therefore appends only the turns that
+    are not in the note yet, without duplicating bullets or rewriting the parts
+    the owner may have edited in Obsidian.
     """
     if not updates:
         return False
@@ -779,17 +806,35 @@ def _append_daily_note(
         existing = path.read_text(encoding="utf-8") if path.exists() else ""
     except OSError:
         return False
-    if marker in existing:
+    block_start = existing.find(marker)
+    block = ""
+    if block_start != -1:
+        block_end = existing.find("\n## ", block_start)
+        block = existing[block_start : block_end if block_end != -1 else len(existing)]
+    fresh = [
+        (index, role, text)
+        for index, role, text in updates[-MAX_DAILY_MESSAGES:]
+        if f"<!-- msg:{index} -->" not in block
+    ]
+    if not fresh:
         return False
-    lines = [f"## {title[:80]}", marker]
-    for role, text in updates[-MAX_DAILY_MESSAGES:]:
+    lines = []
+    for index, role, text in fresh:
         snippet = normalize_text(text).replace("\n", " ")
-        lines.append(f"- **{role}:** {snippet[:220]}")
-    lines.append("")
-    prefix = "" if existing else f"# Notes for {date_text}\n\n"
+        lines.append(f"- **{role}:** {snippet[:220]} <!-- msg:{index} -->")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(("\n" if existing and not existing.endswith("\n") else "") + prefix + "\n".join(lines) + "\n")
+    if block_start == -1:
+        prefix = "" if existing else f"# Notes for {date_text}\n\n"
+        block_text = f"## {title[:80]}\n{marker}\n" + "\n".join(lines) + "\n"
+        addition = ("\n" if existing and not existing.endswith("\n") else "") + prefix + block_text
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(addition)
+    else:
+        block_end = existing.find("\n## ", block_start)
+        if block_end == -1:
+            block_end = len(existing)
+        head = existing[:block_end].rstrip("\n")
+        path.write_text(f"{head}\n" + "\n".join(lines) + "\n" + existing[block_end:], encoding="utf-8")
     try:
         os.chmod(path, 0o600)
     except OSError:
@@ -833,7 +878,7 @@ def light_sleep(
         for index, message in enumerate(messages):
             if isinstance(message, dict) and message.get("role") == "assistant":
                 context_after[index - 1] = message_text(message)[:600]
-        notes: list[tuple[str, str]] = []
+        notes: list[tuple[int, str, str]] = []
         note_texts: set[str] = set()
         for index, message in enumerate(messages):
             if not isinstance(message, dict):
@@ -848,7 +893,7 @@ def light_sleep(
                 continue
             if role == "user" and _is_slash_command(text):
                 continue
-            if role == "user" and _is_tool_artifact(text):
+            if role == "user" and _is_tool_result(message):
                 continue
             message_hash = _hash(f"{conversation_id}:{index}:{compare_text(text)}")
             cursor = connection.execute(
@@ -894,10 +939,10 @@ def light_sleep(
             if role == "user":
                 if text not in note_texts:
                     note_texts.add(text)
-                    notes.append(("You", text))
+                    notes.append((index, "You", text))
             elif notes and text not in note_texts:
                 note_texts.add(text)
-                notes.append(("Assistant", text[:300]))
+                notes.append((index, "Assistant", text[:300]))
         if not dry_run and _append_daily_note(
             conversation_id, title, updated[:10], notes[-MAX_DAILY_MESSAGES:]
         ):
@@ -926,9 +971,16 @@ def _llm_settings(settings: dict[str, Any], config: dict[str, Any]) -> dict[str,
     selected without touching the chat settings.
     """
     result = dict(settings or {})
+    chat_provider = str(result.get("provider") or "").strip().lower()
     result.setdefault("provider", "openai")
     if config.get("provider"):
-        result["provider"] = config["provider"]
+        provider = str(config["provider"]).strip().lower()
+        result["provider"] = provider
+        if not config.get("base_url") and provider != chat_provider:
+            # A chat Base URL belongs to the chat provider. Inheriting it for a
+            # different summary provider would send that provider's key to the
+            # chat endpoint, so fall back to the provider's own default URL.
+            result.pop("base_url", None)
     if config.get("model"):
         result["model"] = config["model"]
     if config.get("base_url"):
@@ -1024,7 +1076,54 @@ def _ask_model(
             }
         return result, "" if result else "empty_model_answer"
     except Exception as exc:  # noqa: BLE001 - the run must survive a bad model
-        return {}, _redact(str(exc))[:300]
+        message = _redact(str(exc))[:300]
+        # Gemini and Anthropic raise on an answer with no text. That is the same
+        # outcome as the OpenAI empty answer: the local heuristics covered the
+        # run, so it is a skip, not a degraded night.
+        if "contained no text" in message:
+            return {}, "empty_model_answer"
+        return {}, message
+
+
+LLM_ERROR_KINDS = frozenset(
+    {
+        "empty_model_answer",
+        "auth",
+        "rate_limit",
+        "timeout",
+        "connection",
+        "model_missing",
+        "missing_key",
+        "model_error",
+    }
+)
+
+
+def safe_llm_error(error: str) -> str:
+    """Reduce a model failure to a category that is safe to store and return.
+
+    Provider errors can carry URLs, request ids and key fragments, and the run
+    statistics are stored in the index and returned by the API. The page only
+    needs to know which kind of failure stopped the summary.
+    """
+    text = str(error or "").strip().lower()
+    if not text:
+        return ""
+    if text == "empty_model_answer":
+        return text
+    if any(marker in text for marker in ("401", "403", "unauthorized", "invalid api key", "invalid_key", "permission")):
+        return "auth"
+    if any(marker in text for marker in ("429", "rate limit", "quota")):
+        return "rate_limit"
+    if "timeout" in text or "timed out" in text:
+        return "timeout"
+    if any(marker in text for marker in ("connection", "network", "dns", "name or service")):
+        return "connection"
+    if any(marker in text for marker in ("404", "not found", "model_missing")):
+        return "model_missing"
+    if any(marker in text for marker in ("no api key", "not configured")):
+        return "missing_key"
+    return "model_error"
 
 
 def rem_sleep(
@@ -1232,6 +1331,7 @@ def score_candidates(
                     "theme": theme,
                     "context": row["context"] or "",
                     "conversation_id": row["conversation_id"],
+                    "norm_hash": row["norm_hash"],
                     "occurrences": int(row["occurrences"] or 1),
                     "explicit": explicit > 0,
                     "breakdown": breakdown,
@@ -1290,10 +1390,15 @@ def promote(entries_to_add: list[dict[str, Any]], limit: int) -> list[dict[str, 
             line = f"- **{theme}** — {body}\n"
         else:
             line = f"- {body}\n"
+        # The hash of the full text is written with the entry so Forget still
+        # suppresses it after a reindex removed the candidate row.
+        norm_hash = str(item.get("norm_hash") or "").strip()
+        hash_field = f" hash={norm_hash}" if re.fullmatch(r"[0-9a-fA-F]{64}", norm_hash) else ""
         block = (
             f"\n<!-- mem:{item['id']} score={item['score']:.3f} date={today} "
-            f"sources={str(item.get('conversation_id') or '')[:36]} -->\n"
+            f"sources={str(item.get('conversation_id') or '')[:36]}{hash_field} -->\n"
             + line
+            + f"<!-- /mem:{item['id']} -->\n"
         )
         text += block
         written.append(item)
@@ -1367,8 +1472,9 @@ def run(
     """Run the three phases once and return a summary for the page.
 
     A dry run executes the same evaluation inside one SQLite transaction and
-    rolls it back, so the user can preview what would be promoted without
-    touching the Markdown vault or the index.
+    rolls it back, so it previews what would be promoted without writing notes,
+    MEMORY.md, DREAMS.md or candidate state. On a fresh installation it still
+    creates the empty vault and index schema it has to read.
     """
     if not _RUN_LOCK.acquire(blocking=False):
         raise RuntimeError("memory_busy")
@@ -1389,12 +1495,16 @@ def run(
         "llm_skipped": False,
         "llm_error": "",
     }
-    config = settings_from(settings)
     promoted: list[dict[str, Any]] = []
+    written: list[dict[str, Any]] = []
+    committed = False
     status = "ok"
     error = ""
     connection: sqlite3.Connection | None = None
     try:
+        # Parsed inside the try so a rejected schedule can never leave the run
+        # lock held for the rest of the process.
+        config = settings_from(settings)
         ensure_storage()
         connection = _connect()
         connection.isolation_level = None
@@ -1402,6 +1512,9 @@ def run(
         light = light_sleep(connection, config, run_id, dry_run)
         stats.update({key: light.get(key, 0) for key in ("messages", "new_candidates", "merged_candidates", "notes_written")})
         rem, model_reply = rem_sleep(connection, config, settings or {}, run_id, language, stats)
+        # Store only a category: provider errors can carry URLs and key fragments
+        # and these stats are persisted and returned by the API.
+        stats["llm_error"] = safe_llm_error(stats.get("llm_error", ""))
         stats["themes"] = list(
             dict.fromkeys(group["theme"][:40] for group in list(rem.values())[:5])
         )
@@ -1438,6 +1551,7 @@ def run(
             connection.execute("ROLLBACK")
         else:
             connection.execute("COMMIT")
+            committed = True
             connection.execute("BEGIN")
             _set_meta(connection, "last_run_at", started)
             _set_meta(connection, "last_run_status", status)
@@ -1471,6 +1585,11 @@ def run(
         }
     except Exception as exc:  # noqa: BLE001 - reported to the page and the log
         error = _redact(str(exc))[:500]
+        # promote() writes MEMORY.md before the database commits. When the run
+        # then fails, take those entries back out so the file matches the
+        # rolled-back index instead of leaving them published.
+        if written and not committed:
+            _remove_promoted_entries({item["id"] for item in written})
         if connection is not None:
             try:
                 connection.execute("ROLLBACK")
@@ -1513,59 +1632,129 @@ def entries() -> list[dict[str, Any]]:
     return items
 
 
+def _memory_entry_bounds(text: str, memory_id: str) -> tuple[int, int]:
+    """Return the start and end offsets of one promoted entry in MEMORY.md."""
+    marker = f"<!-- mem:{memory_id}"
+    start = text.find(marker)
+    if start == -1:
+        return -1, -1
+    end_marker = f"<!-- /mem:{memory_id} -->"
+    end = text.find(end_marker, start)
+    if end != -1:
+        end += len(end_marker)
+        if end < len(text) and text[end] == "\n":
+            end += 1
+    else:
+        # Entries written before the end marker ran to the next entry or to the
+        # end of the file. A blank line separates the last entry from notes the
+        # owner added afterwards, so that is the safest end for an old entry.
+        following = text.find("<!-- mem:", start + len(marker))
+        if following != -1:
+            end = following
+        else:
+            blank = text.find("\n\n", start)
+            end = blank + 1 if blank != -1 else len(text)
+    # The writer puts one blank line in front of each entry.
+    if start > 0 and text[start - 1] == "\n":
+        start -= 1
+    return start, end
+
+
+def _remove_promoted_entries(memory_ids: set[str]) -> None:
+    """Take entries a failed run just wrote back out of MEMORY.md."""
+    try:
+        text = MEMORY_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return
+    updated = text
+    for memory_id in memory_ids:
+        start, end = _memory_entry_bounds(updated, memory_id)
+        if start != -1:
+            updated = updated[:start] + updated[end:]
+    if updated == text:
+        return
+    try:
+        MEMORY_FILE.write_text(updated, encoding="utf-8")
+        os.chmod(MEMORY_FILE, 0o600)
+    except OSError:
+        pass
+
+
 def forget(memory_id: str) -> bool:
     """Remove one promoted memory from MEMORY.md and mark it forgotten."""
     if not re.fullmatch(r"[0-9a-fA-F-]{36}", str(memory_id or "")):
         return False
+    # Serialise with run(): promote() rewrites the whole file, so a forget that
+    # wrote in between could be undone by the run's older snapshot.
+    if not _RUN_LOCK.acquire(blocking=False):
+        raise RuntimeError("memory_busy")
     try:
-        text = MEMORY_FILE.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    pattern = re.compile(
-        rf"\n?<!-- mem:{re.escape(memory_id)}[^>]*-->\n?(?:- [^\n]*\n)?",
-        re.DOTALL,
-    )
-    updated = pattern.sub("\n", text)
-    if updated == text:
-        return False
-    # Remember the text itself, not only the index row: after a rebuild the
-    # candidate may be gone, and the entry would otherwise come straight back.
-    remembered = ""
-    for match in _MEMORY_MARKER_RE.finditer(text):
-        if match.group("id") == memory_id:
-            remembered = match.group("body").strip()
-            break
-    plain = re.sub(
-        r"^(?:- )?(?:\*\*[^*]{1,80}\*\*\s*—\s*)?", "", remembered
-    ).strip()
-    MEMORY_FILE.write_text(updated, encoding="utf-8")
-    try:
-        with _session() as connection:
-            row = connection.execute(
-                "SELECT norm_hash, text FROM candidate WHERE memory_id = ? OR id = ?",
-                (memory_id, memory_id),
-            ).fetchone()
-            hashes = []
-            if row is not None:
-                hashes.append((row["norm_hash"], str(row["text"])[:500]))
-            if plain:
-                hashes.append((_hash(compare_text(plain).lower()), plain[:500]))
-            for text_hash, body in hashes:
+        try:
+            text = MEMORY_FILE.read_text(encoding="utf-8")
+        except OSError:
+            return False
+        start, end = _memory_entry_bounds(text, memory_id)
+        if start == -1:
+            return False
+        updated = text[:start] + text[end:]
+        # Remember the text itself, not only the index row: after a rebuild the
+        # candidate may be gone, and the entry would otherwise come straight
+        # back. The marker keeps the hash of the untruncated original text.
+        remembered = ""
+        stored_hash = ""
+        for match in _MEMORY_MARKER_RE.finditer(text):
+            if match.group("id") == memory_id:
+                remembered = match.group("body").strip()
+                stored_hash = match.group("hash") or ""
+                break
+        plain = re.sub(
+            r"^(?:- )?(?:\*\*[^*]{1,80}\*\*\s*—\s*)?", "", remembered
+        ).strip()
+        hashes = []
+        if stored_hash:
+            hashes.append((stored_hash, (plain or remembered)[:500]))
+        if plain:
+            hashes.append((_hash(compare_text(plain).lower()), plain[:500]))
+        # The tombstone is what keeps the text out of the index after a rebuild,
+        # so it is committed before the entry disappears from MEMORY.md. A
+        # failed write leaves the marker in place and the user can retry.
+        try:
+            with _session() as connection:
+                row = connection.execute(
+                    "SELECT norm_hash, text FROM candidate WHERE memory_id = ? OR id = ?",
+                    (memory_id, memory_id),
+                ).fetchone()
+                if row is not None:
+                    hashes.append((row["norm_hash"], str(row["text"])[:500]))
+                for text_hash, body in hashes:
+                    connection.execute(
+                        "INSERT OR REPLACE INTO forgotten(text_hash, forgotten_at, text) VALUES (?, ?, ?)",
+                        (text_hash, _iso(), body),
+                    )
+                # Drop the vector too: a forgotten memory must not keep
+                # influencing novelty checks through a stale embedding.
                 connection.execute(
-                    "INSERT OR REPLACE INTO forgotten(text_hash, forgotten_at, text) VALUES (?, ?, ?)",
-                    (text_hash, _iso(), body),
+                    "UPDATE candidate SET state = 'forgotten', memory_id = NULL, embedding = NULL "
+                    "WHERE memory_id = ? OR id = ?",
+                    (memory_id, memory_id),
                 )
-            # Drop the vector too: a forgotten memory must not keep influencing
-            # novelty checks through a stale embedding.
-            connection.execute(
-                "UPDATE candidate SET state = 'forgotten', memory_id = NULL, embedding = NULL "
-                "WHERE memory_id = ? OR id = ?",
-                (memory_id, memory_id),
+        except sqlite3.DatabaseError as exc:
+            _log(
+                "memory.error",
+                "Could not record a forgotten memory",
+                memory=memory_id,
+                error=_redact(str(exc))[:200],
             )
-    except sqlite3.DatabaseError:
-        pass
-    _log("memory.forget", "Removed a promoted memory", memory=memory_id)
-    return True
+            raise RuntimeError("memory_forget_failed") from None
+        MEMORY_FILE.write_text(updated, encoding="utf-8")
+        try:
+            os.chmod(MEMORY_FILE, 0o600)
+        except OSError:
+            pass
+        _log("memory.forget", "Removed a promoted memory", memory=memory_id)
+        return True
+    finally:
+        _RUN_LOCK.release()
 
 
 def recent_dreams(limit: int = 120) -> str:
@@ -1635,7 +1824,7 @@ def status(settings: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def reindex() -> dict[str, int]:
-    """Drop the derived index and build it again from the history folder."""
+    """Reset the derived index; the next run ingests history again."""
     # Take the same lock a run takes: rebuilding the index halfway through a
     # consolidation would interleave two writers on the same tables.
     if not _RUN_LOCK.acquire(blocking=False):
@@ -1657,7 +1846,7 @@ def reindex() -> dict[str, int]:
                 except sqlite3.DatabaseError:
                     pass
             _set_meta(connection, "last_ingest_at", "")
-        _log("memory.reindex", "Rebuilt the memory index from history")
+        _log("memory.reindex", "Reset the memory index; the next run rebuilds it from history")
         return {"ok": True}
     finally:
         _RUN_LOCK.release()
@@ -1697,6 +1886,26 @@ def _due_today(connection: sqlite3.Connection, now: datetime) -> bool:
     return _get_meta(connection, "due_date") == now.strftime("%Y-%m-%d")
 
 
+def _last_schedule_match_minutes(now: datetime, schedule: str) -> int:
+    """Minute-of-day of the schedule's latest occurrence today, or -1.
+
+    Walking backwards from the current minute respects restricted weekday
+    fields and stepped minute fields such as ``*/30``, which reading the hour
+    and minute with ``int()`` cannot. The scan is bounded by the current time,
+    so a schedule that only fires on Mondays never catches up on a Tuesday.
+    """
+    try:
+        import app
+
+        for minute in range(now.hour * 60 + now.minute, -1, -1):
+            moment = now.replace(hour=minute // 60, minute=minute % 60, second=0, microsecond=0)
+            if app.cron_matches(schedule, moment):
+                return minute
+    except Exception:
+        return -1
+    return -1
+
+
 def scheduler_tick() -> None:
     """Run one scheduler decision; separated so it can be tested directly."""
     try:
@@ -1706,6 +1915,9 @@ def scheduler_tick() -> None:
         config = settings_from(settings)
         if not config["enabled"]:
             return
+        # A fresh installation has no database yet. Create it here so the meta
+        # reads below do not fail on every tick until someone opens the page.
+        ensure_storage()
         now = now_local()
         minute_key = now.strftime("%Y-%m-%d %H:%M")
         today_text = now.strftime("%Y-%m-%d")
@@ -1724,7 +1936,8 @@ def scheduler_tick() -> None:
             if (
                 _get_meta(connection, "due_date") != today_text
                 and _get_meta(connection, "last_run_date") != today_text
-                and start_minutes <= now_minutes <= end_minutes
+                and now_minutes <= end_minutes
+                and _last_schedule_match_minutes(now, config["schedule"]) != -1
             ):
                 _set_meta(connection, "due_date", today_text)
                 _log("memory.due", "Memory consolidation became due (catch-up)", schedule=config["schedule"])
