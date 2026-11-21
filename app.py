@@ -2748,6 +2748,53 @@ def attachment_payload(value: Any) -> dict[str, str] | None:
     return {"name": name, "mime_type": mime_type, "data": data}
 
 
+def memory_context_block(messages: list[dict[str, Any]], settings: dict[str, Any]) -> str:
+    """Return the memory block for the newest user turn, or an empty string."""
+    query = ""
+    for item in reversed(messages):
+        if not isinstance(item, dict) or item.get("role") != "user":
+            continue
+        content = item.get("content")
+        text = content if isinstance(content, str) else memory_engine.message_text(item)
+        if text.strip():
+            query = text
+            break
+    if not query:
+        return ""
+    try:
+        block, _ids = memory_engine.build_context(query, settings)
+    except Exception:
+        return ""
+    return block
+
+
+def build_system_prompt(
+    settings: dict[str, Any],
+    messages: list[dict[str, Any]],
+    *,
+    include_memory_review: bool = True,
+) -> str:
+    """Assemble the system prompt with the memory block before tool rules.
+
+    The block sits before the skill and tool instructions: a stored note must
+    never occupy the position the model treats as the strongest instruction.
+    """
+    memory_review = (
+        f"Memory review guidance:\n{settings.get('memory_review', '')}"
+        if include_memory_review and settings.get("memory_review")
+        else ""
+    )
+    parts = (
+        settings.get("system_prompt", ""),
+        agent_profile_prompt(settings),
+        memory_review,
+        memory_context_block(messages, settings),
+        selected_skill_prompt(settings),
+        TOOL_INSTRUCTIONS,
+    )
+    return "\n\n".join(part for part in parts if part)
+
+
 def clean_messages(messages: list[dict[str, Any]], settings: dict[str, Any]) -> list[dict[str, Any]]:
     """Keep text and validated inline attachments, then prepend the system prompt."""
     result: list[dict[str, Any]] = [{"role": "system", "content": settings.get("system_prompt", "")}] if settings.get("system_prompt") else []
@@ -3351,13 +3398,8 @@ def start_discord_bot() -> None:
             messages = list(context)
         try:
             settings_for_chat = load_settings()
-            settings_for_chat["system_prompt"] = "\n\n".join(
-                part for part in (
-                    settings_for_chat.get("system_prompt", ""),
-                    agent_profile_prompt(settings_for_chat),
-                    selected_skill_prompt(settings_for_chat),
-                    TOOL_INSTRUCTIONS,
-                ) if part
+            settings_for_chat["system_prompt"] = build_system_prompt(
+                settings_for_chat, messages, include_memory_review=False
             )
             messages = clean_messages(messages, settings_for_chat)
             fallback_used = ""
