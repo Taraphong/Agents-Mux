@@ -28,6 +28,7 @@ from app import (
     PROVIDERS,
     PROVIDER_LABELS,
     PROVIDER_NETWORK_ERRORS,
+    ProviderEmptyResponse,
     rate_limit_response,
     Path,
     SCHEDULE_LOCK,
@@ -1231,6 +1232,16 @@ def chat():
                 label=PROVIDER_LABELS.get(provider, provider),
             )
         }), status
+    except ProviderEmptyResponse as exc:
+        log_event("provider.empty_response", "The provider returned no text", provider=provider, reason=exc.finish_reason)
+        return jsonify({
+            "error": status_message(
+                request_language(),
+                "chat_empty_response",
+                label=PROVIDER_LABELS.get(provider, provider),
+                reason=exc.finish_reason or "unknown",
+            )
+        }), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
         log_event("chat.error", "Could not process the message", error=str(exc))
         return jsonify({"error": status_message(request_language(), "chat_failed")}), 500
