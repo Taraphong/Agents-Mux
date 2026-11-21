@@ -568,6 +568,10 @@ const I18N = {
     "memory.thresholdLabel": "เกณฑ์คะแนนขั้นต่ำ",
     "memory.idleLabel": "ต้องว่างอย่างน้อย (นาที)",
     "memory.maxItemsLabel": "โปรโมตสูงสุดต่อคืน",
+    "memory.maxEntriesLabel": "เก็บไว้สูงสุด (รายการ)",
+    "memory.pin": "ปักหมุด",
+    "memory.unpin": "เอาหมุดออก",
+    "memory.pinned": "ปักหมุดไว้",
     "memory.retrievalLabel": "แนบความจำระยะยาวที่เกี่ยวข้องกับแชท",
     "memory.retrievalHint":
       "ใช้เฉพาะรายการที่คำใกล้เคียงกับข้อความล่าสุด และไม่เกินจำนวน/งบตัวอักษรที่ตั้งไว้",
@@ -1191,6 +1195,10 @@ const I18N = {
     "memory.thresholdLabel": "Minimum score",
     "memory.idleLabel": "Idle for at least (minutes)",
     "memory.maxItemsLabel": "Promote at most per night",
+    "memory.maxEntriesLabel": "Keep at most (entries)",
+    "memory.pin": "Pin",
+    "memory.unpin": "Unpin",
+    "memory.pinned": "Pinned",
     "memory.retrievalLabel": "Attach relevant long-term memories to chat",
     "memory.retrievalHint":
       "Only entries whose wording overlaps the latest message, within the count and character budget below",
@@ -3274,6 +3282,8 @@ function renderMemoryEntries(items) {
       <div class="memory-entry-meta">
         <span>${escapeHtml(t("memory.score"))} ${Number(item.score || 0).toFixed(2)}</span>
         <span>${escapeHtml(item.date || "")}</span>
+        ${item.pinned ? `<span>${escapeHtml(t("memory.pinned"))}</span>` : ""}
+        <button type="button" class="memory-pin" data-memory-pin="${escapeHtml(item.id)}" data-pinned="${item.pinned ? "1" : "0"}">${escapeHtml(t(item.pinned ? "memory.unpin" : "memory.pin"))}</button>
         <button type="button" class="danger" data-memory-id="${escapeHtml(item.id)}">${escapeHtml(t("memory.forget"))}</button>
       </div>
     </div>`,
@@ -3364,6 +3374,30 @@ $("memory-run").addEventListener("click", () => runMemory(false));
 $("memory-dry-run").addEventListener("click", () => runMemory(true));
 $("memory-reindex").addEventListener("click", reindexMemory);
 $("memory-entries").addEventListener("click", async (event) => {
+  const pinButton = event.target.closest("button[data-memory-pin]");
+  if (pinButton) {
+    const memoryId = pinButton.dataset.memoryPin;
+    const pinned = pinButton.dataset.pinned !== "1";
+    pinButton.disabled = true;
+    try {
+      const response = await fetch(
+        `/api/memory/entries/${encodeURIComponent(memoryId)}/pin`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pinned }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.error || `HTTP ${response.status}`);
+      await loadMemory();
+    } catch (error) {
+      showNotice(t("memory.error", { error: error.message }), true);
+      pinButton.disabled = false;
+    }
+    return;
+  }
   const button = event.target.closest("button[data-memory-id]");
   if (!button) return;
   if (button.dataset.confirm !== "1") {
@@ -4251,6 +4285,7 @@ async function loadSettings() {
   $("memory_threshold").value = memory.threshold ?? 0.65;
   $("memory_idle").value = memory.idle_minutes ?? 15;
   $("memory_max_items").value = memory.max_items ?? 25;
+  $("memory_max_entries").value = memory.max_entries ?? 200;
   $("memory_retrieval").checked = memory.retrieval !== false;
   $("memory_retrieval_items").value = memory.retrieval_items ?? 4;
   $("memory_retrieval_chars").value = memory.retrieval_chars ?? 800;
@@ -4328,6 +4363,7 @@ function collectSettingsBody() {
       threshold: memoryNumber("memory_threshold", 0.65),
       idle_minutes: memoryNumber("memory_idle", 15),
       max_items: memoryNumber("memory_max_items", 25),
+      max_entries: memoryNumber("memory_max_entries", 200),
       retrieval: $("memory_retrieval").checked,
       retrieval_items: memoryNumber("memory_retrieval_items", 4),
       retrieval_chars: memoryNumber("memory_retrieval_chars", 800),
