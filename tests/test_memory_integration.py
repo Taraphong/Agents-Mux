@@ -7,6 +7,7 @@ output" is kept, and a daily note gains only the turns it does not have yet.
 """
 
 import json
+from datetime import timedelta
 
 import pytest
 
@@ -20,11 +21,18 @@ def provider_settings(provider, *, model="local-model", base_url=LOOPBACK):
     return {"provider": provider, "model": model, "base_url": base_url, "api_keys": {}}
 
 
-def write_history(module, messages, *, date="2026-11-21"):
-    """Write one conversation record where light_sleep will find it."""
+def write_history(module, messages, *, age_minutes=90):
+    """Write one conversation record where light_sleep will find it.
+
+    The timestamp comes from the engine clock, not a fixed date: the scoring
+    phase only looks back ``lookback_days`` (7 by default), so a hard-coded
+    date would fall out of the window and silently stop promoting.
+    """
+    stamp_dt = module.now_local() - timedelta(minutes=age_minutes)
+    date = stamp_dt.strftime("%Y-%m-%d")
     folder = module.HISTORY_ROOT / date
     folder.mkdir(parents=True, exist_ok=True)
-    stamp = f"{date}T10:00:00+00:00"
+    stamp = stamp_dt.isoformat(timespec="seconds")
     record = {
         "id": CONVERSATION_ID,
         "title": "Test chat",
@@ -34,7 +42,8 @@ def write_history(module, messages, *, date="2026-11-21"):
         "pinned": False,
         "messages": messages,
     }
-    (folder / f"10-00-00_{CONVERSATION_ID}.json").write_text(
+    path = folder / f"{stamp_dt.strftime('%H-%M-%S')}_{CONVERSATION_ID}.json"
+    path.write_text(
         json.dumps(record), encoding="utf-8"
     )
 

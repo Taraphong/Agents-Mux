@@ -11,7 +11,7 @@ schedule actually fired that day.
 import contextlib
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -34,11 +34,18 @@ def promoted_entry(module, text, memory_id, *, score=0.8, theme="topic"):
     }
 
 
-def write_history(module, messages, *, date="2026-11-21"):
-    """Write one conversation record where light_sleep will find it."""
+def write_history(module, messages, *, age_minutes=90):
+    """Write one conversation record where light_sleep will find it.
+
+    The timestamp comes from the engine clock, not a fixed date: the scoring
+    phase only looks back ``lookback_days`` (7 by default), so a hard-coded
+    date would fall out of the window and silently stop promoting.
+    """
+    stamp_dt = module.now_local() - timedelta(minutes=age_minutes)
+    date = stamp_dt.strftime("%Y-%m-%d")
     folder = module.HISTORY_ROOT / date
     folder.mkdir(parents=True, exist_ok=True)
-    stamp = f"{date}T10:00:00+00:00"
+    stamp = stamp_dt.isoformat(timespec="seconds")
     record = {
         "id": CONVERSATION_ID,
         "title": "Test chat",
@@ -48,7 +55,7 @@ def write_history(module, messages, *, date="2026-11-21"):
         "pinned": False,
         "messages": messages,
     }
-    path = folder / f"10-00-00_{CONVERSATION_ID}.json"
+    path = folder / f"{stamp_dt.strftime('%H-%M-%S')}_{CONVERSATION_ID}.json"
     path.write_text(json.dumps(record), encoding="utf-8")
     return path
 

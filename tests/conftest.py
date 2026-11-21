@@ -27,6 +27,12 @@ def engine(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_WEB_HISTORY_DIR", str(tmp_path / "history"))
     # Never depend on a vec0 build that happens to be installed on this machine.
     monkeypatch.setenv("AI_WEB_MEMORY_VEC_EXT", str(tmp_path / "missing-vec0.so"))
+    # app.py starts its scheduler loops at import when this is truthy, and those
+    # loops use the real scheduled-jobs file and provider settings.
+    monkeypatch.setenv("AI_WEB_ENABLE_SCHEDULER", "0")
+    # app.py calls load_dotenv() at import, which would restore API keys from a
+    # checkout .env after the deletions below and break the keyless tests.
+    monkeypatch.setenv("PYTHON_DOTENV_DISABLED", "1")
     for name in (
         "OPENAI_API_KEY",
         "GEMINI_API_KEY",
