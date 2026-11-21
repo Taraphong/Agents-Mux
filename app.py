@@ -2173,6 +2173,8 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น",
         "chat_provider_error": "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล",
         "chat_api_failed": "เรียก API ไม่สำเร็จ: {detail}",
+        "chat_network_failed": "ติดต่อ {label} ไม่สำเร็จ เพราะรอคำตอบนานเกินกำหนดหรือเครือข่ายไม่พร้อมใช้งาน (ลองใหม่ให้แล้ว 1 ครั้ง) กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง",
+        "chat_empty_response": "{label} ตอบกลับมาโดยไม่มีข้อความ (finishReason: {reason}) — โมเดลมักใช้โควตาคำตอบไปกับการคิดจนหมด ลองเพิ่ม Max tokens หรือลดระดับการคิด",
         "rate_limited": "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
     },
     "en": {
@@ -2248,6 +2250,8 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} is busy or rate-limited; try again or choose another model",
         "chat_provider_error": "The provider returned an error; check the API key and the model",
         "chat_api_failed": "API request failed: {detail}",
+        "chat_network_failed": "Could not reach {label}: the request timed out or the network is unavailable (retried once). Check the connection and try again",
+        "chat_empty_response": "{label} returned no text (finishReason: {reason}); the model usually uses its whole output budget on thinking. Raise Max tokens or lower the thinking level",
         "rate_limited": "Too many requests; wait a moment and try again",
     },
 }
@@ -2795,6 +2799,19 @@ def rejects_sampling_params(provider: str, model: str) -> bool:
     return bool(re.match(r"^(?:o[1-9](?:-|$)|gpt-5)", name))
 
 
+class ProviderEmptyResponse(RuntimeError):
+    """The provider answered without any text, so there is nothing to show.
+
+    Thinking models count their reasoning tokens against the output budget, so
+    a small Max tokens can end the answer before the first text token. That is
+    not an app failure and must not be reported as one.
+    """
+
+    def __init__(self, message: str, finish_reason: str = "") -> None:
+        super().__init__(message)
+        self.finish_reason = finish_reason
+
+
 def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     """Send one chat completion request to an OpenAI-compatible endpoint."""
     key = get_api_key(settings["provider"], settings)
@@ -2836,7 +2853,16 @@ def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
         raise RuntimeError("The endpoint answered with a redirect; the API key is not forwarded across it")
     response.raise_for_status()
     data = response.json()
-    return data["choices"][0]["message"]["content"], normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens")
+    choice = data["choices"][0]
+    content = choice.get("message", {}).get("content")
+    if not str(content or "").strip():
+        # A reasoning model can spend its whole output budget before it writes
+        # text; a blank bubble would look like the app silently failed.
+        raise ProviderEmptyResponse(
+            f"OpenAI-compatible response contained no text (finishReason={choice.get('finish_reason')})",
+            str(choice.get("finish_reason") or ""),
+        )
+    return content, normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens")
 
 
 def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
@@ -2904,7 +2930,10 @@ def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
     )
     if not text:
         finish_reason = str(candidate.get("finishReason") or "unknown")
-        raise RuntimeError(f"Gemini response contained no text (finishReason={finish_reason})")
+        raise ProviderEmptyResponse(
+            f"Gemini response contained no text (finishReason={finish_reason})",
+            finish_reason,
+        )
     return text, normalize_usage(
         usage, "promptTokenCount", "candidatesTokenCount", "totalTokenCount"
     )
@@ -2995,18 +3024,39 @@ def call_anthropic(messages: list[dict[str, Any]], settings: dict[str, Any]) -> 
     if not text:
         # An end_turn response with no text block is valid for the API but
         # useless here: returning an empty string would surface a blank reply.
-        raise RuntimeError("Anthropic response contained no text block")
+        stop_reason = str(data.get("stop_reason") or "unknown")
+        raise ProviderEmptyResponse(
+            f"Anthropic response contained no text block (stop_reason={stop_reason})",
+            stop_reason,
+        )
     return text, normalize_usage(usage, "input_tokens", "output_tokens", None)
 
 
+# A timeout or a dropped connection means the provider or the network failed,
+# not the app: retry once and let the caller report it as such.
+PROVIDER_NETWORK_ERRORS = (
+    requests.Timeout,
+    requests.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+)
+
+
 def call_provider(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
-    """Dispatch one chat turn to the provider selected in settings."""
+    """Dispatch one chat turn, retrying once when the provider is unreachable."""
     provider = settings["provider"].lower()
-    if provider == "gemini":
-        return call_gemini(messages, settings)
-    if provider == "anthropic":
-        return call_anthropic(messages, settings)
-    return call_openai(messages, settings)
+    for attempt in range(2):
+        try:
+            if provider == "gemini":
+                return call_gemini(messages, settings)
+            if provider == "anthropic":
+                return call_anthropic(messages, settings)
+            return call_openai(messages, settings)
+        except PROVIDER_NETWORK_ERRORS as exc:
+            if attempt:
+                raise
+            # A stalled read or a dropped link usually clears on the next try.
+            log_event("provider.retry", "Retrying the provider after a network error", provider=provider, error=str(exc)[:200])
+            time.sleep(1)
 
 
 def get_discord_token(settings: dict[str, Any] | None = None) -> str:

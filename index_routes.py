@@ -27,6 +27,8 @@ from app import (
     PROJECT_ROOT,
     PROVIDERS,
     PROVIDER_LABELS,
+    PROVIDER_NETWORK_ERRORS,
+    ProviderEmptyResponse,
     rate_limit_response,
     Path,
     SCHEDULE_LOCK,
@@ -1212,11 +1214,34 @@ def chat():
         log_event("provider.error", "The provider answered with an HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
         api_key = safe_stored_api_key(provider, settings)
         if exc.response is not None and exc.response.status_code in {429, 503}:
-            provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "The provider")
+            provider_label = PROVIDER_LABELS.get(provider, "The provider")
             return jsonify({"error": status_message(request_language(), "chat_busy", label=provider_label)}), 503
         fallback_detail = status_message(request_language(), "chat_provider_error")
         detail = redact_secrets(exc.response.text if exc.response is not None else fallback_detail, api_key=api_key)[:500]
         return jsonify({"error": status_message(request_language(), "chat_api_failed", detail=detail)}), 502
+    except PROVIDER_NETWORK_ERRORS as exc:
+        # requests timeouts and connection failures are OSError subclasses, so
+        # they must be reported here before the generic handler turns them into
+        # "could not process the message": the provider or the network failed.
+        log_event("provider.network_error", "Could not reach the provider", provider=provider, error=str(exc)[:300])
+        status = 504 if isinstance(exc, requests.Timeout) else 502
+        return jsonify({
+            "error": status_message(
+                request_language(),
+                "chat_network_failed",
+                label=PROVIDER_LABELS.get(provider, provider),
+            )
+        }), status
+    except ProviderEmptyResponse as exc:
+        log_event("provider.empty_response", "The provider returned no text", provider=provider, reason=exc.finish_reason)
+        return jsonify({
+            "error": status_message(
+                request_language(),
+                "chat_empty_response",
+                label=PROVIDER_LABELS.get(provider, provider),
+                reason=exc.finish_reason or "unknown",
+            )
+        }), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
         log_event("chat.error", "Could not process the message", error=str(exc))
         return jsonify({"error": status_message(request_language(), "chat_failed")}), 500
