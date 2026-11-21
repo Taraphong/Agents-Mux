@@ -82,6 +82,34 @@ def test_the_character_budget_is_respected(engine):
     assert len(block) <= budget
 
 
+def test_an_entry_that_exactly_fits_stays_inside_the_budget(engine):
+    memory_id = remember(engine, "the deploy key lives in the safe")
+    full_block, _ids = engine.build_context("deploy key", settings(retrieval_chars=2000))
+    line = full_block.split("\n\n", 1)[1]
+    budget = len(engine.RETRIEVAL_HEADER) + 2 + len(line)
+
+    block, ids = engine.build_context("deploy key", settings(retrieval_chars=budget))
+
+    assert ids == [memory_id]
+    assert len(block) == budget
+
+
+def test_a_late_registered_secret_is_redacted_on_a_cache_hit(engine, monkeypatch):
+    import app
+
+    remember(engine, "the vault passphrase is hunter2-custom-key")
+    monkeypatch.setattr(app, "secret_values", lambda: [])
+    block, ids = engine.build_context("vault passphrase", settings())
+    assert ids
+    assert "hunter2-custom-key" in block
+
+    # The same MEMORY.md is served from the cache; the new secret must still go.
+    monkeypatch.setattr(app, "secret_values", lambda: ["hunter2-custom-key"])
+    block, ids = engine.build_context("vault passphrase", settings())
+    assert ids
+    assert "hunter2-custom-key" not in block
+
+
 def test_a_long_entry_is_shortened_on_a_character_boundary(engine):
     body = "deploy key " + ("กุญแจอยู่ในตู้เซฟ " * 60)
     remember(engine, body)

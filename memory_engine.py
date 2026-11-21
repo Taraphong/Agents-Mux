@@ -1673,12 +1673,11 @@ def _context_entries() -> list[dict[str, Any]]:
             return _CONTEXT_CACHE["items"]
         items: list[dict[str, Any]] = []
         for entry in entries():
-            # Defence in depth: an entry is redacted when it is promoted, but a
-            # hand-edited MEMORY.md could still hold a credential.
-            text = _redact(entry["text"])
-            if not text:
+            if not entry["text"].strip():
                 continue
-            items.append({**entry, "text": text, "vector": embed(text)})
+            # Keep the raw text here: redaction happens when the block is built,
+            # so a key registered after this cache was filled is still masked.
+            items.append({**entry, "vector": embed(entry["text"])})
         _CONTEXT_CACHE["key"] = key
         _CONTEXT_CACHE["items"] = items
         return items
@@ -1754,7 +1753,9 @@ def build_context(query: str, app_settings: Any) -> tuple[str, list[str]]:
 
         budget = int(config["retrieval_chars"])
         limit = int(config["retrieval_items"])
-        total = len(RETRIEVAL_HEADER)
+        # The block is the header, a blank line, then the entries. Counting the
+        # blank line up front keeps an exact-fit entry inside the budget.
+        total = len(RETRIEVAL_HEADER) + 2
         if total >= budget:
             return "", []
         lines: list[str] = []
@@ -1762,15 +1763,16 @@ def build_context(query: str, app_settings: Any) -> tuple[str, list[str]]:
         for _score, item in scored:
             if len(ids) >= limit:
                 break
-            body = _context_truncate(item["text"], RETRIEVAL_ITEM_CHARS)
+            body = _context_truncate(_redact(item["text"]), RETRIEVAL_ITEM_CHARS)
             if not body:
                 continue
             line = "- ({}) {}".format(item.get("date") or "undated", body)
-            if total + 1 + len(line) > budget:
+            cost = len(line) + (1 if lines else 0)
+            if total + cost > budget:
                 break
             lines.append(line)
             ids.append(item["id"])
-            total += 1 + len(line)
+            total += cost
         if not lines:
             return "", []
         block = RETRIEVAL_HEADER + "\n\n" + "\n".join(lines)
