@@ -2173,6 +2173,7 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น",
         "chat_provider_error": "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล",
         "chat_api_failed": "เรียก API ไม่สำเร็จ: {detail}",
+        "chat_network_failed": "ติดต่อ {label} ไม่สำเร็จ เพราะรอคำตอบนานเกินกำหนดหรือเครือข่ายไม่พร้อมใช้งาน (ลองใหม่ให้แล้ว 1 ครั้ง) กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง",
         "rate_limited": "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
     },
     "en": {
@@ -2248,6 +2249,7 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} is busy or rate-limited; try again or choose another model",
         "chat_provider_error": "The provider returned an error; check the API key and the model",
         "chat_api_failed": "API request failed: {detail}",
+        "chat_network_failed": "Could not reach {label}: the request timed out or the network is unavailable (retried once). Check the connection and try again",
         "rate_limited": "Too many requests; wait a moment and try again",
     },
 }
@@ -2999,14 +3001,31 @@ def call_anthropic(messages: list[dict[str, Any]], settings: dict[str, Any]) -> 
     return text, normalize_usage(usage, "input_tokens", "output_tokens", None)
 
 
+# A timeout or a dropped connection means the provider or the network failed,
+# not the app: retry once and let the caller report it as such.
+PROVIDER_NETWORK_ERRORS = (
+    requests.Timeout,
+    requests.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+)
+
+
 def call_provider(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
-    """Dispatch one chat turn to the provider selected in settings."""
+    """Dispatch one chat turn, retrying once when the provider is unreachable."""
     provider = settings["provider"].lower()
-    if provider == "gemini":
-        return call_gemini(messages, settings)
-    if provider == "anthropic":
-        return call_anthropic(messages, settings)
-    return call_openai(messages, settings)
+    for attempt in range(2):
+        try:
+            if provider == "gemini":
+                return call_gemini(messages, settings)
+            if provider == "anthropic":
+                return call_anthropic(messages, settings)
+            return call_openai(messages, settings)
+        except PROVIDER_NETWORK_ERRORS as exc:
+            if attempt:
+                raise
+            # A stalled read or a dropped link usually clears on the next try.
+            log_event("provider.retry", "Retrying the provider after a network error", provider=provider, error=str(exc)[:200])
+            time.sleep(1)
 
 
 def get_discord_token(settings: dict[str, Any] | None = None) -> str:
