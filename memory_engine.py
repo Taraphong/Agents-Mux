@@ -1424,11 +1424,7 @@ def promote(entries_to_add: list[dict[str, Any]], limit: int) -> list[dict[str, 
         )
         text += block
         written.append(item)
-    MEMORY_FILE.write_text(text, encoding="utf-8")
-    try:
-        os.chmod(MEMORY_FILE, 0o600)
-    except OSError:
-        pass
+    _atomic_write_memory(text)
     return written
 
 
@@ -1845,8 +1841,7 @@ def _remove_promoted_entries(memory_ids: set[str]) -> None:
     if updated == text:
         return
     try:
-        MEMORY_FILE.write_text(updated, encoding="utf-8")
-        os.chmod(MEMORY_FILE, 0o600)
+        _atomic_write_memory(updated)
     except OSError:
         pass
 
@@ -1880,15 +1875,11 @@ def pin(memory_id: str, pinned: bool) -> bool:
         else:
             return True
         # A write failure is a server error, not a missing entry: let the
-        # caller report memory_pin_failed.
-        MEMORY_FILE.write_text(
-            text[:start] + updated_line + text[end + len(" -->") :],
-            encoding="utf-8",
+        # caller report memory_pin_failed. Writing through the atomic helper
+        # keeps the old file intact when the replacement cannot be completed.
+        _atomic_write_memory(
+            text[:start] + updated_line + text[end + len(" -->") :]
         )
-        try:
-            os.chmod(MEMORY_FILE, 0o600)
-        except OSError:
-            pass
         return True
     finally:
         _RUN_LOCK.release()
@@ -2033,11 +2024,7 @@ def forget(memory_id: str) -> bool:
                 error=_redact(str(exc))[:200],
             )
             raise RuntimeError("memory_forget_failed") from None
-        MEMORY_FILE.write_text(updated, encoding="utf-8")
-        try:
-            os.chmod(MEMORY_FILE, 0o600)
-        except OSError:
-            pass
+        _atomic_write_memory(updated)
         _log("memory.forget", "Removed a promoted memory", memory=memory_id)
         return True
     finally:
