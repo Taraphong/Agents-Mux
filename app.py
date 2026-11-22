@@ -47,13 +47,9 @@ load_dotenv()
 import memory_engine  # noqa: E402
 
 
-def env_int(name: str, default: int, minimum: int) -> int:
-    """Read an integer environment variable, clamping invalid input to safe bounds."""
-    try:
-        value = int(str(os.getenv(name, "")).strip() or default)
-    except (TypeError, ValueError):
-        value = default
-    return max(minimum, value)
+from core.env import env_int
+
+
 
 
 app = Flask(__name__)
@@ -89,16 +85,22 @@ SERVER_JOB_LOCK = threading.Lock()
 # Each page keeps its template and its CSS/JS together in templates/<page>/.
 TEMPLATES_ROOT = PROJECT_ROOT / "templates"
 PAGE_ASSETS = {"index", "pair"}
-# Text responses are gzipped when the client asks for it: the phone serves this
-# page over a slow Wi-Fi link, so 291 KB of HTML/CSS/JS must not go out raw.
-GZIP_MIMETYPES = {"text/html", "text/css", "application/javascript", "text/javascript"}
-GZIP_MIN_BYTES = 1024
+from core.http_cache import (
+    ASSET_GZIP_CACHE,
+    ASSET_GZIP_CACHE_LIMIT,
+    ASSET_GZIP_LOCK,
+    GZIP_MIMETYPES,
+    GZIP_MIN_BYTES,
+    accepts_gzip,
+    compress_response,
+    gzip_body,
+    representation_etag,
+)
+
+
 # Page assets change rarely and their URLs carry the file mtime (?v=...), so the
 # browser may keep them for a year and skip the revalidation round trip.
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
-ASSET_GZIP_CACHE: dict[tuple[str, int, int], bytes] = {}
-ASSET_GZIP_LOCK = threading.Lock()
-ASSET_GZIP_CACHE_LIMIT = 8
 SKILLS_ROOT = Path(os.getenv("AI_WEB_SKILLS_DIR", "skills"))
 # The AI's own working folder: file tools resolve relative paths here and the
 # unrestricted shell starts here, so the agent works in one place instead of
@@ -1341,53 +1343,25 @@ def secret_values(extra: list[str] | None = None) -> list[str]:
     return sorted(values, key=len, reverse=True)
 
 
-PEM_REDACTED_MARKER = "•••••••• (private key hidden)"
-PEM_MARKER_PATTERN = re.compile(
-    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|-----END [A-Z0-9 ]*PRIVATE KEY-----"
+from core.redaction import (
+    PEM_LOOKBACK_BYTES,
+    PEM_MARKER_PATTERN,
+    PEM_REDACTED_MARKER,
+    SECRET_QUERY_PATTERN,
+    mask_unterminated_pem,
+    pem_state,
+    redact_command_output,
 )
-# How far before a truncated capture tail to look for an opening BEGIN line.
-PEM_LOOKBACK_BYTES = 8192
 
 
-def pem_state(text: str, inside: bool = False) -> bool:
-    """Report whether the text ends inside a private key block."""
-    for match in PEM_MARKER_PATTERN.finditer(text):
-        inside = match.group(0).startswith("-----BEGIN")
-    return inside
 
 
-def mask_unterminated_pem(text: str, starts_inside: bool = False) -> str:
-    """Mask private key blocks, including one cut in half by the read boundary."""
-    if not text:
-        return text
-    ranges: list[tuple[int, int]] = []
-    inside = starts_inside
-    opened_at = 0
-    for match in PEM_MARKER_PATTERN.finditer(text):
-        if match.group(0).startswith("-----BEGIN"):
-            if not inside:
-                inside = True
-                opened_at = match.start()
-        elif inside:
-            inside = False
-            ranges.append((opened_at, match.end()))
-    if inside:
-        ranges.append((opened_at, len(text)))
-    for start, end in reversed(ranges):
-        text = text[:start] + PEM_REDACTED_MARKER + text[end:]
-    return text
 
 
-def redact_command_output(text: str, secrets_found: list[str]) -> str:
-    """Replace known secrets and any private key block in command output."""
-    for secret in secrets_found:
-        text = text.replace(secret, "••••••••")
-    # mask_unterminated_pem walks the BEGIN/END markers instead of running a
-    # DOTALL regex over the whole capture, so large output cannot go quadratic.
-    return mask_unterminated_pem(text)
 
 
-SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
+
+
 
 
 def redact_secrets(text: str, api_key: str | None = None) -> str:
@@ -4063,82 +4037,12 @@ def asset_url(page: str, filename: str) -> str:
 app.jinja_env.globals["asset_url"] = asset_url
 
 
-def accepts_gzip() -> bool:
-    """Report whether the client advertised gzip support."""
-    return "gzip" in (request.headers.get("Accept-Encoding") or "").lower()
 
 
-def gzip_body(data: bytes, cache_key: tuple[str, int, int] | None = None) -> bytes:
-    """Gzip a text body, reusing the result while the source file is unchanged."""
-    if cache_key is not None:
-        with ASSET_GZIP_LOCK:
-            cached = ASSET_GZIP_CACHE.get(cache_key)
-        if cached is not None:
-            return cached
-    compressed = gzip.compress(data, 6, mtime=0)
-    if cache_key is not None:
-        with ASSET_GZIP_LOCK:
-            if len(ASSET_GZIP_CACHE) >= ASSET_GZIP_CACHE_LIMIT:
-                ASSET_GZIP_CACHE.clear()
-            ASSET_GZIP_CACHE[cache_key] = compressed
-    return compressed
 
 
-def representation_etag(base_etag: str, gzipped: bool) -> str:
-    """Return an ETag that identifies one representation of the same resource.
-
-    Caches match entries by ETag, so the gzip and identity bodies must not share
-    one: a client that did not ask for gzip could be handed a gzip body, or a
-    revalidation could accept a body in the wrong encoding.
-    """
-    token = base_etag.strip()
-    if token.startswith("W/"):
-        token = token[2:].strip()
-    token = token.strip('"')
-    return f'"{token}-gzip"' if gzipped else f'"{token}"'
 
 
-def compress_response(
-    response,
-    cache_key: tuple[str, int, int] | None = None,
-    accept_ranges: bool = False,
-):
-    """Gzip a text response and answer preconditions for the chosen representation.
-
-    A gzip and an identity body of the same file are different representations:
-    they get different ETags, and validators, date preconditions, and byte ranges
-    are judged only once the representation is known.  A conditional request is
-    answered with 304 only when it names the representation this request would
-    receive, so the identity ETag can never confirm a gzip body.
-    """
-    if response.status_code != 200 or response.headers.get("Content-Encoding"):
-        return response
-    if (response.mimetype or "").lower() not in GZIP_MIMETYPES:
-        return response
-    body = response.get_data()
-    size = len(body)
-    if not size:
-        # A HEAD response has no body; judge the size from the declared length.
-        try:
-            size = int(response.headers.get("Content-Length") or 0)
-        except (TypeError, ValueError):
-            size = 0
-    gzipped = accepts_gzip() and size >= GZIP_MIN_BYTES
-    base_etag = response.get_etag()[0] or hashlib.sha1(body).hexdigest()
-    response.headers.add("Vary", "Accept-Encoding")
-    # The value is already quoted; set_etag() would reject it as invalid.
-    response.headers["ETag"] = representation_etag(base_etag, gzipped)
-    if gzipped and body:
-        response.set_data(gzip_body(body, cache_key))
-        response.headers["Content-Encoding"] = "gzip"
-    # Preconditions and ranges belong to the representation chosen above; letting
-    # them run earlier would let the file's identity validators answer for gzip.
-    response.make_conditional(
-        request,
-        accept_ranges=accept_ranges,
-        complete_length=len(response.get_data()),
-    )
-    return response
 
 
 @app.after_request
