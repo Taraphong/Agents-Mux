@@ -3,8 +3,8 @@
 Self-hosted AI chat that runs on Termux (Android), Linux, or macOS and is used through a browser on the same network. A small Flask server keeps your provider keys and conversation history on your own machine, and the page is available in English and Thai.
 
 - Thai: **[README.th.md](README.th.md)**
-- Install guide: **[INSTALL.md](INSTALL.md)** · [INSTALL.th.md](INSTALL.th.md)
-- Security policy: **[SECURITY.md](SECURITY.md)** · [SECURITY.th.md](SECURITY.th.md)
+- Install guide: **[docs/INSTALL.md](docs/INSTALL.md)** · [docs/INSTALL.th.md](docs/INSTALL.th.md)
+- Security policy: **[docs/SECURITY.md](docs/SECURITY.md)** · [docs/SECURITY.th.md](docs/SECURITY.th.md)
 
 ## Features
 
@@ -244,7 +244,10 @@ The app can terminate HTTPS itself; `openssl` is the only requirement.
 
 | Path | Contents | Committed |
 | --- | --- | --- |
-| `app.py` | Flask server, API, tools, scheduler, Discord bot | yes |
+| `app.py` | Flask assembly and entrypoint (app, hooks, blueprints, server) | yes |
+| `core/` | Settings, storage, providers, tools, TLS and shared helpers | yes |
+| `services/` | Cron scheduler and the optional Discord bot | yes |
+| `routes/` | HTTP blueprints for the chat page and the pairing page | yes |
 | `memory_engine.py` | Background memory consolidation (Light/REM/Deep) | yes |
 | `templates/index/` | Chat page HTML, CSS, JS (chat, settings, schedule, logs, about) | yes |
 | `templates/pair/` | Pairing page HTML, CSS, JS | yes |

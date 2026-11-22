@@ -39,6 +39,18 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
+from core.config import DEFAULT_MEMORY_SETTINGS
+from core.log import log_event
+from core.providers import (
+    call_provider,
+    endpoint_is_loopback,
+    get_base_url,
+    key_is_configured,
+    normalize_provider,
+)
+from core.redaction import redact_secrets
+
+
 def _location(name: str, default: str) -> Path:
     """Resolve a configured path relative to the project folder."""
     value = str(os.getenv(name, "") or "").strip()
@@ -78,26 +90,6 @@ RETRIEVAL_HEADER = (
 RETRIEVAL_MIN_SIMILARITY = 0.05
 RETRIEVAL_ITEM_CHARS = 240
 RETRIEVAL_HALF_LIFE_DAYS = 90
-
-DEFAULT_MEMORY_SETTINGS: dict[str, Any] = {
-    "enabled": True,
-    "schedule": "0 3 * * *",
-    "lookback_days": 7,
-    "threshold": 0.65,
-    "idle_minutes": 15,
-    "max_items": 25,
-    "include_locked": False,
-    "llm": True,
-    "provider": "",
-    "model": "",
-    "base_url": "",
-    "window_end": "06:00",
-    "dedupe": 0.92,
-    "retrieval": True,
-    "retrieval_items": 4,
-    "retrieval_chars": 800,
-    "max_entries": 200,
-}
 
 # Words that carry no topic on their own. Both languages are listed because the
 # conversation itself may be Thai, English or a mix of the two.
@@ -185,10 +177,8 @@ def is_running() -> bool:
 
 
 def _log(event: str, message: str, **details: Any) -> None:
-    """Write to the app log without importing app at module load time."""
+    """Write to the app log; a logging failure must never stop the engine."""
     try:
-        from app import log_event  # imported lazily: app imports this module
-
         log_event(event, message, **details)
     except Exception:
         pass
@@ -215,8 +205,6 @@ def _redact(text: str) -> str:
     """Strip credentials before text is stored, indexed or summarised."""
     value = str(text or "")
     try:
-        from app import redact_secrets
-
         value = redact_secrets(value)
     except Exception:
         pass
@@ -393,7 +381,7 @@ def normalize_settings(raw: Any) -> dict[str, Any]:
 
     schedule = str(result.get("schedule") or DEFAULT_MEMORY_SETTINGS["schedule"]).strip()
     try:
-        from app import validate_cron
+        from core.schedule_store import validate_cron
 
         schedule = validate_cron(schedule)
     except ValueError:
@@ -1041,13 +1029,11 @@ def _llm_available(settings: dict[str, Any], config: dict[str, Any]) -> bool:
     without a key.
     """
     try:
-        import app
-
         llm = _llm_settings(settings, config)
-        provider = app.normalize_provider(llm.get("provider"))
-        if app.key_is_configured(provider, llm):
+        provider = normalize_provider(llm.get("provider"))
+        if key_is_configured(provider, llm):
             return True
-        return app.endpoint_is_loopback(app.get_base_url(provider, llm))
+        return endpoint_is_loopback(get_base_url(provider, llm))
     except Exception:
         return False
 
@@ -1066,8 +1052,6 @@ def _ask_model(
     if not items:
         return {}, ""
     try:
-        import app  # lazy import: avoids a circular import at start-up
-
         language_name = "Thai" if language == "th" else "English"
         system = (
             "You consolidate long-term memory for one user. For each item decide how much it "
@@ -1076,7 +1060,7 @@ def _ask_model(
             f"Write themes and summaries in {language_name}. "
             'Answer with a JSON array only: [{"id":"...","importance":1-5,"theme":"..."}]'
         )
-        answer, _usage = app.call_provider(
+        answer, _usage = call_provider(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
@@ -2176,11 +2160,11 @@ def _last_schedule_match_minutes(now: datetime, schedule: str) -> int:
     so a schedule that only fires on Mondays never catches up on a Tuesday.
     """
     try:
-        import app
+        from core.schedule_store import cron_matches
 
         for minute in range(now.hour * 60 + now.minute, -1, -1):
             moment = now.replace(hour=minute // 60, minute=minute % 60, second=0, microsecond=0)
-            if app.cron_matches(schedule, moment):
+            if cron_matches(schedule, moment):
                 return minute
     except Exception:
         return -1
@@ -2190,9 +2174,11 @@ def _last_schedule_match_minutes(now: datetime, schedule: str) -> int:
 def scheduler_tick() -> None:
     """Run one scheduler decision; separated so it can be tested directly."""
     try:
-        import app  # lazy import: app owns the settings and cron matcher
+        # Lazy imports keep this module importable before the core package.
+        from core.schedule_store import cron_matches
+        from core.settings import load_settings
 
-        settings = app.load_settings()
+        settings = load_settings()
         config = settings_from(settings)
         if not config["enabled"]:
             return
@@ -2208,7 +2194,7 @@ def scheduler_tick() -> None:
             end_minutes = 23 * 60 + 59
         now_minutes = now.hour * 60 + now.minute
         with _session() as connection:
-            if app.cron_matches(config["schedule"], now) and _get_meta(connection, "due_key") != minute_key:
+            if cron_matches(config["schedule"], now) and _get_meta(connection, "due_key") != minute_key:
                 _set_meta(connection, "due_key", minute_key)
                 _set_meta(connection, "due_date", today_text)
                 _log("memory.due", "Memory consolidation became due", schedule=config["schedule"])

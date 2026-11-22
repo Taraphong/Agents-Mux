@@ -284,7 +284,7 @@ def test_max_entries_settings_are_normalised(engine):
 
 def test_the_pin_route_toggles_and_validates(engine):
     import app as app_module
-    import index_routes
+    from routes import index as index_routes
 
     memory_id = remember(engine, "the deploy key lives in the safe")
     url = f"/api/memory/entries/{memory_id}/pin"

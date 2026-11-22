@@ -9,14 +9,8 @@ import hmac
 
 from flask import Blueprint, jsonify, redirect, render_template, request
 
-from app import (
-    AUTH_ENABLED,
+from core.auth import (
     AUTH_LOCK,
-    AUTH_PAIRING_TTL_MINUTES,
-    AUTH_SESSION_COOKIE,
-    AUTH_SESSION_COOKIE_HTTP,
-    AUTH_SESSION_COOKIE_NAMES,
-    AUTH_SESSION_DAYS,
     auth_now,
     auth_session_tokens,
     consume_pairing_key,
@@ -25,16 +19,23 @@ from app import (
     generate_pairing_key,
     hash_auth_token,
     load_auth_state,
-    log_event,
     no_store,
     pairing_attempt_allowed,
     prune_auth_state,
     record_pairing_failure,
-    request_language,
     revoke_auth_session,
     save_auth_state,
-    status_message,
 )
+from core.config import (
+    AUTH_ENABLED,
+    AUTH_PAIRING_TTL_MINUTES,
+    AUTH_SESSION_COOKIE,
+    AUTH_SESSION_COOKIE_HTTP,
+    AUTH_SESSION_COOKIE_NAMES,
+    AUTH_SESSION_DAYS,
+)
+from core.log import log_event
+from core.messages import request_language, status_message
 
 pair_bp = Blueprint("pair", __name__)
 

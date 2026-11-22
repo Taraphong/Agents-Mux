@@ -329,9 +329,9 @@ def scheduler_settings(**overrides):
 
 
 def prepare_scheduler(monkeypatch, engine, settings):
-    import app
+    import core.settings
 
-    monkeypatch.setattr(app, "load_settings", lambda: settings)
+    monkeypatch.setattr(core.settings, "load_settings", lambda: settings)
     monkeypatch.setattr(
         engine,
         "_run_from_scheduler",

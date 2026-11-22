@@ -8,121 +8,112 @@ which registers this blueprint.
 from flask import Blueprint, abort, jsonify, render_template, request, send_from_directory
 
 import memory_engine
-from app import (
+from core.auth import no_store
+from core.config import (
     APPROVAL_TTL_SECONDS,
-    APP_LOGS,
-    APP_LOG_LOCK,
-    APP_STARTED_AT,
     ASSET_CACHE_CONTROL,
-    Any,
+    HISTORY_ROOT,
+    LOG_FILE,
+    PAGE_ASSETS,
+    PROJECT_ROOT,
+    SERVER_CONTROL_LOG,
+    SERVER_SCRIPT,
+    SETTINGS_FILE,
+    TEMPLATES_ROOT,
+    TOOL_ALIASES,
+    TOOL_MAX_WRITE_BYTES,
+)
+from core.env import env_int
+from core.history import (
+    HISTORY_LOCK,
+    HistoryConflict,
+    HistoryLocked,
+    _write_history_record,
+    append_history_messages,
+    find_history_file,
+    read_history_file,
+    save_history,
+)
+from core.http_cache import compress_response
+from core.log import APP_LOGS, APP_LOG_LOCK, log_event
+from core.messages import normalize_language, request_language, status_message
+from core.model_cache import MODEL_LIST_ERROR_LOGGED, forget_model_names
+from core.prompts import build_system_prompt
+from core.providers import (
     GEMINI_DECISION_MODEL,
     GEMINI_DEFAULT_AGENT,
     GEMINI_LIVE_FALLBACK_MODEL,
-    HISTORY_LOCK,
-    HISTORY_ROOT,
-    HistoryConflict,
-    HistoryLocked,
-    LOG_FILE,
-    MODEL_LIST_ERROR_LOGGED,
-    PAGE_ASSETS,
-    PROJECT_ROOT,
-    PROVIDERS,
-    PROVIDER_LABELS,
     PROVIDER_NETWORK_ERRORS,
     ProviderEmptyResponse,
-    rate_limit_response,
-    Path,
-    SCHEDULE_LOCK,
-    SCHEDULE_RUNNING,
-    SCHEDULE_RUNNING_LOCK,
-    SERVER_CONTROL_LOG,
-    SERVER_JOB,
-    SERVER_JOB_LOCK,
-    SERVER_SCRIPT,
-    SETTINGS_FILE,
-    SETTINGS_LOCK,
     STATUS_CACHE,
-    TEMPLATES_ROOT,
+    call_provider,
+    clean_messages,
+    gemini_capabilities,
+    gemini_post,
+    get_api_key,
+    key_is_configured,
+    provider_readiness,
+    safe_stored_api_key,
+)
+from core.ratelimit import rate_limit_response
+from core.redaction import redact_secrets
+from core.runtime import APP_STARTED_AT, SERVER_JOB, SERVER_JOB_LOCK
+from core.schedule_store import SCHEDULE_LOCK, load_schedules, save_schedules, validate_cron
+from core.settings import (
+    PROVIDERS,
+    PROVIDER_LABELS,
+    SETTINGS_LOCK,
+    get_discord_token,
+    load_settings,
+    normalize_provider,
+    stored_api_keys,
+    stored_custom_api_keys,
+)
+from core.skills import list_skills, skill_path
+from core.tls import (
     TLS_ENV_LOCK,
-    TOOL_ALIASES,
-    TOOL_INSTRUCTIONS,
-    TOOL_MAX_WRITE_BYTES,
+    apply_tls_environment,
+    configured_certificate_pair,
+    server_tls_state,
+    update_env_file,
+)
+from core.tools import (
+    approval_required_tools,
+    consume_tool_approval,
+    machine_access_enabled,
+    parse_tool_requests,
+    request_tool_approval,
+    run_local_tool,
+)
+from core.update_job import (
     UPDATE_JOB,
     UPDATE_JOB_LOCK,
     UPDATE_LOG_FILE,
     UPDATE_MODES,
     UPDATE_SCRIPT,
-    _write_history_record,
-    agent_profile_prompt,
-    append_history_messages,
-    apply_settings_update,
-    apply_tls_environment,
-    approval_required_tools,
-    build_system_prompt,
-    call_provider,
-    clean_messages,
-    compress_response,
-    configured_certificate_pair,
-    consume_tool_approval,
-    datetime,
-    discord_status,
-    env_int,
-    execute_schedule,
-    find_history_file,
-    forget_model_names,
-    gemini_agent_answer,
-    gemini_capabilities,
-    gemini_error_detail,
-    gemini_post,
-    get_api_key,
-    get_discord_token,
-    json,
-    key_is_configured,
-    list_skills,
-    load_schedules,
-    load_settings,
-    log_event,
-    machine_access_enabled,
-    models_response,
-    no_store,
-    normalize_language,
-    normalize_provider,
-    os,
-    parse_tool_requests,
-    provider_readiness,
-    re,
-    read_history_file,
-    redact_secrets,
-    request_language,
-    request_tool_approval,
-    requests,
-    run_local_tool,
-    safe_stored_api_key,
-    save_history,
-    save_schedules,
     save_update_status,
-    selected_skill_prompt,
-    server_tls_state,
-    shlex,
-    shutil,
-    skill_path,
-    status_message,
-    stored_api_keys,
-    stored_custom_api_keys,
-    subprocess,
-    threading,
-    time,
-    timedelta,
-    timezone,
     update_build_info,
-    update_env_file,
     update_job_snapshot,
     update_log_tail,
     update_script_ready,
-    uuid,
-    validate_cron,
     watch_update_job,
 )
+from datetime import datetime, timedelta, timezone
+import json
+import os
+from pathlib import Path
+import re
+import requests
+from routes.shared import apply_settings_update, gemini_agent_answer, gemini_error_detail, models_response
+from services.discord_bot import discord_status
+from services.scheduler import SCHEDULE_RUNNING, SCHEDULE_RUNNING_LOCK, execute_schedule
+import shlex
+import shutil
+import subprocess
+import threading
+import time
+from typing import Any
+import uuid
 
 index_bp = Blueprint("index", __name__)
 

@@ -10,9 +10,10 @@
 #   ./update.sh --dry-run       Show what would be updated without writing.
 #   ./update.sh --help
 #
-# The updater only replaces app files (app.py, templates/, skills/, install
-# scripts). It never touches .env, .app-settings.json, .app-auth.json,
-# certs/, history/, logs/, scheduled-jobs.json, or .venv.
+# The updater only replaces app files (app.py, core/, services/, routes/,
+# templates/, skills/, install scripts). It never touches .env,
+# .app-settings.json, .app-auth.json, certs/, history/, logs/,
+# scheduled-jobs.json, or .venv.
 #
 # Environment overrides:
 #   AI_WEB_UPDATE_REPO     Default: Taraphong/Agents-mux
@@ -43,7 +44,7 @@ DRY_RUN=0
 # Files and folders that make up the running app. Anything not listed here is
 # machine-specific data and must survive an update untouched.
 APP_FILES="app.py requirements.txt install.sh start_web.sh update.sh .env.example"
-APP_DIRS="templates skills"
+APP_DIRS="templates skills core services routes"
 
 say() {
   printf '%s\n' "$*"
@@ -199,6 +200,9 @@ done
 
 for dir in $APP_DIRS; do
   [ -d "$SOURCE_DIR/$dir" ] || continue
+  # The loop owns only the app's own code, never user data: skills is merged,
+  # and core/services/routes hold nothing machine-specific.
+
   say "   → $dir/"
   if [ "$DRY_RUN" -eq 0 ]; then
     mkdir -p "$APP_DIR/$dir"
