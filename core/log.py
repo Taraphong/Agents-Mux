@@ -1,8 +1,7 @@
 """The in-memory and on-disk diagnostic event log.
 
 The rolling window keeps long-running servers off the heap, and every record is
-redacted before it is stored. The redactor is installed by app.py, so this
-module never imports the application.
+redacted before it is stored.
 """
 
 import json
@@ -10,24 +9,15 @@ import logging
 import threading
 from collections import deque
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from core.config import LOG_FILE
 from core.env import env_int
+from core.redaction import redact_secrets
 
 APP_LOGS: deque[dict[str, Any]] = deque(maxlen=env_int("AI_WEB_LOG_MAX_ENTRIES", 1000, 50))
 APP_LOG_LOCK = threading.Lock()
 LOGGER = logging.getLogger("ai-web")
-
-# Replaced by app.py through set_redactor(); identity until then.
-_REDACT: Callable[[str], str] = lambda text: text
-
-
-def set_redactor(redact: Callable[[str], str]) -> None:
-    """Install the application's secret redactor for log records."""
-    global _REDACT
-    _REDACT = redact
-
 
 # The in-memory log is a rolling window: a server that runs for weeks on Termux
 # must not keep every event in RAM, so only the newest entries are retained.
@@ -59,11 +49,11 @@ def log_event(event: str, message: str, **details: Any) -> None:
     for key, value in details.items():
         if key.lower() in {"api_key", "authorization", "token", "content"}:
             continue
-        safe_details[key] = _REDACT(str(value))[:500]
+        safe_details[key] = redact_secrets(str(value))[:500]
     record = {
         "time": datetime.now().astimezone().isoformat(timespec="seconds"),
         "event": str(event)[:60],
-        "message": _REDACT(str(message))[:500],
+        "message": redact_secrets(str(message))[:500],
         "details": safe_details,
     }
     try:
@@ -78,6 +68,6 @@ def log_event(event: str, message: str, **details: Any) -> None:
         with APP_LOG_LOCK:
             APP_LOGS.append(record)
     # Only the event name reaches the plain-text console log. The message and its
-    # details stay in APP_LOGS/log file below, where the redactor has run, so a
+    # details stay in APP_LOGS/log file below, where redaction has run, so a
     # credential can never be written here as clear text.
     LOGGER.info("%s", event)

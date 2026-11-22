@@ -22,9 +22,13 @@ def skill_dir(name: str) -> Path:
     if directory.parent != root:
         raise ValueError("Skill name is outside the allowed folder")
     return directory
+
+
 def skill_path(name: str) -> Path:
     """Return the canonical Agent Skills entrypoint: <skill>/SKILL.md."""
     return skill_dir(name) / "SKILL.md"
+
+
 def list_skills() -> list[dict[str, str]]:
     """Load every skill folder that contains a SKILL.md entrypoint."""
     root = (PROJECT_ROOT / SKILLS_ROOT).resolve()
@@ -43,6 +47,8 @@ def list_skills() -> list[dict[str, str]]:
             continue
         items.append({"name": directory.name, "content": content})
     return items
+
+
 def selected_skill_prompt(settings: dict[str, Any]) -> str:
     """Build the skill guidance block for the skills selected in settings."""
     selected = settings.get("skills", [])

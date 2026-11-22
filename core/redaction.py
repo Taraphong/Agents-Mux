@@ -5,7 +5,8 @@ like a key, token or PEM block is masked before it leaves the process.
 """
 
 import re
-from typing import Callable
+
+from core.settings import secret_values
 
 
 PEM_REDACTED_MARKER = "•••••••• (private key hidden)"
@@ -14,11 +15,15 @@ PEM_MARKER_PATTERN = re.compile(
 )
 # How far before a truncated capture tail to look for an opening BEGIN line.
 PEM_LOOKBACK_BYTES = 8192
+
+
 def pem_state(text: str, inside: bool = False) -> bool:
     """Report whether the text ends inside a private key block."""
     for match in PEM_MARKER_PATTERN.finditer(text):
         inside = match.group(0).startswith("-----BEGIN")
     return inside
+
+
 def mask_unterminated_pem(text: str, starts_inside: bool = False) -> str:
     """Mask private key blocks, including one cut in half by the read boundary."""
     if not text:
@@ -39,6 +44,8 @@ def mask_unterminated_pem(text: str, starts_inside: bool = False) -> str:
     for start, end in reversed(ranges):
         text = text[:start] + PEM_REDACTED_MARKER + text[end:]
     return text
+
+
 def redact_command_output(text: str, secrets_found: list[str]) -> str:
     """Replace known secrets and any private key block in command output."""
     for secret in secrets_found:
@@ -48,16 +55,6 @@ def redact_command_output(text: str, secrets_found: list[str]) -> str:
     return mask_unterminated_pem(text)
 SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
 
-# Filled in by app.py with a callable that reads the current settings, so the
-# tests and the settings UI see a secret added after start-up.
-_SECRET_PROVIDER: Callable[[], list[str]] | None = None
-
-
-def set_secret_provider(provider: Callable[[], list[str]]) -> None:
-    """Install the settings-backed secret source used before every redaction."""
-    global _SECRET_PROVIDER
-    _SECRET_PROVIDER = provider
-
 
 def redact_secrets(text: str, api_key: str | None = None) -> str:
     """Remove API keys and tokens from text before it is returned or logged."""
@@ -66,7 +63,7 @@ def redact_secrets(text: str, api_key: str | None = None) -> str:
     if api_key:
         value = value.replace(api_key, "••••••••")
     try:
-        secrets_found = _SECRET_PROVIDER() if _SECRET_PROVIDER is not None else []
+        secrets_found = secret_values()
     except (OSError, ValueError):
         secrets_found = []
     return redact_command_output(value, secrets_found)

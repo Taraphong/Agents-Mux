@@ -21,7 +21,6 @@ from core.config import (
     SETTINGS_FILE,
     TEMPLATES_ROOT,
     TOOL_ALIASES,
-    TOOL_INSTRUCTIONS,
     TOOL_MAX_WRITE_BYTES,
 )
 from core.env import env_int
@@ -38,6 +37,7 @@ from core.history import (
 from core.http_cache import compress_response
 from core.log import APP_LOGS, APP_LOG_LOCK, log_event
 from core.messages import normalize_language, request_language, status_message
+from core.model_cache import forget_model_names
 from core.providers import (
     GEMINI_DECISION_MODEL,
     GEMINI_DEFAULT_AGENT,
@@ -46,11 +46,9 @@ from core.providers import (
     PROVIDER_NETWORK_ERRORS,
     ProviderEmptyResponse,
     STATUS_CACHE,
-    agent_profile_prompt,
     build_system_prompt,
     call_provider,
     clean_messages,
-    forget_model_names,
     gemini_capabilities,
     gemini_post,
     get_api_key,
@@ -72,7 +70,7 @@ from core.settings import (
     stored_api_keys,
     stored_custom_api_keys,
 )
-from core.skills import list_skills, selected_skill_prompt, skill_path
+from core.skills import list_skills, skill_path
 from core.tls import (
     TLS_ENV_LOCK,
     apply_tls_environment,

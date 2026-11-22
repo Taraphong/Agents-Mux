@@ -1,8 +1,7 @@
-"""Settings storage and provider metadata.
+"""Settings storage, provider metadata and the secret list.
 
-Settings are one JSON file, written atomically. The model-list cache lives with
-the provider code, so app.py installs a callback that drops it after a save;
-this module never imports the application.
+Settings are one JSON file, written atomically. A save also drops the model-id
+cache, which has its own module so this one stays free of the provider layer.
 """
 
 import json
@@ -10,20 +9,12 @@ import os
 import re
 import threading
 import uuid
-from typing import Any, Callable
+from typing import Any
 
 import memory_engine
 
-from core.config import SETTINGS_FILE
-
-SETTINGS_SAVED_HOOK: Callable[[], None] | None = None
-
-
-def set_saved_hook(callback: Callable[[], None]) -> None:
-    """Install the cache reset that must run after settings are written."""
-    global SETTINGS_SAVED_HOOK
-    SETTINGS_SAVED_HOOK = callback
-
+from core.config import SENSITIVE_ENV_PARTS, SETTINGS_FILE
+from core.model_cache import forget_model_names
 
 DEFAULT_SETTINGS = {
     "memory": memory_engine.DEFAULT_MEMORY_SETTINGS.copy(),
@@ -83,10 +74,14 @@ PROVIDER_BASE_URLS = {
     "groq": "https://api.groq.com/openai/v1",
 }
 SETTINGS_LOCK = threading.Lock()
+
+
 def normalize_provider(value: Any) -> str:
     """Clamp an unknown provider name to a supported provider id."""
     provider = str(value or "openai").strip().lower()
     return provider if provider in PROVIDERS else "openai"
+
+
 def parse_discord_ids(value: Any, limit: int = 100) -> tuple[list[str], list[str]]:
     """Split a Discord allowlist input into unique numeric IDs and bad entries.
 
@@ -112,9 +107,13 @@ def parse_discord_ids(value: Any, limit: int = 100) -> tuple[list[str], list[str
         if item not in ids and len(ids) < limit:
             ids.append(item)
     return ids, invalid
+
+
 def normalize_discord_ids(value: Any, limit: int = 100) -> list[str]:
     """Normalize a stored Discord allowlist into unique numeric IDs."""
     return parse_discord_ids(value, limit)[0]
+
+
 def discord_access_allowed(settings: dict[str, Any], channel_id: Any, user_id: Any) -> bool:
     """Return whether a Discord channel/user pair passes the allowlists.
 
@@ -128,18 +127,24 @@ def discord_access_allowed(settings: dict[str, Any], channel_id: Any, user_id: A
     if allowed_users and str(user_id) not in allowed_users:
         return False
     return True
+
+
 def stored_api_keys(settings: dict[str, Any]) -> dict[str, str]:
     """Return the per-provider API key map from settings."""
     raw = settings.get("api_keys")
     keys = raw if isinstance(raw, dict) else {}
     return {provider: str(keys.get(provider) or "").strip() for provider in PROVIDERS}
 CUSTOM_KEY_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+
+
 def normalize_custom_key_name(value: Any) -> str:
     """Validate a user-chosen name for an extra API key (used as an env var)."""
     name = re.sub(r"[\s-]+", "_", str(value or "").strip()).upper()
     if not CUSTOM_KEY_NAME_PATTERN.fullmatch(name):
         raise ValueError("The key name must start with A-Z and use only A-Z, 0-9 and _ (64 characters max)")
     return name
+
+
 def stored_custom_api_keys(settings: dict[str, Any]) -> dict[str, str]:
     """Return the extra named API keys, dropping invalid or empty entries."""
     raw = settings.get("custom_api_keys")
@@ -155,6 +160,8 @@ def stored_custom_api_keys(settings: dict[str, Any]) -> dict[str, str]:
         if text:
             keys[valid_name] = text
     return keys
+
+
 def migrate_legacy_api_key(settings: dict[str, Any]) -> dict[str, Any]:
     """Move the old single api_key slot into the per-provider map, once."""
     if "api_keys" in settings:
@@ -170,6 +177,8 @@ def migrate_legacy_api_key(settings: dict[str, Any]) -> dict[str, Any]:
         except OSError:
             pass
     return settings
+
+
 def load_settings() -> dict[str, Any]:
     """Load settings from disk, falling back to defaults on error."""
     settings = DEFAULT_SETTINGS.copy()
@@ -199,8 +208,7 @@ def save_settings(settings: dict[str, Any]) -> None:
             temp_path.unlink(missing_ok=True)
     # A changed API key or base URL can change the model list, so drop the cached
     # ids Discord autocomplete answers from.
-    if SETTINGS_SAVED_HOOK is not None:
-        SETTINGS_SAVED_HOOK()
+    forget_model_names()
 
 
 def get_discord_token(settings: dict[str, Any] | None = None) -> str:
@@ -208,3 +216,19 @@ def get_discord_token(settings: dict[str, Any] | None = None) -> str:
     settings = settings if settings is not None else load_settings()
     configured = str(settings.get("discord_token") or "").strip()
     return configured or os.getenv("DISCORD_BOT_TOKEN", "").strip()
+
+
+def secret_values(extra: list[str] | None = None) -> list[str]:
+    """Collect secret values that command output and logs must never expose."""
+    settings = load_settings()
+    values = {value for value in stored_api_keys(settings).values() if value}
+    values.update(stored_custom_api_keys(settings).values())
+    if extra:
+        values.update(value for value in extra if value)
+    discord_token = get_discord_token(settings)
+    if discord_token:
+        values.add(discord_token)
+    for name, value in os.environ.items():
+        if value and len(value) >= 8 and any(part in name.upper() for part in SENSITIVE_ENV_PARTS):
+            values.add(value)
+    return sorted(values, key=len, reverse=True)

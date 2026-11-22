@@ -17,6 +17,8 @@ API_RATE_LIMITS: dict[str, list[float]] = {}
 
 
 API_RATE_LOCK = threading.Lock()
+
+
 def api_rate_limited(bucket: str, client: str, limit: int, window: float = 60.0) -> bool:
     """Return True when *client* already used its budget for *bucket*."""
     now = time.time()
@@ -33,6 +35,8 @@ def api_rate_limited(bucket: str, client: str, limit: int, window: float = 60.0)
     return False
 # Per-minute budgets for the endpoints that cost money or touch the machine.
 API_RATE_BUDGETS = {"chat": 30, "tools": 60, "test": 10}
+
+
 def rate_limit_response(bucket: str):
     """Answer 429 when the caller exceeded the budget for *bucket*.
 

@@ -1,4 +1,4 @@
-"""Integration tests for the memory fixes that span app.py and the engine.
+"""Integration tests for the memory fixes that span py and the engine.
 
 Covered here: a keyless loopback endpoint is ready for web chat, a summary
 provider never inherits the chat provider's Base URL, a marked tool result is
@@ -10,6 +10,8 @@ import json
 from datetime import timedelta
 
 import pytest
+
+from core.providers import keyless_loopback_provider, list_models, provider_readiness
 
 CONVERSATION_ID = "11111111-1111-1111-1111-111111111111"
 LOOPBACK = "http://127.0.0.1:8080/v1"
@@ -55,48 +57,40 @@ def write_history(module, messages, *, age_minutes=90):
 
 @pytest.mark.parametrize("provider", ["openai", "or", "groq", "hf"])
 def test_openai_compatible_loopback_without_a_key_is_ready(engine, provider):
-    import app
-
-    result = app.provider_readiness(provider_settings(provider))
+    result = provider_readiness(provider_settings(provider))
 
     assert result["ready"] is True
     assert result["checked"] == "local"
     assert result["reason"] == ""
-    assert app.keyless_loopback_provider(provider, provider_settings(provider)) is True
+    assert keyless_loopback_provider(provider, provider_settings(provider)) is True
 
 
 @pytest.mark.parametrize("provider", ["gemini", "anthropic"])
 def test_providers_that_always_need_a_key_stay_not_ready_on_loopback(engine, provider):
-    import app
-
-    result = app.provider_readiness(provider_settings(provider))
+    result = provider_readiness(provider_settings(provider))
 
     assert result["ready"] is False
     assert result["checked"] == "local"
     assert result["reason"]
-    assert app.keyless_loopback_provider(provider, provider_settings(provider)) is False
+    assert keyless_loopback_provider(provider, provider_settings(provider)) is False
 
 
 def test_loopback_without_a_model_is_not_ready(engine):
-    import app
-
-    result = app.provider_readiness(provider_settings("openai", model=""))
+    result = provider_readiness(provider_settings("openai", model=""))
 
     assert result["ready"] is False
     assert result["checked"] == "local"
 
 
 def test_a_remote_endpoint_still_requires_a_key(engine):
-    import app
-
-    result = app.provider_readiness(provider_settings("openai", base_url=REMOTE))
+    result = provider_readiness(provider_settings("openai", base_url=REMOTE))
 
     assert result["ready"] is False
     assert result["checked"] == "local"
 
 
 def test_model_discovery_only_allows_a_keyless_loopback_endpoint(engine, monkeypatch):
-    import app
+
     import core.providers
 
     calls = []
@@ -113,14 +107,14 @@ def test_model_discovery_only_allows_a_keyless_loopback_endpoint(engine, monkeyp
     # list_models() calls this in core.providers, next to the code that sends it.
     monkeypatch.setattr(core.providers, "provider_models_get", fake_models_get)
     # Reuse the keyless rule; no network request is made.
-    assert app.list_models("openai", provider_settings("openai")) == [
+    assert list_models("openai", provider_settings("openai")) == [
         {"id": "local-model", "name": "local-model"}
     ]
     assert calls[0]["headers"] is None
     assert calls[0]["url"] == f"{LOOPBACK}/models"
 
     with pytest.raises(RuntimeError):
-        app.list_models("openai", provider_settings("openai", base_url=REMOTE))
+        list_models("openai", provider_settings("openai", base_url=REMOTE))
 
 
 # --------------------------------------------------------------------------- #

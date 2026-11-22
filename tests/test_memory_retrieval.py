@@ -95,16 +95,16 @@ def test_an_entry_that_exactly_fits_stays_inside_the_budget(engine):
 
 
 def test_a_late_registered_secret_is_redacted_on_a_cache_hit(engine, monkeypatch):
-    import app
+    import core.redaction
 
     remember(engine, "the vault passphrase is hunter2-custom-key")
-    monkeypatch.setattr(app, "secret_values", lambda: [])
+    monkeypatch.setattr(core.redaction, "secret_values", lambda: [])
     block, ids = engine.build_context("vault passphrase", settings())
     assert ids
     assert "hunter2-custom-key" in block
 
     # The same MEMORY.md is served from the cache; the new secret must still go.
-    monkeypatch.setattr(app, "secret_values", lambda: ["hunter2-custom-key"])
+    monkeypatch.setattr(core.redaction, "secret_values", lambda: ["hunter2-custom-key"])
     block, ids = engine.build_context("vault passphrase", settings())
     assert ids
     assert "hunter2-custom-key" not in block

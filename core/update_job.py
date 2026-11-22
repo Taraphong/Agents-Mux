@@ -27,6 +27,8 @@ UPDATE_JOB: dict[str, Any] = {}
 # A real update restarts this process, so the job is also persisted: the new
 # server reads it back to report what happened before the restart.
 UPDATE_STATUS_FILE = Path(os.getenv("AI_WEB_UPDATE_STATUS_FILE", "logs/update-status.json"))
+
+
 def update_build_info() -> dict[str, Any]:
     """Describe the app files on disk; the updater keeps no version number."""
     try:
@@ -37,9 +39,13 @@ def update_build_info() -> dict[str, Any]:
         "app_updated_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
         "app_size": stat.st_size,
     }
+
+
 def update_script_ready() -> bool:
     """Return whether update.sh exists and can be executed."""
     return UPDATE_SCRIPT.is_file() and os.access(UPDATE_SCRIPT, os.X_OK)
+
+
 def update_log_tail() -> tuple[str, bool]:
     """Return the end of the update log and whether older lines were dropped."""
     try:
@@ -48,6 +54,8 @@ def update_log_tail() -> tuple[str, bool]:
         return "", False
     lines = text.splitlines()
     return "\n".join(lines[-UPDATE_LOG_TAIL_LINES:]), len(lines) > UPDATE_LOG_TAIL_LINES
+
+
 def save_update_status(payload: dict[str, Any]) -> None:
     """Persist the running update so the next server process can report it."""
     try:
@@ -57,6 +65,8 @@ def save_update_status(payload: dict[str, Any]) -> None:
         os.replace(temp_path, UPDATE_STATUS_FILE)
     except OSError:
         return
+
+
 def load_update_status() -> dict[str, Any]:
     """Read the persisted update record, tolerating a missing or broken file."""
     try:
@@ -64,6 +74,8 @@ def load_update_status() -> dict[str, Any]:
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
 def process_is_alive(pid: Any) -> bool:
     """Return whether the PID recorded for an update is still running."""
     try:
@@ -73,12 +85,16 @@ def process_is_alive(pid: Any) -> bool:
     except PermissionError:
         return True
     return True
+
+
 def update_log_finished_at() -> str:
     """Use the log's timestamp as the finish time after a server restart."""
     try:
         return datetime.fromtimestamp(UPDATE_LOG_FILE.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
     except OSError:
         return ""
+
+
 def update_log_succeeded() -> bool | None:
     """Read the updater's own success/failure verdict from its log tail."""
     tail, _ = update_log_tail()
@@ -87,6 +103,8 @@ def update_log_succeeded() -> bool | None:
     if "❌" in tail:
         return False
     return None
+
+
 def update_job_snapshot() -> dict[str, Any]:
     """Report the current update job, falling back to the persisted record."""
     with UPDATE_JOB_LOCK:
@@ -120,6 +138,8 @@ def update_job_snapshot() -> dict[str, Any]:
             "exit_code": None,
         },
     }
+
+
 def watch_update_job(process: "subprocess.Popen[bytes]") -> None:
     """Record the updater's exit status after the detached process finishes."""
     code = process.wait()

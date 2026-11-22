@@ -9,7 +9,6 @@ import asyncio
 import json
 import re
 import threading
-import time
 import uuid
 from collections import deque
 from typing import Any
@@ -17,9 +16,9 @@ from typing import Any
 import requests
 
 from core.config import TOOL_CALL_BLOCK_PATTERN
-from core.history import append_history_messages, save_discord_turn, save_history
+from core.history import save_discord_turn, save_history
 from core.log import log_event
-from core.messages import status_message
+from core.model_cache import remember_model_names
 from core.providers import (
     FALLBACK_MODELS,
     STATUS_CACHE,
@@ -27,11 +26,8 @@ from core.providers import (
     call_provider,
     clean_messages,
     list_models,
-    memory_context_block,
     model_names_for_autocomplete,
-    provider_key_check,
     provider_readiness,
-    remember_model_names,
     same_secret,
     schedule_model_list_refresh,
 )
@@ -54,6 +50,8 @@ DISCORD_BOT: Any = None
 DISCORD_THREAD: threading.Thread | None = None
 DISCORD_LOOP: Any = None
 DISCORD_ACTIVE_TOKEN = ""
+
+
 def send_discord_schedule_result(job: dict[str, Any], answer: str) -> None:
     """Send a scheduled job result to its configured Discord channel."""
     channel_id = str(job.get("discord_channel_id") or "").strip()
@@ -74,6 +72,8 @@ def send_discord_schedule_result(job: dict[str, Any], answer: str) -> None:
 
     future = asyncio.run_coroutine_threadsafe(deliver(), DISCORD_LOOP)
     future.result(timeout=30)
+
+
 def discord_status() -> dict[str, Any]:
     """Report whether the Discord bot is enabled, configured, and connected."""
     token = get_discord_token()
@@ -82,10 +82,14 @@ def discord_status() -> dict[str, Any]:
         "configured": bool(token),
         "connected": bool(DISCORD_BOT and getattr(DISCORD_BOT, "is_ready", lambda: False)()),
     }
+
+
 def split_discord_message(text: str, limit: int = 2000) -> list[str]:
     """Split a long reply into Discord-sized message chunks."""
     text = str(text or "")
     return [text[index:index + limit] for index in range(0, len(text), limit)] or ["(No response text)"]
+
+
 def stop_discord_bot() -> None:
     """Ask the running Discord client to close, if it is connected."""
     if DISCORD_BOT is not None and DISCORD_LOOP is not None and not DISCORD_LOOP.is_closed():
@@ -93,6 +97,8 @@ def stop_discord_bot() -> None:
             DISCORD_LOOP.call_soon_threadsafe(lambda: __import__("asyncio").create_task(DISCORD_BOT.close()))
         except RuntimeError:
             pass
+
+
 def start_discord_bot() -> None:
     """Run the optional Discord client in a daemon thread beside Flask."""
     global DISCORD_BOT, DISCORD_THREAD, DISCORD_LOOP, DISCORD_ACTIVE_TOKEN

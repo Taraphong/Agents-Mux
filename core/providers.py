@@ -2,13 +2,11 @@
 
 Every HTTP endpoint is checked before a key is sent, model ids are cached for
 autocomplete, and each provider's request/response shape lives beside its
-siblings. The module never imports app; app.py wires the log hook.
+siblings. It logs through core.log directly.
 """
 
 import base64
-import hmac
 import ipaddress
-import json
 import os
 import re
 import secrets
@@ -23,18 +21,21 @@ import memory_engine
 
 from core.config import TOOL_INSTRUCTIONS
 from core.log import log_event
+from core.model_cache import (
+    MODEL_LIST_CACHE,
+    MODEL_LIST_CACHE_TTL,
+    MODEL_LIST_REFRESH_LOCK,
+    MODEL_LIST_REFRESH_STARTED,
+    remember_model_names,
+)
 from core.messages import status_message
-from core.redaction import redact_secrets
 from core.settings import (
     PROVIDER_BASE_URLS,
     PROVIDER_ENV_KEYS,
     PROVIDER_LABELS,
-    PROVIDERS,
-    SETTINGS_FILE,
     load_settings,
     normalize_provider,
     stored_api_keys,
-    stored_custom_api_keys,
 )
 from core.skills import selected_skill_prompt
 
@@ -75,6 +76,8 @@ MULTIMODAL_MIME_PREFIXES = ("image/", "audio/", "video/")
 ALLOW_INSECURE_PROVIDER_HTTP = os.getenv("AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP", "").strip().lower() in {
     "1", "true", "yes", "on",
 }
+
+
 def endpoint_is_loopback(url: str) -> bool:
     """Return whether a URL points at this machine (where plain HTTP is fine)."""
     try:
@@ -87,6 +90,8 @@ def endpoint_is_loopback(url: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
 def ensure_secure_model_endpoint(url: str) -> None:
     """Refuse a model request that would send the provider key over plain HTTP."""
     try:
@@ -115,6 +120,8 @@ def ensure_secure_model_endpoint(url: str) -> None:
         f"Refused to send the API key over http to {host or 'an unknown host'} "
         "— use https, or set AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP=1 for a trusted server"
     )
+
+
 def provider_models_get(
     url: str,
     *,
@@ -142,6 +149,8 @@ def provider_models_get(
         )
     response.raise_for_status()
     return response
+
+
 def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) -> list[dict[str, str]]:
     """Fetch the available models for a provider, using its API key."""
     provider = normalize_provider(provider)
@@ -185,29 +194,13 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
     )
     models = response.json().get("data", [])
     return [{"id": item["id"], "name": item["id"]} for item in sorted(models, key=lambda item: item.get("id", ""))]
-MODEL_LIST_CACHE_TTL = 600
-MODEL_LIST_CACHE: dict[str, tuple[float, list[str]]] = {}
 MODEL_LIST_ERROR_LOGGED: dict[str, float] = {}
 # An autocomplete never waits on the provider API: it answers from the cache or
 # the static list and lets a daemon thread refresh the real list.
 MODEL_LIST_REFRESH_TIMEOUT = 8
 MODEL_LIST_REFRESH_INTERVAL = 15
-MODEL_LIST_REFRESH_LOCK = threading.Lock()
-MODEL_LIST_REFRESH_STARTED: dict[str, float] = {}
-def remember_model_names(provider: str, names: list[str]) -> None:
-    """Cache a provider's model ids so Discord autocomplete can answer instantly."""
-    names = [name for name in names if name]
-    if names:
-        MODEL_LIST_CACHE[normalize_provider(provider)] = (time.time(), list(names))
-def forget_model_names() -> None:
-    """Drop the cached model ids and the refresh throttle for every provider.
 
-    Clearing the throttle too lets the first autocomplete after a settings
-    change refresh at once instead of waiting out the interval.
-    """
-    with MODEL_LIST_REFRESH_LOCK:
-        MODEL_LIST_CACHE.clear()
-        MODEL_LIST_REFRESH_STARTED.clear()
+
 def static_model_names(provider: str, settings: dict[str, Any]) -> list[str]:
     """Return the fallback model ids, with the model in use listed first."""
     names = list(FALLBACK_MODELS.get(provider, []))
@@ -216,6 +209,8 @@ def static_model_names(provider: str, settings: dict[str, Any]) -> list[str]:
     if active_provider == provider and active_model and active_model not in names:
         names.insert(0, active_model)
     return names
+
+
 def refresh_model_names(provider: str, settings: dict[str, Any]) -> None:
     """Fetch a provider's model ids so the next autocomplete has the real list."""
     provider = normalize_provider(provider)
@@ -238,6 +233,8 @@ def refresh_model_names(provider: str, settings: dict[str, Any]) -> None:
             )
     if names:
         remember_model_names(provider, names)
+
+
 def schedule_model_list_refresh(provider: str, settings: dict[str, Any]) -> None:
     """Refresh one provider's model ids in a daemon thread, at most every 15s."""
     provider = normalize_provider(provider)
@@ -253,6 +250,8 @@ def schedule_model_list_refresh(provider: str, settings: dict[str, Any]) -> None
         name=f"model-refresh-{provider}",
         daemon=True,
     ).start()
+
+
 def model_names_for_autocomplete(provider: str, settings: dict[str, Any]) -> list[str]:
     """Return model ids immediately, refreshing a missing or stale list in the background.
 
@@ -270,6 +269,8 @@ def model_names_for_autocomplete(provider: str, settings: dict[str, Any]) -> lis
         # A stale list still beats the static one while the refresh runs.
         return list(cached[1])
     return static_model_names(provider, settings)
+
+
 def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
     """Return the provider API key from settings or the environment."""
     provider = normalize_provider(provider)
@@ -278,15 +279,21 @@ def get_api_key(provider: str, settings: dict[str, Any] | None = None) -> str:
     if not key:
         key = str(os.getenv(PROVIDER_ENV_KEYS.get(provider, "OPENAI_API_KEY"), "")).strip()
     return key
+
+
 def safe_stored_api_key(provider: str, settings: dict[str, Any] | None) -> str:
     """Read an API key defensively so a settings failure cannot mask the real error."""
     try:
         return get_api_key(provider, settings or {})
     except (OSError, TypeError, ValueError, KeyError):
         return ""
+
+
 def key_is_configured(provider: str, settings: dict[str, Any] | None = None) -> bool:
     """Return whether a provider has any usable API key."""
     return bool(get_api_key(provider, settings))
+
+
 def get_base_url(provider: str, settings: dict[str, Any] | None = None) -> str:
     """Get the appropriate base URL for a provider, using stored setting or default."""
     provider = normalize_provider(provider)
@@ -297,6 +304,8 @@ def get_base_url(provider: str, settings: dict[str, Any] | None = None) -> str:
         return stored_base.rstrip("/")
     # Return provider-specific default if no custom base URL set
     return PROVIDER_BASE_URLS.get(provider, "https://api.openai.com/v1").rstrip("/")
+
+
 def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") -> bool:
     """Reject placeholders such as '000' or a leftover masked value."""
     key = str(key or "").strip()
@@ -307,6 +316,8 @@ def key_looks_plausible(key: str, provider: str = "openai", base_url: str = "") 
     official = base_url.rstrip("/") in {"https://api.openai.com/v1", "https://api.openai.com"}
     # Self-hosted OpenAI-compatible servers may accept short local keys.
     return len(key) >= 20 if official else True
+
+
 def same_secret(left: str, right: str) -> bool:
     """Compare two secrets in constant time.
 
@@ -316,6 +327,8 @@ def same_secret(left: str, right: str) -> bool:
     cache is trimmed.
     """
     return secrets.compare_digest(str(left).encode("utf-8"), str(right).encode("utf-8"))
+
+
 def provider_key_check(provider: str, settings: dict[str, Any], language: str = "en") -> dict[str, Any]:
     """Check credentials and, for Anthropic, the selected model's real usability."""
     provider = normalize_provider(provider)
@@ -397,6 +410,8 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
         result = {"ready": False, "reason": status_message(language, "connection_failed", label=label, error=exc.__class__.__name__), "status": None}
     STATUS_CACHE[cache_key] = (time.time(), key, result)
     return {**result, "cached": False}
+
+
 def keyless_loopback_provider(provider: str, settings: dict[str, Any]) -> bool:
     """Whether a provider is a local endpoint that works without an API key.
 
@@ -406,6 +421,8 @@ def keyless_loopback_provider(provider: str, settings: dict[str, Any]) -> bool:
     return provider not in {"gemini", "anthropic"} and endpoint_is_loopback(
         get_base_url(provider, settings)
     )
+
+
 def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[str, Any]:
     """Check locally, then remotely, whether the selected provider and model are usable."""
     provider = normalize_provider(settings.get("provider"))
@@ -426,6 +443,8 @@ def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[s
         return {**base, "ready": False, "reason": status_message(language, "invalid_key_shape", label=label), "checked": "local"}
     check = provider_key_check(provider, settings, language)
     return {**base, "ready": check["ready"], "reason": check["reason"], "checked": "api", "cached": check.get("cached", False)}
+
+
 def gemini_base_url(settings: dict[str, Any]) -> str:
     """Return the Gemini endpoint used by discovery and the Gemini tools.
 
@@ -437,6 +456,8 @@ def gemini_base_url(settings: dict[str, Any]) -> str:
     if stored and normalize_provider(settings.get("provider")) == "gemini":
         return stored
     return PROVIDER_BASE_URLS["gemini"].rstrip("/")
+
+
 def gemini_post(
     path: str,
     settings: dict[str, Any],
@@ -465,6 +486,8 @@ def gemini_post(
         )
     response.raise_for_status()
     return response
+
+
 def gemini_model_metadata(settings: dict[str, Any], timeout: float = 30) -> list[dict[str, Any]]:
     """Fetch full Gemini model metadata, including supported generation methods."""
     key = get_api_key("gemini", settings)
@@ -491,6 +514,8 @@ def gemini_model_metadata(settings: dict[str, Any], timeout: float = 30) -> list
         seen_tokens.add(token)
         params = {**params, "pageToken": token}
     return models
+
+
 def gemini_feature_groups(models: list[dict[str, Any]]) -> dict[str, list[str]]:
     """Split Gemini models into the feature groups shown in Settings."""
     groups: dict[str, list[str]] = {name: [] for name in ("multimodal", "live", "decisions", "other")}
@@ -516,6 +541,8 @@ def gemini_feature_groups(models: list[dict[str, Any]]) -> dict[str, list[str]]:
         if remaining or any(tag in lowered for tag in ("embedding", "imagen", "veo", "lyria", "tts")):
             groups["other"].append(name)
     return groups
+
+
 def gemini_agent_presets(settings: dict[str, Any]) -> tuple[list[str], bool]:
     """Return managed agent ids, using the live list when the API exposes one."""
     key = get_api_key("gemini", settings)
@@ -543,6 +570,8 @@ def gemini_agent_presets(settings: dict[str, Any]) -> tuple[list[str], bool]:
         return (listed or names), bool(listed)
     except (requests.RequestException, RuntimeError, ValueError, KeyError):
         return names, False
+
+
 def gemini_capabilities(settings: dict[str, Any], language: str = "en", force: bool = False) -> dict[str, Any]:
     """Report which Gemini feature groups the configured key can reach."""
     global GEMINI_CAPABILITY_PROBE
@@ -635,6 +664,8 @@ def gemini_capabilities(settings: dict[str, Any], language: str = "en", force: b
         if probe_id == GEMINI_CAPABILITY_PROBE:
             GEMINI_CAPABILITY_CACHE[cache_key] = (now, key, result)
     return result
+
+
 def attachment_payload(value: Any) -> dict[str, str] | None:
     """Validate an inline multimodal attachment sent by the browser."""
     if not isinstance(value, dict):
@@ -655,6 +686,8 @@ def attachment_payload(value: Any) -> dict[str, str] | None:
     if not 0 < len(decoded) <= MULTIMODAL_MAX_BYTES:
         return None
     return {"name": name, "mime_type": mime_type, "data": data}
+
+
 def memory_context_block(messages: list[dict[str, Any]], settings: dict[str, Any]) -> str:
     """Return the memory block for the newest user turn, or an empty string."""
     query = ""
@@ -673,6 +706,8 @@ def memory_context_block(messages: list[dict[str, Any]], settings: dict[str, Any
     except Exception:
         return ""
     return block
+
+
 def build_system_prompt(
     settings: dict[str, Any],
     messages: list[dict[str, Any]],
@@ -698,6 +733,8 @@ def build_system_prompt(
         TOOL_INSTRUCTIONS,
     )
     return "\n\n".join(part for part in parts if part)
+
+
 def clean_messages(messages: list[dict[str, Any]], settings: dict[str, Any]) -> list[dict[str, Any]]:
     """Keep text and validated inline attachments, then prepend the system prompt."""
     result: list[dict[str, Any]] = [{"role": "system", "content": settings.get("system_prompt", "")}] if settings.get("system_prompt") else []
@@ -712,6 +749,8 @@ def clean_messages(messages: list[dict[str, Any]], settings: dict[str, Any]) -> 
             content = f"{content}\n\n[Attachment: {legacy['name']}]\n```\n{legacy['content']}\n```"
         result.append({"role": item.get("role", "user"), "content": content})
     return result
+
+
 def gemini_parts(message: dict[str, Any]) -> list[dict[str, Any]]:
     """Build Gemini content parts, sending binary attachments inline."""
     parts: list[dict[str, Any]] = []
@@ -724,6 +763,8 @@ def gemini_parts(message: dict[str, Any]) -> list[dict[str, Any]]:
             parts.append({"text": f"[Attachment: {attachment['name']}]"})
         parts.append({"inlineData": {"mimeType": attachment["mime_type"], "data": attachment["data"]}})
     return parts or [{"text": ""}]
+
+
 def openai_content(message: dict[str, Any]) -> Any:
     """Map an attachment to an OpenAI image part; other binaries stay text-only."""
     attachment = message.get("attachment")
@@ -735,6 +776,8 @@ def openai_content(message: dict[str, Any]) -> Any:
         parts.append({"type": "image_url", "image_url": {"url": f"data:{attachment['mime_type']};base64,{attachment['data']}"}})
         return parts
     return text
+
+
 def anthropic_content(message: dict[str, Any]) -> Any:
     """Map an attachment to an Anthropic image/document block."""
     attachment = message.get("attachment")
@@ -752,6 +795,8 @@ def anthropic_content(message: dict[str, Any]) -> Any:
     if text:
         blocks.append({"type": "text", "text": text})
     return blocks
+
+
 def agent_profile_prompt(settings: dict[str, Any]) -> str:
     """Turn the user-configured agent profile into stable runtime guidance."""
     language = {"auto": "Reply in the user's language", "th": "Reply in Thai", "en": "Reply in English"}.get(str(settings.get("response_language", "auto")), "Reply in the user's language")
@@ -763,6 +808,8 @@ def agent_profile_prompt(settings: dict[str, Any]) -> str:
         f"- Response tone: {str(settings.get('response_style') or '')[:500]}",
         f"- Language: {language}", f"- Format: {markdown}", f"- Asking for more information: {questions}",
     ))
+
+
 def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: str, total_key: str | None) -> dict[str, int] | None:
     """Map provider-specific usage fields to the fields shown in the UI."""
     if not isinstance(usage, dict):
@@ -782,6 +829,8 @@ def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: st
     elif result:
         result["total_tokens"] = result.get("input_tokens", 0) + result.get("output_tokens", 0)
     return result
+
+
 def is_openai_reasoning_model(provider: str, model: str) -> bool:
     """Return whether a model on an OpenAI-compatible endpoint takes reasoning_effort.
 
@@ -794,6 +843,8 @@ def is_openai_reasoning_model(provider: str, model: str) -> bool:
         return False
     name = str(model or "").strip().lower().rsplit("/", 1)[-1]
     return bool(re.match(r"^(?:o[1-9](?:-|$)|gpt-5|gpt-oss)", name))
+
+
 def rejects_sampling_params(provider: str, model: str) -> bool:
     """Return whether the endpoint rejects temperature/top_p for this model.
 
@@ -807,6 +858,8 @@ def rejects_sampling_params(provider: str, model: str) -> bool:
         return False
     name = str(model or "").strip().lower()
     return bool(re.match(r"^(?:o[1-9](?:-|$)|gpt-5)", name))
+
+
 class ProviderEmptyResponse(RuntimeError):
     """The provider answered without any text, so there is nothing to show.
 
@@ -818,6 +871,8 @@ class ProviderEmptyResponse(RuntimeError):
     def __init__(self, message: str, finish_reason: str = "") -> None:
         super().__init__(message)
         self.finish_reason = finish_reason
+
+
 def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     """Send one chat completion request to an OpenAI-compatible endpoint."""
     key = get_api_key(settings["provider"], settings)
@@ -873,6 +928,8 @@ def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
             str(choice.get("finish_reason") or ""),
         )
     return content, normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens")
+
+
 def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     """Send one generateContent request to Gemini with thinking options."""
     key = get_api_key("gemini", settings)
@@ -945,6 +1002,8 @@ def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
     return text, normalize_usage(
         usage, "promptTokenCount", "candidatesTokenCount", "totalTokenCount"
     )
+
+
 def anthropic_model_version(model: str) -> tuple[int, int] | None:
     """Return the Claude version encoded in a model id, or None."""
     match = re.search(
@@ -953,10 +1012,14 @@ def anthropic_model_version(model: str) -> tuple[int, int] | None:
     if not match:
         return None
     return int(match.group(1)), int(match.group(2) or 0)
+
+
 def anthropic_adaptive_thinking_supported(model: str) -> bool:
     """Return whether the model takes adaptive thinking (Claude 4.7 and later)."""
     version = anthropic_model_version(model)
     return version is not None and version >= (4, 7)
+
+
 def anthropic_thinking_supported(model: str) -> bool:
     """Return whether an Anthropic model accepts manual extended thinking.
 
@@ -965,6 +1028,8 @@ def anthropic_thinking_supported(model: str) -> bool:
     """
     version = anthropic_model_version(model)
     return version is not None and (3, 7) <= version < (4, 7)
+
+
 def call_anthropic(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     """Send one messages request to Anthropic with the configured settings."""
     key = get_api_key("anthropic", settings)
@@ -1037,6 +1102,8 @@ PROVIDER_NETWORK_ERRORS = (
     requests.ConnectionError,
     requests.exceptions.ChunkedEncodingError,
 )
+
+
 def call_provider(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     """Dispatch one chat turn, retrying once when the provider is unreachable."""
     provider = settings["provider"].lower()

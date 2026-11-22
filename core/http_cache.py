@@ -19,9 +19,13 @@ GZIP_MIN_BYTES = 1024
 ASSET_GZIP_CACHE: dict[tuple[str, int, int], bytes] = {}
 ASSET_GZIP_LOCK = threading.Lock()
 ASSET_GZIP_CACHE_LIMIT = 8
+
+
 def accepts_gzip() -> bool:
     """Report whether the client advertised gzip support."""
     return "gzip" in (request.headers.get("Accept-Encoding") or "").lower()
+
+
 def gzip_body(data: bytes, cache_key: tuple[str, int, int] | None = None) -> bytes:
     """Gzip a text body, reusing the result while the source file is unchanged."""
     if cache_key is not None:
@@ -36,6 +40,8 @@ def gzip_body(data: bytes, cache_key: tuple[str, int, int] | None = None) -> byt
                 ASSET_GZIP_CACHE.clear()
             ASSET_GZIP_CACHE[cache_key] = compressed
     return compressed
+
+
 def representation_etag(base_etag: str, gzipped: bool) -> str:
     """Return an ETag that identifies one representation of the same resource.
 
@@ -48,6 +54,8 @@ def representation_etag(base_etag: str, gzipped: bool) -> str:
         token = token[2:].strip()
     token = token.strip('"')
     return f'"{token}-gzip"' if gzipped else f'"{token}"'
+
+
 def compress_response(
     response,
     cache_key: tuple[str, int, int] | None = None,

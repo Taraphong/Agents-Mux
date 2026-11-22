@@ -14,6 +14,8 @@ from core.config import SCHEDULE_FILE
 
 
 SCHEDULE_LOCK = threading.Lock()
+
+
 def load_schedules() -> list[dict[str, Any]]:
     """Load the scheduled jobs list, tolerating a missing or broken file."""
     if not SCHEDULE_FILE.exists():
@@ -23,9 +25,13 @@ def load_schedules() -> list[dict[str, Any]]:
         return data if isinstance(data, list) else []
     except (OSError, json.JSONDecodeError):
         return []
+
+
 def save_schedules(jobs: list[dict[str, Any]]) -> None:
     """Write the scheduled jobs list to disk as formatted JSON."""
     SCHEDULE_FILE.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def cron_values(field: str, minimum: int, maximum: int, alias_max: int | None = None) -> set[int]:
     """Expand one cron field into concrete values, rejecting malformed input."""
     upper = alias_max if alias_max is not None else maximum
@@ -64,6 +70,8 @@ def cron_values(field: str, minimum: int, maximum: int, alias_max: int | None = 
     if min(values) < minimum or max(values) > maximum:
         raise ValueError(f"The cron value must be between {minimum} and {maximum}")
     return values
+
+
 def validate_cron(expression: str) -> str:
     """Validate a five-field cron expression and return it normalized."""
     aliases = {"@hourly": "0 * * * *", "@daily": "0 0 * * *", "@midnight": "0 0 * * *"}
@@ -76,6 +84,8 @@ def validate_cron(expression: str) -> str:
     ):
         cron_values(field, minimum, maximum, alias_max)
     return expression
+
+
 def cron_matches(expression: str, now: datetime) -> bool:
     """Return whether a cron expression fires at the given local time."""
     minute, hour, day_of_month, month, day_of_week = validate_cron(expression).split()
@@ -91,6 +101,8 @@ def cron_matches(expression: str, now: datetime) -> bool:
     if day_of_month.strip() == "*" or day_of_week.strip() == "*":
         return dom_matches and dow_matches
     return dom_matches or dow_matches
+
+
 def update_schedule(job_id: str, **changes: Any) -> None:
     """Apply field changes to one scheduled job and save the list."""
     with SCHEDULE_LOCK:

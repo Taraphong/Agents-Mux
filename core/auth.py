@@ -33,9 +33,13 @@ from core.config import (
 
 AUTH_LOCK = threading.Lock()
 AUTH_PAIRING_FAILURES: dict[str, list[float]] = {}
+
+
 def empty_auth_state() -> dict[str, Any]:
     """Return the empty shape of the pairing/session store."""
     return {"version": 1, "pairing_keys": [], "sessions": []}
+
+
 def load_auth_state() -> dict[str, Any]:
     """Load the pairing/session store, tolerating a missing or broken file."""
     if not AUTH_FILE.exists():
@@ -52,6 +56,8 @@ def load_auth_state() -> dict[str, Any]:
         if isinstance(raw, list):
             state[field] = [item for item in raw if isinstance(item, dict)]
     return state
+
+
 def save_auth_state(state: dict[str, Any]) -> None:
     """Persist the pairing/session store atomically with owner-only permissions."""
     AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -60,36 +66,54 @@ def save_auth_state(state: dict[str, Any]) -> None:
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(state, ensure_ascii=False, indent=2))
     os.replace(temp_path, AUTH_FILE)
+
+
 def hash_auth_token(value: str) -> str:
     """Hash a pairing key or session token before it is stored on disk."""
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def no_store(response):
     """Mark an identity-dependent response so proxies and browsers never cache it."""
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
 def auth_now() -> datetime:
     """Return the current local time used for pairing/session timestamps."""
     return datetime.now().astimezone()
+
+
 def auth_timestamp(moment: datetime) -> str:
     """Serialize a timestamp in the same ISO shape used elsewhere in the app."""
     return moment.isoformat(timespec="seconds")
+
+
 def auth_expired(record: dict[str, Any], now: datetime) -> bool:
     """Report whether a stored key or session record has passed its expiry."""
     try:
         return datetime.fromisoformat(str(record.get("expires_at") or "")) <= now
     except (TypeError, ValueError):
         return True
+
+
 def prune_auth_state(state: dict[str, Any], now: datetime) -> None:
     """Drop expired keys and sessions so the store does not grow forever."""
     state["pairing_keys"] = [item for item in state["pairing_keys"] if not auth_expired(item, now)]
     state["sessions"] = [item for item in state["sessions"] if not auth_expired(item, now)]
+
+
 def normalize_pairing_key(raw_key: Any) -> str:
     """Normalize a client-supplied key by stripping separators and case."""
     cleaned = re.sub(r"[^0-9A-Za-z]", "", str(raw_key or "")).upper()
     return cleaned if len(cleaned) == AUTH_KEY_LENGTH else ""
+
+
 def format_pairing_key(key: str) -> str:
     """Group a pairing key into readable blocks, e.g. ABCD-EFGH-JKLM."""
     return "-".join(key[index:index + 4] for index in range(0, len(key), 4))
+
+
 def generate_pairing_key(label: str = "") -> dict[str, Any]:
     """Create a single-use pairing key; only its hash is written to disk."""
     now = auth_now()
@@ -111,6 +135,8 @@ def generate_pairing_key(label: str = "") -> dict[str, Any]:
         state["pairing_keys"].append(record)
         save_auth_state(state)
     return {"key": format_pairing_key(key), "id": record["id"], "expires_at": record["expires_at"], "ttl_minutes": AUTH_PAIRING_TTL_MINUTES}
+
+
 def consume_pairing_key(raw_key: Any) -> bool:
     """Validate and burn one pairing key so it cannot be reused."""
     key = normalize_pairing_key(raw_key)
@@ -131,6 +157,8 @@ def consume_pairing_key(raw_key: Any) -> bool:
         state["pairing_keys"] = remaining
         save_auth_state(state)
     return matched
+
+
 def pairing_attempt_allowed(client_ip: str) -> bool:
     """Rate-limit pairing attempts per client address."""
     now = time.time()
@@ -138,6 +166,8 @@ def pairing_attempt_allowed(client_ip: str) -> bool:
         recent = [stamp for stamp in AUTH_PAIRING_FAILURES.get(client_ip, []) if now - stamp < AUTH_PAIRING_FAILURE_WINDOW]
         AUTH_PAIRING_FAILURES[client_ip] = recent
         return len(recent) < AUTH_PAIRING_MAX_FAILURES
+
+
 def record_pairing_failure(client_ip: str) -> None:
     """Remember a failed pairing attempt for rate limiting."""
     with AUTH_LOCK:
@@ -145,6 +175,8 @@ def record_pairing_failure(client_ip: str) -> None:
         if len(AUTH_PAIRING_FAILURES) > 500:
             for stale_ip in [ip for ip, stamps in AUTH_PAIRING_FAILURES.items() if not stamps]:
                 AUTH_PAIRING_FAILURES.pop(stale_ip, None)
+
+
 def create_auth_session(label: str = "", user_agent: str = "", client_ip: str = "") -> str:
     """Create a paired-device session and return its raw cookie token once."""
     token = secrets.token_urlsafe(32)
@@ -165,6 +197,8 @@ def create_auth_session(label: str = "", user_agent: str = "", client_ip: str = 
         state["sessions"].append(record)
         save_auth_state(state)
     return token
+
+
 def auth_session_tokens() -> list[str]:
     """Return the session tokens this request carries, one per cookie name."""
     return [
@@ -172,6 +206,8 @@ def auth_session_tokens() -> list[str]:
         for name in AUTH_SESSION_COOKIE_NAMES
         if (token := request.cookies.get(name, ""))
     ]
+
+
 def current_auth_session() -> dict[str, Any] | None:
     """Resolve one of the request cookies to a live paired-device session."""
     tokens = auth_session_tokens()
@@ -196,6 +232,8 @@ def current_auth_session() -> dict[str, Any] | None:
                     save_auth_state(state)
                 return dict(item)
     return None
+
+
 def revoke_auth_session(session_id: str) -> bool:
     """Revoke one paired device by its session id."""
     with AUTH_LOCK:
@@ -206,6 +244,8 @@ def revoke_auth_session(session_id: str) -> bool:
         state["sessions"] = remaining
         save_auth_state(state)
     return True
+
+
 def revoke_all_auth_sessions() -> int:
     """Revoke every paired device and return how many were removed."""
     with AUTH_LOCK:
@@ -214,6 +254,8 @@ def revoke_all_auth_sessions() -> int:
         state["sessions"] = []
         save_auth_state(state)
     return count
+
+
 def active_auth_session_count() -> int:
     """Count sessions that are still valid, pruning expired records."""
     now = auth_now()
@@ -222,11 +264,15 @@ def active_auth_session_count() -> int:
         prune_auth_state(state, now)
         save_auth_state(state)
         return len(state["sessions"])
+
+
 def bootstrap_pairing_key() -> dict[str, Any] | None:
     """Create the first-run key when no device has been paired yet."""
     if not AUTH_ENABLED or active_auth_session_count():
         return None
     return generate_pairing_key("server")
+
+
 def print_pairing_banner(record: dict[str, Any] | None) -> None:
     """Print a pairing key to the server console, never to the app log file."""
     if not record:

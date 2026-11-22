@@ -1,8 +1,7 @@
 """TLS configuration and the threaded HTTPS server.
 
 The certificate helpers read the AI_WEB_TLS_* variables, write them back to
-.env and build the server that handshakes per connection. The module never
-imports app: the application hands it a log callback instead.
+.env and build the server that handshakes per connection.
 """
 
 import ipaddress
@@ -16,20 +15,12 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from werkzeug.serving import ThreadedWSGIServer, WSGIRequestHandler, load_ssl_context
 
 from core.config import ADHOC_CERT_FILE, ADHOC_KEY_FILE, CERT_DIR, ENV_FILE
-
-LogEvent = Callable[..., None]
-_LOG_EVENT: LogEvent | None = None
-
-
-def set_log_event(callback: LogEvent) -> None:
-    """Register the application's event logger without importing app."""
-    global _LOG_EVENT
-    _LOG_EVENT = callback
+from core.log import log_event
 
 
 def configured_certificate_pair() -> tuple[str, str] | None:
@@ -48,6 +39,8 @@ def configured_certificate_pair() -> tuple[str, str] | None:
     if cert and key and Path(cert).is_file() and Path(key).is_file():
         return cert, key
     return None
+
+
 def server_tls_state() -> dict[str, Any]:
     """Describe the TLS mode the server will use on its next start."""
     cert = os.getenv("AI_WEB_TLS_CERT", "").strip()
@@ -73,6 +66,8 @@ def server_tls_state() -> dict[str, Any]:
     }
 TLS_ENV_KEYS = ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY", "AI_WEB_TLS_ADHOC")
 TLS_ENV_LOCK = threading.Lock()
+
+
 def apply_tls_environment(values: dict[str, str]) -> None:
     """Mirror a saved TLS mode into this process environment.
 
@@ -92,6 +87,8 @@ def apply_tls_environment(values: dict[str, str]) -> None:
             os.environ[key] = value
         else:
             os.environ.pop(key, None)
+
+
 def update_env_file(values: dict[str, str]) -> None:
     """Update keys in .env atomically; an empty value removes the key.
 
@@ -129,6 +126,8 @@ def update_env_file(values: dict[str, str]) -> None:
     finally:
         if temp_path.exists():
             temp_path.unlink(missing_ok=True)
+
+
 def tls_configuration() -> Any:
     """Return a Werkzeug ssl_context for HTTPS, or None to serve plain HTTP.
 
@@ -152,6 +151,8 @@ def tls_configuration() -> Any:
 TLS_HANDSHAKE_TIMEOUT_SECONDS = 10
 # Seconds close() may spend delivering a response that is still queued.
 RESPONSE_LINGER_SECONDS = 5
+
+
 class DrainingRequestHandler(WSGIRequestHandler):
     """Deliver the whole response before the connection is closed.
 
@@ -172,6 +173,8 @@ class DrainingRequestHandler(WSGIRequestHandler):
             )
         except OSError:
             pass
+
+
 def adhoc_certificate() -> tuple[str, str]:
     """Create (once) and reuse a self-signed certificate for ad-hoc HTTPS.
 
@@ -238,13 +241,14 @@ def adhoc_certificate() -> tuple[str, str]:
     finally:
         for leftover in (temp_key, temp_cert):
             leftover.unlink(missing_ok=True)
-    if _LOG_EVENT is not None:
-        _LOG_EVENT(
-            "system.adhoc_cert",
-            "Created an ad-hoc HTTPS certificate",
-            names=", ".join(names),
-        )
+    log_event(
+        "system.adhoc_cert",
+        "Created an ad-hoc HTTPS certificate",
+        names=", ".join(names),
+    )
     return str(ADHOC_CERT_FILE), str(ADHOC_KEY_FILE)
+
+
 def _is_ip_address(value: str) -> bool:
     """Report whether a name is a literal IP address for the certificate SAN."""
     try:
@@ -252,6 +256,8 @@ def _is_ip_address(value: str) -> bool:
     except ValueError:
         return False
     return True
+
+
 def build_tls_context(ssl_context: Any) -> Any:
     """Turn a tls_configuration() value into a ready ssl.SSLContext."""
     if isinstance(ssl_context, tuple):
@@ -260,6 +266,8 @@ def build_tls_context(ssl_context: Any) -> Any:
         return load_ssl_context(*adhoc_certificate())
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
         raise SystemExit(f"Could not create the ad-hoc HTTPS certificate: {exc}") from exc
+
+
 class TLSServer(ThreadedWSGIServer):
     """Threaded WSGI server that performs the TLS handshake per connection.
 

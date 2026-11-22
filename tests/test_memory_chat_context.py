@@ -7,6 +7,9 @@ the tool rules, and a broken memory store never breaks the prompt.
 
 import uuid
 
+from core.config import TOOL_INSTRUCTIONS
+from core.providers import build_system_prompt, memory_context_block
+
 CONVERSATION_ID = "11111111-1111-1111-1111-111111111111"
 
 
@@ -40,8 +43,6 @@ def remember(engine, text, *, score=0.8):
 
 
 def test_the_newest_user_message_is_used_as_the_query(engine, monkeypatch):
-    import app
-
     seen = []
 
     def fake_context(query, settings):
@@ -55,36 +56,30 @@ def test_the_newest_user_message_is_used_as_the_query(engine, monkeypatch):
         {"role": "user", "content": "the newest question"},
     ]
 
-    assert app.memory_context_block(messages, chat_settings()) == "MEMORY BLOCK"
+    assert memory_context_block(messages, chat_settings()) == "MEMORY BLOCK"
     assert seen == ["the newest question"]
 
 
 def test_a_turn_without_user_text_gets_no_block(engine):
-    import app
-
     messages = [{"role": "assistant", "content": "a greeting"}]
 
-    assert app.memory_context_block(messages, chat_settings()) == ""
+    assert memory_context_block(messages, chat_settings()) == ""
 
 
 def test_the_block_sits_before_the_tool_instructions(engine):
-    import app
-
     remember(engine, "the deploy key lives in the safe")
-    prompt = app.build_system_prompt(
+    prompt = build_system_prompt(
         chat_settings(), [{"role": "user", "content": "where is the deploy key"}]
     )
 
     assert "the deploy key lives in the safe" in prompt
-    assert prompt.index("the deploy key lives in the safe") < prompt.index(app.TOOL_INSTRUCTIONS)
+    assert prompt.index("the deploy key lives in the safe") < prompt.index(TOOL_INSTRUCTIONS)
     assert prompt.startswith("You are a helpful assistant.")
 
 
 def test_retrieval_off_leaves_the_prompt_clean(engine):
-    import app
-
     remember(engine, "the deploy key lives in the safe")
-    prompt = app.build_system_prompt(
+    prompt = build_system_prompt(
         chat_settings(retrieval=False),
         [{"role": "user", "content": "where is the deploy key"}],
     )
@@ -95,9 +90,7 @@ def test_retrieval_off_leaves_the_prompt_clean(engine):
 
 
 def test_discord_can_skip_the_memory_review_guidance(engine):
-    import app
-
-    prompt = app.build_system_prompt(
+    prompt = build_system_prompt(
         chat_settings(),
         [{"role": "user", "content": "hello"}],
         include_memory_review=False,
@@ -139,16 +132,14 @@ def test_the_chat_route_sends_memories_to_the_provider(engine, monkeypatch):
 
 
 def test_a_broken_memory_store_still_builds_a_prompt(engine, monkeypatch):
-    import app
-
     def broken(*_args, **_kwargs):
         raise OSError("disk gone")
 
     monkeypatch.setattr(engine, "build_context", broken)
 
-    prompt = app.build_system_prompt(
+    prompt = build_system_prompt(
         chat_settings(), [{"role": "user", "content": "where is the deploy key"}]
     )
 
     assert "You are a helpful assistant." in prompt
-    assert app.TOOL_INSTRUCTIONS in prompt
+    assert TOOL_INSTRUCTIONS in prompt

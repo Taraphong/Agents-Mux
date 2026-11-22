@@ -12,12 +12,12 @@ from flask import jsonify, request
 import memory_engine
 
 from core.messages import request_language, status_message
+from core.model_cache import remember_model_names
 from core.providers import (
     FALLBACK_MODELS,
     STATUS_CACHE,
     key_is_configured,
     list_models,
-    remember_model_names,
 )
 from core.redaction import redact_secrets
 from core.settings import (
@@ -42,6 +42,8 @@ def models_response(provider: str, settings: dict[str, Any]):
     except (requests.RequestException, RuntimeError, KeyError, TypeError):
         fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
         return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": status_message(request_language(), "models_fallback")}), 502
+
+
 def apply_settings_update():
     """Apply a settings PUT body; call with SETTINGS_LOCK held."""
     body = request.get_json(silent=True) or {}
@@ -134,6 +136,8 @@ def apply_settings_update():
     else:
         stop_discord_bot()
     return jsonify({"ok": True, "provider": current["provider"], "has_api_key": key_is_configured(current["provider"], current)})
+
+
 def gemini_error_detail(response: Any, api_key: str) -> str:
     """Extract a safe, redacted error message from a Gemini API response."""
     detail = ""
@@ -157,6 +161,8 @@ def gemini_error_detail(response: Any, api_key: str) -> str:
     # Redact the full text first: a truncated fragment of the key would slip
     # past the exact-match redactor and still reach the browser.
     return redact_secrets(detail, api_key=api_key)[:400]
+
+
 def gemini_agent_answer(steps: Any) -> str:
     """Collect the visible reply from a REST interaction's model-output steps.
 

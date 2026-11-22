@@ -3,8 +3,8 @@
 The implementation lives in packages: ``core/`` holds settings, storage,
 providers, tools and TLS; ``services/`` holds the scheduler and the Discord
 bot; ``routes/`` holds the HTTP blueprints. This module creates the Flask app,
-registers the request hooks and blueprints, wires the few callbacks the
-packages need, and is the entrypoint for ``python app.py``.
+registers the request hooks and blueprints, and is the entrypoint for
+``python app.py``.
 """
 
 import os
@@ -36,62 +36,22 @@ from core.config import (  # noqa: E402
     AUTH_TRUST_PROXY,
     MUTATING_METHODS,
     TEMPLATES_ROOT,
-    TOOL_INSTRUCTIONS,
 )
 from core.env import env_int  # noqa: E402
 from core.http_cache import compress_response  # noqa: E402
-from core.log import LOGGER, load_persisted_logs, log_event, set_redactor  # noqa: E402
+from core.log import LOGGER, load_persisted_logs, log_event  # noqa: E402
 from core.messages import request_language, status_message  # noqa: E402
-from core.providers import (  # noqa: E402
-    build_system_prompt,
-    endpoint_is_loopback,
-    forget_model_names,
-    get_base_url,
-    key_is_configured,
-    keyless_loopback_provider,
-    list_models,
-    memory_context_block,
-    provider_readiness,
-)
-from core.redaction import redact_secrets, set_secret_provider  # noqa: E402
-from core.schedule_store import cron_matches  # noqa: E402
-from core.settings import load_settings, normalize_provider, set_saved_hook  # noqa: E402
 from core.tls import (  # noqa: E402
     DrainingRequestHandler,
     TLSServer,
     build_tls_context,
-    set_log_event,
     tls_configuration,
 )
-from core.tools import secret_values, workspace_directory  # noqa: E402
+from core.tools import workspace_directory  # noqa: E402
 from routes.index import index_bp  # noqa: E402
 from routes.pair import pair_bp  # noqa: E402
 from services.discord_bot import start_discord_bot  # noqa: E402
 from services.scheduler import start_scheduler  # noqa: E402
-
-# Running ``python app.py`` names this module ``__main__``, while memory_engine
-# imports ``app`` lazily. Aliasing it here means both names share one module
-# instead of loading a second copy with its own app and locks.
-sys.modules.setdefault("app", sys.modules[__name__])
-
-# Compatibility surface: memory_engine imports these lazily and older tests read
-# them from this module. They stay here so the assembly point keeps working as
-# the documented entrypoint for the rest of the project.
-COMPATIBILITY_EXPORTS = (
-    build_system_prompt,
-    cron_matches,
-    endpoint_is_loopback,
-    get_base_url,
-    key_is_configured,
-    keyless_loopback_provider,
-    list_models,
-    load_settings,
-    memory_context_block,
-    normalize_provider,
-    provider_readiness,
-    secret_values,
-    TOOL_INSTRUCTIONS,
-)
 
 app = Flask(__name__)
 # Reject oversized bodies before they reach the JSON parser or the history writer.
@@ -103,16 +63,6 @@ if AUTH_TRUST_PROXY:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 load_persisted_logs()
-
-# Log records are redacted with the same rule before they are stored, and the
-# secret list is read through app.secret_values() on every call so a key saved
-# after start-up is redacted at once.
-set_redactor(redact_secrets)
-set_secret_provider(lambda: secret_values())
-# Saving settings can change the available models, so core.settings drops this
-# cache through the hook instead of importing app.
-set_saved_hook(forget_model_names)
-set_log_event(log_event)
 
 try:
     workspace_directory()

@@ -42,10 +42,16 @@ def find_history_file(conversation_id: str) -> Path | None:
             return 0.0
 
     return max(matches, key=modified)
+
+
 class HistoryConflict(Exception):
     """Raised when an append targets a conversation record that was replaced."""
+
+
 class HistoryLocked(Exception):
     """Raised when a write tries to replace a locked conversation record."""
+
+
 @contextmanager
 def history_mutation_lock():
     """Serialize history mutations in this process and across processes.
@@ -70,14 +76,20 @@ def history_mutation_lock():
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
             finally:
                 handle.close()
+
+
 def history_generation(record: dict[str, Any]) -> str | None:
     """Return the identity token callers use to bind appends to a record."""
     value = record.get("generation") or record.get("created_at")
     return value if isinstance(value, str) and value else None
+
+
 def save_history(payload: dict[str, Any]) -> dict[str, Any]:
     """Create or update a conversation history file and return its record."""
     with history_mutation_lock():
         return _save_history_unlocked(payload)
+
+
 def history_record_path(path: Path) -> Path:
     """Return *path* normalized and confirmed inside the history folder.
 
@@ -88,6 +100,8 @@ def history_record_path(path: Path) -> Path:
     looking at a stale copy.
     """
     return normalized_path_under(os.path.abspath(str(path)), HISTORY_ROOT, "Invalid history path")
+
+
 def _write_history_record(path: Path, record: dict[str, Any]) -> None:
     """Write one history record atomically so readers never see a partial file."""
     path = history_record_path(path)
@@ -103,6 +117,8 @@ def _write_history_record(path: Path, record: dict[str, Any]) -> None:
     finally:
         if temp_path.exists():
             temp_path.unlink(missing_ok=True)
+
+
 def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
     """Create or replace a history record while HISTORY_LOCK is held."""
     conversation_id = payload.get("id") or ""
@@ -181,6 +197,8 @@ def _save_history_unlocked(payload: dict[str, Any]) -> dict[str, Any]:
     }
     _write_history_record(path, record)
     return record
+
+
 def append_history_messages(conversation_id: str, new_messages: list[dict[str, Any]], generation: str | None = None) -> dict[str, Any] | None:
     """Append messages to an existing conversation, or return None if it is gone.
 
@@ -233,6 +251,8 @@ def append_history_messages(conversation_id: str, new_messages: list[dict[str, A
             record["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
             _write_history_record(path, record)
         return record
+
+
 def save_discord_turn(conversation_id: str, title: str, context_messages: list[dict[str, Any]]) -> None:
     """Persist only the newest Discord exchange so earlier history survives.
 
@@ -253,12 +273,16 @@ def save_discord_turn(conversation_id: str, title: str, context_messages: list[d
             log_event("discord.locked", "Skipped a turn for a locked conversation", conversation=conversation_id)
         return
     save_history({"id": conversation_id, "title": title, "messages": list(context_messages)})
+
+
 def load_history_record(conversation_id: str) -> dict[str, Any]:
     """Read one conversation history record, or an empty dict if missing."""
     path = find_history_file(conversation_id)
     if path is None or not path.exists():
         return {}
     return read_history_file(path) or {}
+
+
 def read_history_file(path: Path) -> dict[str, Any] | None:
     """Read one history file, or None when it is unreadable or malformed."""
     try:
@@ -268,6 +292,8 @@ def read_history_file(path: Path) -> dict[str, Any] | None:
         LOGGER.warning("Could not read a history file (%s): %s", path.name, exc)
         return None
     return record if isinstance(record, dict) else None
+
+
 def find_schedule_conversation_id(job_id: str) -> str:
     """Find the newest history conversation that a scheduled job already wrote."""
     if not job_id or not HISTORY_ROOT.exists():

@@ -1,13 +1,12 @@
 """Tool execution and command helpers.
 
 The agent's file and command tools live here: path resolution, one-time
-approval tokens, redaction-aware output capture and the shell runner. This
-module never imports app; app.py wires the log and redaction hooks.
+approval tokens, redaction-aware output capture and the shell runner. It logs
+and redacts through core.log and core.redaction directly.
 """
 
 import json
 import os
-import re
 import secrets
 import shlex
 import shutil
@@ -57,9 +56,8 @@ from core.redaction import (
 from core.schedule_store import SCHEDULE_LOCK, load_schedules, save_schedules, validate_cron
 from core.settings import (
     SETTINGS_LOCK,
-    get_discord_token,
     load_settings,
-    stored_api_keys,
+    secret_values,
     stored_custom_api_keys,
 )
 from core.skills import skill_path
@@ -67,6 +65,8 @@ from core.skills import skill_path
 
 PENDING_TOOL_REQUESTS: dict[str, dict[str, Any]] = {}
 PENDING_APPROVAL_LOCK = threading.Lock()
+
+
 def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     """Resolve a user path inside the project while blocking protected files."""
     if not isinstance(raw_path, str) or not raw_path.strip():
@@ -92,15 +92,21 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
+
+
 def machine_access_enabled(settings: dict[str, Any] | None = None) -> bool:
     """Return whether tools may reach the whole machine instead of the project only."""
     settings = settings if settings is not None else load_settings()
     return bool(settings.get("machine_access", True))
+
+
 def approval_required_tools(settings: dict[str, Any] | None = None) -> set[str]:
     """Return the tools that need a fresh, single-use user approval."""
     if machine_access_enabled(settings):
         return set(MACHINE_TOOL_NAMES)
     return set(APPROVAL_REQUIRED_TOOLS)
+
+
 def resolve_tool_path(raw_path: str, must_exist: bool = False) -> Path:
     """Resolve a tool path safely for tool execution requests."""
     if not isinstance(raw_path, str) or not raw_path.strip():
@@ -120,6 +126,8 @@ def resolve_tool_path(raw_path: str, must_exist: bool = False) -> Path:
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
+
+
 def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
     """Resolve a path anywhere on the machine for machine-access tools.
 
@@ -147,11 +155,15 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
+
+
 def workspace_directory() -> Path:
     """Return the AI workspace folder, creating it on first use."""
     root = Path(os.path.normpath(str(PROJECT_ROOT / WORKSPACE_ROOT)))
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
 def workspace_tool_path(raw_path: Any) -> Path:
     """Resolve a tool path against the AI workspace instead of the app folder.
 
@@ -166,6 +178,8 @@ def workspace_tool_path(raw_path: Any) -> Path:
     if os.path.isabs(expanded):
         return Path(os.path.normpath(expanded))
     return Path(os.path.normpath(os.path.join(str(workspace_directory()), expanded)))
+
+
 def configured_secret_targets() -> list[Path]:
     """Return the settings, auth, history, memory and certificate paths in use."""
     # ENV_FILE is included because .env itself can be a symlink: resolving the
@@ -194,6 +208,8 @@ def configured_secret_targets() -> list[Path]:
         except OSError:
             continue
     return resolved
+
+
 def protected_write_target(path: Path) -> bool:
     """Return True when a write would touch a secret or machine-specific file.
 
@@ -224,12 +240,16 @@ def protected_write_target(path: Path) -> bool:
         if resolved == target or target in resolved.parents:
             return True
     return False
+
+
 def display_tool_path(path: Path) -> str:
     """Show a project-relative path when possible, otherwise the absolute path."""
     try:
         return str(path.relative_to(PROJECT_ROOT))
     except ValueError:
         return str(path)
+
+
 def ensure_safe_command_token(token: str) -> None:
     """Reject command arguments that point outside the project or at protected files."""
     normalized = token.replace("\\", "/").strip()
@@ -246,6 +266,8 @@ SAFE_GIT_OPTIONS = {
     "--no-color", "--no-pager", "--graph", "--decorate", "--all", "--cached",
 }
 SAFE_LS_OPTIONS = {"-a", "-l", "-la", "-al", "-lh", "-lah", "-R", "-t", "-r", "-1", "-h"}
+
+
 def parse_command(command: str) -> list[str]:
     """Parse one whitelisted command into argv without ever invoking a shell."""
     if any(character in command for character in ("\n", "\r", ";", "|", "&", ">", "<", "`", "$(")):
@@ -287,6 +309,8 @@ def parse_command(command: str) -> list[str]:
     else:
         raise ValueError("Only the defined project check commands are allowed")
     return argv
+
+
 def request_tool_approval(name: str, arguments: dict[str, Any]) -> tuple[str, int]:
     """Create a short-lived approval token for a sensitive tool call.
 
@@ -305,6 +329,8 @@ def request_tool_approval(name: str, arguments: dict[str, Any]) -> tuple[str, in
             PENDING_TOOL_REQUESTS.pop(next(iter(PENDING_TOOL_REQUESTS)))
         PENDING_TOOL_REQUESTS[approval_id] = {"name": name, "arguments": arguments, "created_at": now}
     return approval_id, int(now) + APPROVAL_TTL_SECONDS
+
+
 def consume_tool_approval(approval_id: Any, name: str, arguments: dict[str, Any]) -> bool:
     """Validate and consume a pending tool approval exactly once."""
     if not isinstance(approval_id, str) or not approval_id:
@@ -317,6 +343,8 @@ def consume_tool_approval(approval_id: Any, name: str, arguments: dict[str, Any]
     if now - pending.get("created_at", 0) > APPROVAL_TTL_SECONDS:
         return False
     return pending.get("name") == name and pending.get("arguments") == arguments
+
+
 def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False) -> dict[str, Any]:
     """Execute one local tool call after checking approvals and arguments."""
     requested_name = name
@@ -547,12 +575,16 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         return result
 
     raise ValueError("Unknown tool")
+
+
 def command_shell() -> str:
     """Pick an available POSIX shell, including Termux where /bin/sh may not exist."""
     for candidate in (os.getenv("SHELL"), shutil.which("bash"), shutil.which("sh"), "/system/bin/sh", "/bin/sh"):
         if candidate and Path(candidate).exists():
             return candidate
     return "sh"
+
+
 def command_environment() -> tuple[dict[str, str], list[str]]:
     """Inherit the server environment without exposing credentials to commands.
 
@@ -580,20 +612,8 @@ def command_environment() -> tuple[dict[str, str], list[str]]:
     env.setdefault("LANG", "C.UTF-8")
     env["PYTHONUNBUFFERED"] = "1"
     return env, injected
-def secret_values(extra: list[str] | None = None) -> list[str]:
-    """Collect secret values that command output must never expose."""
-    settings = load_settings()
-    values = {value for value in stored_api_keys(settings).values() if value}
-    values.update(stored_custom_api_keys(settings).values())
-    if extra:
-        values.update(value for value in extra if value)
-    discord_token = get_discord_token(settings)
-    if discord_token:
-        values.add(discord_token)
-    for name, value in os.environ.items():
-        if value and len(value) >= 8 and any(part in name.upper() for part in SENSITIVE_ENV_PARTS):
-            values.add(value)
-    return sorted(values, key=len, reverse=True)
+
+
 def read_command_capture(handle: Any) -> tuple[str, bool]:
     """Read at most the tail of a captured stream so runaway output cannot exhaust memory."""
     handle.flush()
@@ -618,6 +638,8 @@ def read_command_capture(handle: Any) -> tuple[str, bool]:
     if cut:
         text = "… (start of the output trimmed because there is a lot of it)\n" + text
     return text, cut
+
+
 def process_group_alive(pgid: int) -> bool:
     """Report whether any process of a command's group still runs."""
     try:
@@ -627,12 +649,16 @@ def process_group_alive(pgid: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
 def kill_process_group(pgid: int) -> None:
     """Kill every process left in a command's group."""
     try:
         os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
         pass
+
+
 def run_shell_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
     """Run a command with capped output and a hard timeout for the whole process group."""
     started_at = time.perf_counter()
@@ -678,6 +704,8 @@ def run_shell_process(command: str, cwd: Path) -> tuple[int, str, str, bool, boo
         stderr, stderr_cut = read_command_capture(err_file)
     duration_ms = round((time.perf_counter() - started_at) * 1000)
     return process.returncode, stdout, stderr, timed_out, stdout_cut or stderr_cut, duration_ms, injected_secrets
+
+
 def parse_tool_request(answer: str) -> dict[str, Any] | None:
     """Return the first tool call found in an AI answer, if any."""
     requests = parse_tool_requests(answer)
@@ -685,6 +713,8 @@ def parse_tool_request(answer: str) -> dict[str, Any] | None:
 ASCII_LOWERCASE_TABLE = str.maketrans(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
 )
+
+
 def tool_call_bodies(answer: str) -> list[str]:
     """Return the body of every <tool_call> block in *answer*.
 
@@ -707,6 +737,8 @@ def tool_call_bodies(answer: str) -> list[str]:
             return bodies
         bodies.append(answer[body_start:close_at])
         start = close_at + len("</tool_call>")
+
+
 def parse_tool_requests(answer: str) -> list[dict[str, Any]]:
     """Parse every tool call so multiple Skill files can be inspected in one turn."""
     if not isinstance(answer, str):

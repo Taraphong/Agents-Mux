@@ -39,6 +39,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
+
 def _location(name: str, default: str) -> Path:
     """Resolve a configured path relative to the project folder."""
     value = str(os.getenv(name, "") or "").strip()
@@ -185,9 +186,9 @@ def is_running() -> bool:
 
 
 def _log(event: str, message: str, **details: Any) -> None:
-    """Write to the app log without importing app at module load time."""
+    """Write to the app log without importing it at module load time."""
     try:
-        from app import log_event  # imported lazily: app imports this module
+        from core.log import log_event  # lazy: core.log reaches this module through settings
 
         log_event(event, message, **details)
     except Exception:
@@ -215,7 +216,7 @@ def _redact(text: str) -> str:
     """Strip credentials before text is stored, indexed or summarised."""
     value = str(text or "")
     try:
-        from app import redact_secrets
+        from core.redaction import redact_secrets
 
         value = redact_secrets(value)
     except Exception:
@@ -1041,13 +1042,18 @@ def _llm_available(settings: dict[str, Any], config: dict[str, Any]) -> bool:
     without a key.
     """
     try:
-        import app
+        from core.providers import (
+            endpoint_is_loopback,
+            get_base_url,
+            key_is_configured,
+            normalize_provider,
+        )
 
         llm = _llm_settings(settings, config)
-        provider = app.normalize_provider(llm.get("provider"))
-        if app.key_is_configured(provider, llm):
+        provider = normalize_provider(llm.get("provider"))
+        if key_is_configured(provider, llm):
             return True
-        return app.endpoint_is_loopback(app.get_base_url(provider, llm))
+        return endpoint_is_loopback(get_base_url(provider, llm))
     except Exception:
         return False
 
@@ -1066,7 +1072,7 @@ def _ask_model(
     if not items:
         return {}, ""
     try:
-        import app  # lazy import: avoids a circular import at start-up
+        from core.providers import call_provider  # lazy: avoids an import cycle at start-up
 
         language_name = "Thai" if language == "th" else "English"
         system = (
@@ -1076,7 +1082,7 @@ def _ask_model(
             f"Write themes and summaries in {language_name}. "
             'Answer with a JSON array only: [{"id":"...","importance":1-5,"theme":"..."}]'
         )
-        answer, _usage = app.call_provider(
+        answer, _usage = call_provider(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
@@ -2176,11 +2182,11 @@ def _last_schedule_match_minutes(now: datetime, schedule: str) -> int:
     so a schedule that only fires on Mondays never catches up on a Tuesday.
     """
     try:
-        import app
+        from core.schedule_store import cron_matches
 
         for minute in range(now.hour * 60 + now.minute, -1, -1):
             moment = now.replace(hour=minute // 60, minute=minute % 60, second=0, microsecond=0)
-            if app.cron_matches(schedule, moment):
+            if cron_matches(schedule, moment):
                 return minute
     except Exception:
         return -1
@@ -2190,9 +2196,11 @@ def _last_schedule_match_minutes(now: datetime, schedule: str) -> int:
 def scheduler_tick() -> None:
     """Run one scheduler decision; separated so it can be tested directly."""
     try:
-        import app  # lazy import: app owns the settings and cron matcher
+        # Lazy imports keep this module importable before the core package.
+        from core.schedule_store import cron_matches
+        from core.settings import load_settings
 
-        settings = app.load_settings()
+        settings = load_settings()
         config = settings_from(settings)
         if not config["enabled"]:
             return
@@ -2208,7 +2216,7 @@ def scheduler_tick() -> None:
             end_minutes = 23 * 60 + 59
         now_minutes = now.hour * 60 + now.minute
         with _session() as connection:
-            if app.cron_matches(config["schedule"], now) and _get_meta(connection, "due_key") != minute_key:
+            if cron_matches(config["schedule"], now) and _get_meta(connection, "due_key") != minute_key:
                 _set_meta(connection, "due_key", minute_key)
                 _set_meta(connection, "due_date", today_text)
                 _log("memory.due", "Memory consolidation became due", schedule=config["schedule"])

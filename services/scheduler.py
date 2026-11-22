@@ -28,6 +28,8 @@ SCHEDULE_RUNNING_LOCK = threading.Lock()
 _SCHEDULER_STARTED = False
 _SCHEDULER_START_LOCK = threading.Lock()
 _SCHEDULER_LOCK_HANDLE: Any = None
+
+
 def execute_schedule(job: dict[str, Any]) -> None:
     """Run one scheduled job, store its answer, and record the outcome."""
     try:
@@ -79,6 +81,8 @@ def execute_schedule(job: dict[str, Any]) -> None:
         if job_id:
             with SCHEDULE_RUNNING_LOCK:
                 SCHEDULE_RUNNING.discard(job_id)
+
+
 def schedule_loop() -> None:
     """Check due jobs every 15 seconds and dispatch them in threads."""
     last_minute = ""
@@ -112,6 +116,8 @@ def schedule_loop() -> None:
             except OSError as exc:
                 log_event("schedule.error", "Could not read or save the scheduled jobs", error=str(exc))
         time.sleep(15)
+
+
 def start_scheduler() -> None:
     """Start the cron loop once per process, and only in one process at a time."""
     global _SCHEDULER_STARTED, _SCHEDULER_LOCK_HANDLE
@@ -131,6 +137,8 @@ def start_scheduler() -> None:
         _SCHEDULER_LOCK_HANDLE = handle
         _SCHEDULER_STARTED = True
     threading.Thread(target=schedule_loop, name="scheduled-ai-jobs", daemon=True).start()
+
+
 def schedule_conversation_id(job: dict[str, Any]) -> str:
     """Resolve one stable history conversation per scheduled job and persist it."""
     conversation_id = str(job.get("conversation_id") or "").strip()
