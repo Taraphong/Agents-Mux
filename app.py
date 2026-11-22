@@ -131,9 +131,9 @@ from core.schedule_store import (
 )
 
 
-APP_STARTED_AT = time.time()
-SERVER_JOB: dict[str, Any] = {"process": None, "action": "", "started_at": ""}
-SERVER_JOB_LOCK = threading.Lock()
+from core.runtime import APP_STARTED_AT, SERVER_JOB, SERVER_JOB_LOCK
+
+
 from core.http_cache import (
     ASSET_GZIP_CACHE,
     ASSET_GZIP_CACHE_LIMIT,
@@ -595,7 +595,12 @@ set_saved_hook(forget_model_names)
 
 
 
-from core.messages import STATUS_MESSAGES, normalize_language, status_message
+from core.messages import (
+    STATUS_MESSAGES,
+    normalize_language,
+    request_language,
+    status_message,
+)
 
 
 
@@ -607,63 +612,23 @@ from core.messages import STATUS_MESSAGES, normalize_language, status_message
 # A simple in-process limiter for the expensive, state-changing endpoints.
 # Pairing already has its own failure limiter; this keeps a paired device (or a
 # script that got hold of a session) from hammering the provider API.
-API_RATE_LIMITS: dict[str, list[float]] = {}
-API_RATE_LOCK = threading.Lock()
+from core.ratelimit import (
+    API_RATE_BUDGETS,
+    API_RATE_LIMITS,
+    API_RATE_LOCK,
+    api_rate_limited,
+    rate_limit_response,
+)
 
 
-def api_rate_limited(bucket: str, client: str, limit: int, window: float = 60.0) -> bool:
-    """Return True when *client* already used its budget for *bucket*."""
-    now = time.time()
-    key = f"{bucket}|{client}"
-    with API_RATE_LOCK:
-        if len(API_RATE_LIMITS) > 2000:
-            API_RATE_LIMITS.clear()
-        stamps = [stamp for stamp in API_RATE_LIMITS.get(key, []) if now - stamp < window]
-        if len(stamps) >= limit:
-            API_RATE_LIMITS[key] = stamps
-            return True
-        stamps.append(now)
-        API_RATE_LIMITS[key] = stamps
-    return False
 
 
-# Per-minute budgets for the endpoints that cost money or touch the machine.
-API_RATE_BUDGETS = {"chat": 30, "tools": 60, "test": 10}
 
 
-def rate_limit_response(bucket: str):
-    """Answer 429 when the caller exceeded the budget for *bucket*.
-
-    A paired device is identified by its session id, so a spoofed
-    X-Forwarded-For cannot hand one caller a fresh budget on every request.
-    """
-    session = current_auth_session() or {}
-    client = str(session.get("id") or request.remote_addr or "unknown")
-    if not api_rate_limited(bucket, client, API_RATE_BUDGETS[bucket]):
-        return None
-    log_event("security.rate_limited", "Rejected a request over the rate budget", bucket=bucket)
-    return jsonify({"ok": False, "error": status_message(request_language(), "rate_limited")}), 429
 
 
-def request_language(allow_body: bool = True) -> str:
-    """Pick the response language the current page asked for."""
-    value = request.headers.get("X-Interface-Language")
-    if not value:
-        value = request.args.get("lang")
-    if not value and allow_body:
-        # Reading an oversized body raises RequestEntityTooLarge again, which
-        # would turn the 413 handler (or a rejection made while handling one)
-        # into a 500, so the body is only parsed when it fits and cannot raise.
-        limit = app.config.get("MAX_CONTENT_LENGTH")
-        length = request.content_length
-        if not (limit and length and length > limit):
-            try:
-                body = request.get_json(silent=True)
-            except HTTPException:
-                body = None
-            if isinstance(body, dict):
-                value = body.get("lang")
-    return normalize_language(value)
+
+
 
 
 
@@ -857,290 +822,63 @@ def gzip_rendered_pages(response):
     return response
 
 
-def models_response(provider: str, settings: dict[str, Any]):
-    """Build the model list response shared by the GET and POST model endpoints."""
-    try:
-        models = list_models(provider, settings)
-        remember_model_names(provider, [str(item.get("id", "")) for item in models])
-        return jsonify({"provider": provider, "models": models, "source": "api"})
-    except (requests.RequestException, RuntimeError, KeyError, TypeError):
-        fallback = [{"id": name, "name": name} for name in FALLBACK_MODELS.get(provider, [])]
-        return jsonify({"provider": provider, "models": fallback, "source": "fallback", "error": status_message(request_language(), "models_fallback")}), 502
+from routes.shared import (
+    apply_settings_update,
+    gemini_agent_answer,
+    gemini_error_detail,
+    models_response,
+)
 
 
-def apply_settings_update():
-    """Apply a settings PUT body; call with SETTINGS_LOCK held."""
-    body = request.get_json(silent=True) or {}
-    current = load_settings()
-    previous_provider = normalize_provider(current.get("provider"))
-    allowed = {"memory", "agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "gemini_live_model", "gemini_agent", "gemini_decision_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "machine_access"}
-    for key in allowed:
-        if key in body:
-            current[key] = body[key]
-    current["provider"] = normalize_provider(current.get("provider"))
-    if current["provider"] != previous_provider and "base_url" not in body:
-        # A base URL belongs to one provider. Dropping it on a provider switch
-        # stops hf/or/groq requests from being sent to the previous endpoint.
-        current["base_url"] = ""
-    current["agent_name"] = str(current.get("agent_name") or "Mux").strip()[:80]
-    current["agent_role"] = str(current.get("agent_role") or "A versatile AI assistant").strip()[:500]
-    language = str(current.get("response_language") or "auto").strip().lower()
-    current["response_language"] = language if language in {"auto", "th", "en"} else "auto"
-    current["response_style"] = str(current.get("response_style") or "Friendly, concise, and clear").strip()[:500]
-    current["use_markdown"] = bool(current.get("use_markdown", True))
-    current["ask_clarifying_questions"] = bool(current.get("ask_clarifying_questions", True))
-    thinking_level = str(current.get("thinking_level") or "off").strip().lower()
-    current["thinking_level"] = thinking_level if thinking_level in {"off", "low", "medium", "high"} else "off"
-    current["fallback_enabled"] = bool(current.get("fallback_enabled"))
-    current["fallback_provider"] = normalize_provider(current.get("fallback_provider"))
-    current["fallback_model"] = str(current.get("fallback_model") or "")[:200]
-    current["gemini_live_model"] = str(current.get("gemini_live_model") or "").strip()[:120]
-    current["gemini_agent"] = str(current.get("gemini_agent") or "").strip()[:100]
-    current["gemini_decision_model"] = str(current.get("gemini_decision_model") or "").strip()[:100]
-    current["discord_enabled"] = bool(current.get("discord_enabled"))
-    current["discord_prefix"] = str(current.get("discord_prefix") or "!ai").strip()[:30] or "!ai"
-    # Invalid allowlist entries reject the save instead of being skipped: a
-    # dropped typo would empty the list and silently lift the restriction.
-    allowed_users, invalid_users = parse_discord_ids(current.get("discord_allowed_users"))
-    allowed_channels, invalid_channels = parse_discord_ids(current.get("discord_allowed_channels"))
-    if invalid_users or invalid_channels:
-        return jsonify({
-            "error": status_message(request_language(), "discord_ids_invalid", ids=", ".join((invalid_users + invalid_channels)[:5])),
-        }), 400
-    current["discord_allowed_users"] = allowed_users
-    current["discord_allowed_channels"] = allowed_channels
-    current["machine_access"] = bool(current.get("machine_access", True))
-    raw_skills = current.get("skills")
-    available_skill_names = {item["name"] for item in list_skills()}
-    current["skills"] = [
-        str(name)
-        for name in (raw_skills if isinstance(raw_skills, list) else [])
-        if str(name) in available_skill_names
-    ]
-    discord_token = body.get("discord_token")
-    if isinstance(discord_token, str) and discord_token.strip() and discord_token != "••••••••":
-        current["discord_token"] = discord_token.strip()
-    new_key = body.get("api_key")
-    if isinstance(new_key, str) and new_key.strip() and new_key != "••••••••":
-        keys = stored_api_keys(current)
-        keys[current["provider"]] = new_key.strip()
-        current["api_keys"] = keys
-    custom_key = body.get("custom_api_key")
-    if isinstance(custom_key, dict):
-        try:
-            custom_name = normalize_custom_key_name(custom_key.get("name"))
-        except ValueError:
-            return jsonify({"error": status_message(request_language(), "custom_key_name_invalid")}), 400
-        custom_value = custom_key.get("value")
-        if isinstance(custom_value, str) and "\x00" in custom_value:
-            return jsonify({"error": status_message(request_language(), "custom_key_nul")}), 400
-        if isinstance(custom_value, str) and custom_value.strip() and custom_value.strip() != "••••••••":
-            keys = stored_custom_api_keys(current)
-            keys[custom_name] = custom_value.strip()
-            current["custom_api_keys"] = keys
-    delete_custom_name = body.get("delete_custom_api_key")
-    if isinstance(delete_custom_name, str) and delete_custom_name.strip():
-        try:
-            removed_name = normalize_custom_key_name(delete_custom_name)
-        except ValueError:
-            removed_name = ""
-        if removed_name:
-            keys = stored_custom_api_keys(current)
-            keys.pop(removed_name, None)
-            current["custom_api_keys"] = keys
-    current.pop("api_key", None)
-    try:
-        current["memory"] = memory_engine.normalize_settings(current.get("memory"))
-    except ValueError:
-        return jsonify({"error": status_message(request_language(), "memory_schedule_invalid")}), 400
-    save_settings(current)
-    STATUS_CACHE.clear()
-    if current.get("discord_enabled"):
-        start_discord_bot()
-    else:
-        stop_discord_bot()
-    return jsonify({"ok": True, "provider": current["provider"], "has_api_key": key_is_configured(current["provider"], current)})
 
 
-def gemini_error_detail(response: Any, api_key: str) -> str:
-    """Extract a safe, redacted error message from a Gemini API response."""
-    detail = ""
-    if response is not None:
-        try:
-            payload = response.json()
-        except ValueError:
-            payload = None
-        if isinstance(payload, dict):
-            error = payload.get("error")
-            if isinstance(error, dict):
-                detail = str(error.get("message") or "")
-            elif isinstance(error, str):
-                detail = error
-            else:
-                detail = str(payload.get("message") or "")
-        if not detail:
-            detail = str(getattr(response, "text", "") or "")
-    if not detail:
-        return "unknown error"
-    # Redact the full text first: a truncated fragment of the key would slip
-    # past the exact-match redactor and still reach the browser.
-    return redact_secrets(detail, api_key=api_key)[:400]
 
 
-def gemini_agent_answer(steps: Any) -> str:
-    """Collect the visible reply from a REST interaction's model-output steps.
-
-    ``output_text`` is an SDK convenience field; the REST payload returns the
-    answer as content on ``model_output`` steps, so tool and thought steps stay
-    out of the text shown to the user.
-    """
-    if not isinstance(steps, list):
-        return ""
-    chunks: list[str] = []
-    for step in steps:
-        if not isinstance(step, dict) or str(step.get("type") or "") != "model_output":
-            continue
-        content = step.get("content")
-        if isinstance(content, str):
-            chunks.append(content)
-            continue
-        for part in content if isinstance(content, list) else []:
-            if isinstance(part, dict) and isinstance(part.get("text"), str):
-                chunks.append(part["text"])
-    return "".join(chunks)
 
 
-# Self-update: the web page can run the project's own update.sh. Only the two
-# fixed modes below are accepted, so no user input reaches the command line.
-UPDATE_SCRIPT = PROJECT_ROOT / "update.sh"
-UPDATE_LOG_FILE = Path(os.getenv("AI_WEB_UPDATE_LOG_FILE", "logs/update.log"))
-UPDATE_LOG_TAIL_LINES = 160
-UPDATE_MODES = {"check", "apply"}
-UPDATE_JOB_LOCK = threading.Lock()
-UPDATE_JOB: dict[str, Any] = {}
-# A real update restarts this process, so the job is also persisted: the new
-# server reads it back to report what happened before the restart.
-UPDATE_STATUS_FILE = Path(os.getenv("AI_WEB_UPDATE_STATUS_FILE", "logs/update-status.json"))
 
 
-def update_build_info() -> dict[str, Any]:
-    """Describe the app files on disk; the updater keeps no version number."""
-    try:
-        stat = (PROJECT_ROOT / "app.py").stat()
-    except OSError:
-        return {"app_updated_at": "", "app_size": 0}
-    return {
-        "app_updated_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
-        "app_size": stat.st_size,
-    }
+from core.update_job import (
+    UPDATE_JOB,
+    UPDATE_JOB_LOCK,
+    UPDATE_LOG_FILE,
+    UPDATE_LOG_TAIL_LINES,
+    UPDATE_MODES,
+    UPDATE_SCRIPT,
+    UPDATE_STATUS_FILE,
+    load_update_status,
+    process_is_alive,
+    save_update_status,
+    update_build_info,
+    update_job_snapshot,
+    update_log_finished_at,
+    update_log_succeeded,
+    update_log_tail,
+    update_script_ready,
+    watch_update_job,
+)
 
 
-def update_script_ready() -> bool:
-    """Return whether update.sh exists and can be executed."""
-    return UPDATE_SCRIPT.is_file() and os.access(UPDATE_SCRIPT, os.X_OK)
 
 
-def update_log_tail() -> tuple[str, bool]:
-    """Return the end of the update log and whether older lines were dropped."""
-    try:
-        text = UPDATE_LOG_FILE.read_text(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
-        return "", False
-    lines = text.splitlines()
-    return "\n".join(lines[-UPDATE_LOG_TAIL_LINES:]), len(lines) > UPDATE_LOG_TAIL_LINES
 
 
-def save_update_status(payload: dict[str, Any]) -> None:
-    """Persist the running update so the next server process can report it."""
-    try:
-        UPDATE_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = UPDATE_STATUS_FILE.with_name(f".{UPDATE_STATUS_FILE.name}.{uuid.uuid4().hex}.tmp")
-        temp_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        os.replace(temp_path, UPDATE_STATUS_FILE)
-    except OSError:
-        return
 
 
-def load_update_status() -> dict[str, Any]:
-    """Read the persisted update record, tolerating a missing or broken file."""
-    try:
-        data = json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
-def process_is_alive(pid: Any) -> bool:
-    """Return whether the PID recorded for an update is still running."""
-    try:
-        os.kill(int(pid), 0)
-    except (TypeError, ValueError, ProcessLookupError):
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
-def update_log_finished_at() -> str:
-    """Use the log's timestamp as the finish time after a server restart."""
-    try:
-        return datetime.fromtimestamp(UPDATE_LOG_FILE.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-    except OSError:
-        return ""
 
 
-def update_log_succeeded() -> bool | None:
-    """Read the updater's own success/failure verdict from its log tail."""
-    tail, _ = update_log_tail()
-    if "✅" in tail:
-        return True
-    if "❌" in tail:
-        return False
-    return None
 
 
-def update_job_snapshot() -> dict[str, Any]:
-    """Report the current update job, falling back to the persisted record."""
-    with UPDATE_JOB_LOCK:
-        process = UPDATE_JOB.get("process")
-        if process is not None:
-            return {
-                "running": process.poll() is None,
-                "job": {
-                    "mode": UPDATE_JOB.get("mode", ""),
-                    "started_at": UPDATE_JOB.get("started_at", ""),
-                    "finished_at": UPDATE_JOB.get("finished_at", ""),
-                    "ok": UPDATE_JOB.get("ok"),
-                    "exit_code": UPDATE_JOB.get("exit_code"),
-                },
-            }
-    persisted = load_update_status()
-    if not persisted:
-        return {
-            "running": False,
-            "job": {"mode": "", "started_at": "", "finished_at": "", "ok": None, "exit_code": None},
-        }
-    # The updater runs in its own session, so it outlives the restart we just did.
-    running = process_is_alive(persisted.get("pid"))
-    return {
-        "running": running,
-        "job": {
-            "mode": persisted.get("mode", ""),
-            "started_at": persisted.get("started_at", ""),
-            "finished_at": "" if running else update_log_finished_at(),
-            "ok": None if running else update_log_succeeded(),
-            "exit_code": None,
-        },
-    }
 
 
-def watch_update_job(process: "subprocess.Popen[bytes]") -> None:
-    """Record the updater's exit status after the detached process finishes."""
-    code = process.wait()
-    with UPDATE_JOB_LOCK:
-        UPDATE_JOB["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        UPDATE_JOB["exit_code"] = code
-        UPDATE_JOB["ok"] = code == 0
+
+
+
+
 
 
 from core.tls import (

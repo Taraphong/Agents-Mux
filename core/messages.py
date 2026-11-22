@@ -6,6 +6,8 @@ language and the key, so a missing translation can never blank a response.
 
 from typing import Any
 
+from flask import current_app, request
+
 
 STATUS_MESSAGES = {
     "th": {
@@ -179,11 +181,36 @@ STATUS_MESSAGES = {
         "rate_limited": "Too many requests; wait a moment and try again",
     },
 }
+
+
 def normalize_language(value: Any) -> str:
     """Normalize a requested UI language to 'th' or 'en', defaulting to English."""
     return "th" if str(value or "").strip().lower().startswith("th") else "en"
+
+
 def status_message(language: str, key: str, **kwargs: Any) -> str:
     """Format a localized readiness message from the shared status table."""
     messages = STATUS_MESSAGES.get(language) or STATUS_MESSAGES["en"]
     template = messages.get(key) or STATUS_MESSAGES["en"].get(key, key)
     return template.format(**kwargs)
+
+
+def request_language(allow_body: bool = True) -> str:
+    """Pick the response language the current page asked for."""
+    value = request.headers.get("X-Interface-Language")
+    if not value:
+        value = request.args.get("lang")
+    if not value and allow_body:
+        # Reading an oversized body raises RequestEntityTooLarge again, which
+        # would turn the 413 handler (or a rejection made while handling one)
+        # into a 500, so the body is only parsed when it fits and cannot raise.
+        limit = current_app.config.get("MAX_CONTENT_LENGTH")
+        length = request.content_length
+        if not (limit and length and length > limit):
+            try:
+                body = request.get_json(silent=True)
+            except Exception:
+                body = None
+            if isinstance(body, dict):
+                value = body.get("lang")
+    return normalize_language(value)
