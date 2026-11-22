@@ -6,33 +6,43 @@ temporary-file helper MEMORY.md uses, so a failed write keeps the old text.
 
 import pytest
 
+HEADER = "# DREAMS\n\nNightly notes from the memory filter.\n"
 
-def dream_message(engine):
+
+def write_night(engine, note):
     engine.write_dreams(
         {"messages": 3, "candidates_in_window": 2, "themes": ["deploy"]},
-        [{"theme": "deploy", "text": "the key lives in the safe"}],
+        [{"theme": "deploy", "text": note}],
         "en",
     )
 
 
-def test_write_dreams_creates_the_file_with_header_and_section(engine):
-    dream_message(engine)
+def seed_sections(engine, count):
+    engine.DREAMS_FILE.write_text(
+        HEADER + "".join(f"\n## 2026-01-0{n} 03:00\n- note {n}\n" for n in range(1, count + 1)),
+        encoding="utf-8",
+    )
+    engine.DREAMS_MAX_BYTES = 200
 
-    text = engine.DREAMS_FILE.read_text(encoding="utf-8")
-    assert text.startswith("# DREAMS\n")
-    assert "## " in text
-    assert "the key lives in the safe" in text
+
+def fail_replace(engine, monkeypatch):
+    def failing_replace(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(engine.os, "replace", failing_replace)
 
 
-def test_write_dreams_appends_without_dropping_earlier_sections(engine):
-    dream_message(engine)
+def no_temp_files(engine):
+    return not list(engine.DREAMS_FILE.parent.glob(".DREAMS.md.*.tmp"))
+
+
+def test_write_dreams_creates_then_appends_sections(engine):
+    write_night(engine, "the key lives in the safe")
     first = engine.DREAMS_FILE.read_text(encoding="utf-8")
+    assert first.startswith(HEADER)
+    assert "the key lives in the safe" in first
 
-    engine.write_dreams(
-        {"messages": 1, "candidates_in_window": 1, "themes": ["later"]},
-        [{"theme": "later", "text": "second night note"}],
-        "en",
-    )
+    write_night(engine, "second night note")
     text = engine.DREAMS_FILE.read_text(encoding="utf-8")
 
     assert text.startswith(first)
@@ -41,66 +51,45 @@ def test_write_dreams_appends_without_dropping_earlier_sections(engine):
 
 
 def test_a_failed_dreams_write_keeps_the_existing_file(engine, monkeypatch):
-    dream_message(engine)
+    write_night(engine, "first night note")
     original = engine.DREAMS_FILE.read_text(encoding="utf-8")
 
-    def failing_replace(*_args, **_kwargs):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(engine.os, "replace", failing_replace)
+    fail_replace(engine, monkeypatch)
     with pytest.raises(OSError):
-        engine.write_dreams(
-            {"messages": 1, "candidates_in_window": 1, "themes": []}, [], "en"
-        )
+        write_night(engine, "never written")
 
     assert engine.DREAMS_FILE.read_text(encoding="utf-8") == original
-    assert not list(engine.DREAMS_FILE.parent.glob(".DREAMS.md.*.tmp"))
+    assert no_temp_files(engine)
 
 
 def test_a_failed_dreams_create_leaves_no_file_or_temp(engine, monkeypatch):
-    def failing_replace(*_args, **_kwargs):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(engine.os, "replace", failing_replace)
+    fail_replace(engine, monkeypatch)
     with pytest.raises(OSError):
-        dream_message(engine)
+        write_night(engine, "first night note")
 
     assert not engine.DREAMS_FILE.exists()
-    assert not list(engine.DREAMS_FILE.parent.glob(".DREAMS.md.*.tmp"))
+    assert no_temp_files(engine)
 
 
 def test_a_failed_dreams_trim_keeps_the_existing_file(engine, monkeypatch):
-    engine.DREAMS_FILE.write_text(
-        "# DREAMS\n\nNightly notes from the memory filter.\n"
-        + "".join(f"\n## 2026-01-0{day} 03:00\n- note {day}\n" for day in range(1, 9)),
-        encoding="utf-8",
-    )
-    engine.DREAMS_MAX_BYTES = 200
+    seed_sections(engine, 8)
     original = engine.DREAMS_FILE.read_text(encoding="utf-8")
 
-    def failing_replace(*_args, **_kwargs):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(engine.os, "replace", failing_replace)
+    fail_replace(engine, monkeypatch)
     with pytest.raises(OSError):
         engine._trim_dreams()
 
     assert engine.DREAMS_FILE.read_text(encoding="utf-8") == original
-    assert not list(engine.DREAMS_FILE.parent.glob(".DREAMS.md.*.tmp"))
+    assert no_temp_files(engine)
 
 
 def test_dreams_trim_keeps_the_newest_sections(engine):
-    engine.DREAMS_FILE.write_text(
-        "# DREAMS\n\nNightly notes from the memory filter.\n"
-        + "".join(f"\n## 2026-01-0{day} 03:00\n- note {day}\n" for day in range(1, 9)),
-        encoding="utf-8",
-    )
-    engine.DREAMS_MAX_BYTES = 200
+    seed_sections(engine, 8)
 
     engine._trim_dreams()
     text = engine.DREAMS_FILE.read_text(encoding="utf-8")
 
-    assert text.startswith("# DREAMS\n")
+    assert text.startswith(HEADER)
     assert "note 8" in text
     assert "note 1" not in text
     assert len(text.encode("utf-8")) <= engine.DREAMS_MAX_BYTES

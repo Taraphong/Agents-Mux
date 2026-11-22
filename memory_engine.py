@@ -1449,8 +1449,9 @@ def write_dreams(stats: dict[str, Any], promoted: list[dict[str, Any]], language
         lines.append(f"- ⭐ **{item.get('theme') or 'Note'}** — {item['text'][:160]}")
     if not promoted:
         lines.append("- ไม่มีอะไรผ่านเกณฑ์คืนนี้" if language == "th" else "- Nothing passed the threshold tonight")
-    # Append through the atomic helper: a crash mid-append must not leave a
-    # half-written section in the file.
+    # Write through the atomic helper: a crash mid-write must not leave a
+    # half-written section in the file. Read-modify-write is safe because the
+    # only caller, run(), already holds _RUN_LOCK.
     _atomic_write_text(DREAMS_FILE, existing + "\n".join(lines) + "\n")
     _trim_dreams()
 
