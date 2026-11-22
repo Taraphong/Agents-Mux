@@ -109,7 +109,7 @@ def test_discord_can_skip_the_memory_review_guidance(engine):
 
 def test_the_chat_route_sends_memories_to_the_provider(engine, monkeypatch):
     import app as app_module
-    import index_routes
+    from routes import index as index_routes
 
     remember(engine, "the deploy key lives in the safe")
     sent = {}

@@ -1218,8 +1218,8 @@ if os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower() in {"1", "true", "ye
 # so alias it as ``app``; without that the route modules would import a second
 # copy of this file and register on the wrong app.
 sys.modules.setdefault("app", sys.modules[__name__])
-from index_routes import index_bp  # noqa: E402  (must follow the definitions above)
-from pair_routes import pair_bp  # noqa: E402
+from routes.index import index_bp  # noqa: E402  (must follow the definitions above)
+from routes.pair import pair_bp  # noqa: E402
 
 app.register_blueprint(pair_bp)
 app.register_blueprint(index_bp)

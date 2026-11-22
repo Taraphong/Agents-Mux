@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ROUTE_MODULES = ("index_routes.py", "pair_routes.py")
+ROUTE_MODULES = ("routes/index.py", "routes/pair.py")
 
 
 def _names_imported_from_app(path: Path) -> list[str]:
