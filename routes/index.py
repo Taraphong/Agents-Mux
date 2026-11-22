@@ -38,6 +38,7 @@ from core.http_cache import compress_response
 from core.log import APP_LOGS, APP_LOG_LOCK, log_event
 from core.messages import normalize_language, request_language, status_message
 from core.model_cache import MODEL_LIST_ERROR_LOGGED, forget_model_names
+from core.prompts import build_system_prompt
 from core.providers import (
     GEMINI_DECISION_MODEL,
     GEMINI_DEFAULT_AGENT,
@@ -45,7 +46,6 @@ from core.providers import (
     PROVIDER_NETWORK_ERRORS,
     ProviderEmptyResponse,
     STATUS_CACHE,
-    build_system_prompt,
     call_provider,
     clean_messages,
     gemini_capabilities,

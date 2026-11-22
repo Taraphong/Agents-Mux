@@ -16,7 +16,8 @@ from typing import Any
 from core.config import SCHEDULE_CONTEXT_MESSAGES, SCHEDULE_LOCK_FILE
 from core.history import find_schedule_conversation_id, load_history_record, save_history
 from core.log import log_event
-from core.providers import agent_profile_prompt, call_provider, clean_messages
+from core.prompts import agent_profile_prompt
+from core.providers import call_provider, clean_messages
 from core.redaction import redact_secrets
 from core.schedule_store import cron_matches, load_schedules, update_schedule
 from core.settings import load_settings

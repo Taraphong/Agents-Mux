@@ -19,10 +19,10 @@ from core.config import TOOL_CALL_BLOCK_PATTERN
 from core.history import save_discord_turn, save_history
 from core.log import log_event
 from core.model_cache import remember_model_names
+from core.prompts import build_system_prompt
 from core.providers import (
     FALLBACK_MODELS,
     STATUS_CACHE,
-    build_system_prompt,
     call_provider,
     clean_messages,
     list_models,

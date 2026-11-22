@@ -41,6 +41,13 @@ from typing import Any, Iterable, Iterator
 
 from core.config import DEFAULT_MEMORY_SETTINGS
 from core.log import log_event
+from core.providers import (
+    call_provider,
+    endpoint_is_loopback,
+    get_base_url,
+    key_is_configured,
+    normalize_provider,
+)
 from core.redaction import redact_secrets
 
 
@@ -1022,13 +1029,6 @@ def _llm_available(settings: dict[str, Any], config: dict[str, Any]) -> bool:
     without a key.
     """
     try:
-        from core.providers import (
-            endpoint_is_loopback,
-            get_base_url,
-            key_is_configured,
-            normalize_provider,
-        )
-
         llm = _llm_settings(settings, config)
         provider = normalize_provider(llm.get("provider"))
         if key_is_configured(provider, llm):
@@ -1052,8 +1052,6 @@ def _ask_model(
     if not items:
         return {}, ""
     try:
-        from core.providers import call_provider  # lazy: avoids an import cycle at start-up
-
         language_name = "Thai" if language == "th" else "English"
         system = (
             "You consolidate long-term memory for one user. For each item decide how much it "

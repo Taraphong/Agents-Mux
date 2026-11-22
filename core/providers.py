@@ -2,7 +2,8 @@
 
 Every HTTP endpoint is checked before a key is sent, model ids are cached for
 autocomplete, and each provider's request/response shape lives beside its
-siblings. It logs through core.log directly.
+siblings. It logs through core.log directly; prompt assembly lives in
+``core.prompts`` so this module never depends on the memory engine.
 """
 
 import base64
@@ -17,9 +18,6 @@ from urllib.parse import urlsplit
 
 import requests
 
-import memory_engine
-
-from core.config import TOOL_INSTRUCTIONS
 from core.log import log_event
 from core.model_cache import (
     MODEL_LIST_CACHE,
@@ -40,7 +38,6 @@ from core.settings import (
     normalize_provider,
     stored_api_keys,
 )
-from core.skills import selected_skill_prompt
 
 
 FALLBACK_MODELS = {
@@ -686,53 +683,6 @@ def attachment_payload(value: Any) -> dict[str, str] | None:
     return {"name": name, "mime_type": mime_type, "data": data}
 
 
-def memory_context_block(messages: list[dict[str, Any]], settings: dict[str, Any]) -> str:
-    """Return the memory block for the newest user turn, or an empty string."""
-    query = ""
-    for item in reversed(messages):
-        if not isinstance(item, dict) or item.get("role") != "user":
-            continue
-        content = item.get("content")
-        text = content if isinstance(content, str) else memory_engine.message_text(item)
-        if text.strip():
-            query = text
-            break
-    if not query:
-        return ""
-    try:
-        block, _ids = memory_engine.build_context(query, settings)
-    except Exception:
-        return ""
-    return block
-
-
-def build_system_prompt(
-    settings: dict[str, Any],
-    messages: list[dict[str, Any]],
-    *,
-    include_memory_review: bool = True,
-) -> str:
-    """Assemble the system prompt with the memory block before tool rules.
-
-    The block sits before the skill and tool instructions: a stored note must
-    never occupy the position the model treats as the strongest instruction.
-    """
-    memory_review = (
-        f"Memory review guidance:\n{settings.get('memory_review', '')}"
-        if include_memory_review and settings.get("memory_review")
-        else ""
-    )
-    parts = (
-        settings.get("system_prompt", ""),
-        agent_profile_prompt(settings),
-        memory_review,
-        memory_context_block(messages, settings),
-        selected_skill_prompt(settings),
-        TOOL_INSTRUCTIONS,
-    )
-    return "\n\n".join(part for part in parts if part)
-
-
 def clean_messages(messages: list[dict[str, Any]], settings: dict[str, Any]) -> list[dict[str, Any]]:
     """Keep text and validated inline attachments, then prepend the system prompt."""
     result: list[dict[str, Any]] = [{"role": "system", "content": settings.get("system_prompt", "")}] if settings.get("system_prompt") else []
@@ -793,19 +743,6 @@ def anthropic_content(message: dict[str, Any]) -> Any:
     if text:
         blocks.append({"type": "text", "text": text})
     return blocks
-
-
-def agent_profile_prompt(settings: dict[str, Any]) -> str:
-    """Turn the user-configured agent profile into stable runtime guidance."""
-    language = {"auto": "Reply in the user's language", "th": "Reply in Thai", "en": "Reply in English"}.get(str(settings.get("response_language", "auto")), "Reply in the user's language")
-    questions = "Ask back when the information is missing or the request is ambiguous" if settings.get("ask_clarifying_questions", True) else "Avoid asking back and state the assumptions used"
-    markdown = "Use Markdown when it improves readability" if settings.get("use_markdown", True) else "Do not use complex Markdown"
-    return "Agent profile guidance:\n" + "\n".join((
-        f"- Name to introduce yourself with: {str(settings.get('agent_name') or 'Mux')[:80]}",
-        f"- Role: {str(settings.get('agent_role') or '')[:500]}",
-        f"- Response tone: {str(settings.get('response_style') or '')[:500]}",
-        f"- Language: {language}", f"- Format: {markdown}", f"- Asking for more information: {questions}",
-    ))
 
 
 def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: str, total_key: str | None) -> dict[str, int] | None:

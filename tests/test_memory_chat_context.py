@@ -8,7 +8,7 @@ the tool rules, and a broken memory store never breaks the prompt.
 import uuid
 
 from core.config import TOOL_INSTRUCTIONS
-from core.providers import build_system_prompt, memory_context_block
+from core.prompts import build_system_prompt, memory_context_block
 
 CONVERSATION_ID = "11111111-1111-1111-1111-111111111111"
 
