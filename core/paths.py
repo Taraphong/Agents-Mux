@@ -1,5 +1,6 @@
 """Path safety helpers shared by the stores and the tools."""
 
+import os
 from pathlib import Path
 
 

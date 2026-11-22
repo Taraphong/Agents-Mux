@@ -201,3 +201,10 @@ def save_settings(settings: dict[str, Any]) -> None:
     # ids Discord autocomplete answers from.
     if SETTINGS_SAVED_HOOK is not None:
         SETTINGS_SAVED_HOOK()
+
+
+def get_discord_token(settings: dict[str, Any] | None = None) -> str:
+    """Return the Discord bot token from settings or the environment."""
+    settings = settings if settings is not None else load_settings()
+    configured = str(settings.get("discord_token") or "").strip()
+    return configured or os.getenv("DISCORD_BOT_TOKEN", "").strip()

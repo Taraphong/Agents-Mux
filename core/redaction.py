@@ -5,6 +5,7 @@ like a key, token or PEM block is masked before it leaves the process.
 """
 
 import re
+from typing import Callable
 
 
 PEM_REDACTED_MARKER = "•••••••• (private key hidden)"
@@ -46,3 +47,26 @@ def redact_command_output(text: str, secrets_found: list[str]) -> str:
     # DOTALL regex over the whole capture, so large output cannot go quadratic.
     return mask_unterminated_pem(text)
 SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
+
+# Filled in by app.py with a callable that reads the current settings, so the
+# tests and the settings UI see a secret added after start-up.
+_SECRET_PROVIDER: Callable[[], list[str]] | None = None
+
+
+def set_secret_provider(provider: Callable[[], list[str]]) -> None:
+    """Install the settings-backed secret source used before every redaction."""
+    global _SECRET_PROVIDER
+    _SECRET_PROVIDER = provider
+
+
+def redact_secrets(text: str, api_key: str | None = None) -> str:
+    """Remove API keys and tokens from text before it is returned or logged."""
+    value = SECRET_QUERY_PATTERN.sub(r"\1••••••••", str(text))
+    # Redact the submitted request's API key if provided
+    if api_key:
+        value = value.replace(api_key, "••••••••")
+    try:
+        secrets_found = _SECRET_PROVIDER() if _SECRET_PROVIDER is not None else []
+    except (OSError, ValueError):
+        secrets_found = []
+    return redact_command_output(value, secrets_found)
