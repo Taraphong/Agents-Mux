@@ -2,8 +2,8 @@
 
 เว็บแชต AI แบบ self-hosted ที่รันบน Termux (Android), Linux หรือ macOS และใช้งานผ่านเบราว์เซอร์ในเครือข่ายเดียวกัน เซิร์ฟเวอร์ Flask ขนาดเล็กเก็บ API key และประวัติการสนทนาไว้บนเครื่องของคุณเอง และหน้าเว็บใช้ได้ทั้งภาษาอังกฤษและภาษาไทย
 
-- คู่มือติดตั้ง: **[INSTALL.th.md](INSTALL.th.md)** · [INSTALL.md](INSTALL.md)
-- นโยบายความปลอดภัย: **[SECURITY.th.md](SECURITY.th.md)** · [SECURITY.md](SECURITY.md)
+- คู่มือติดตั้ง: **[docs/INSTALL.th.md](docs/INSTALL.th.md)** · [docs/INSTALL.md](docs/INSTALL.md)
+- นโยบายความปลอดภัย: **[docs/SECURITY.th.md](docs/SECURITY.th.md)** · [docs/SECURITY.md](docs/SECURITY.md)
 
 ## ฟีเจอร์
 

@@ -3,8 +3,8 @@
 Self-hosted AI chat that runs on Termux (Android), Linux, or macOS and is used through a browser on the same network. A small Flask server keeps your provider keys and conversation history on your own machine, and the page is available in English and Thai.
 
 - Thai: **[README.th.md](README.th.md)**
-- Install guide: **[INSTALL.md](INSTALL.md)** · [INSTALL.th.md](INSTALL.th.md)
-- Security policy: **[SECURITY.md](SECURITY.md)** · [SECURITY.th.md](SECURITY.th.md)
+- Install guide: **[docs/INSTALL.md](docs/INSTALL.md)** · [docs/INSTALL.th.md](docs/INSTALL.th.md)
+- Security policy: **[docs/SECURITY.md](docs/SECURITY.md)** · [docs/SECURITY.th.md](docs/SECURITY.th.md)
 
 ## Features
 
