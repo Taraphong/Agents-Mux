@@ -359,6 +359,31 @@ def memory_entry_delete(memory_id: str):
     return jsonify({"ok": True})
 
 
+@index_bp.put("/api/memory/entries/<memory_id>/pin")
+def memory_entry_pin(memory_id: str):
+    """Pin or unpin one memory so the entry cap never evicts it."""
+    language = request_language()
+    body = request.get_json(silent=True) or {}
+    # A valid JSON array or number is truthy but has no .get(): treat it as an
+    # invalid payload instead of raising AttributeError and returning 500.
+    if not isinstance(body, dict):
+        body = {}
+    pinned = body.get("pinned")
+    if not isinstance(pinned, bool):
+        return jsonify({"error": status_message(language, "memory_pin_invalid")}), 400
+    try:
+        updated = memory_engine.pin(memory_id, pinned)
+    except RuntimeError as exc:
+        if str(exc) == "memory_busy":
+            return jsonify({"error": status_message(language, "memory_busy")}), 409
+        return jsonify({"error": status_message(language, "memory_pin_failed")}), 500
+    except OSError:
+        return jsonify({"error": status_message(language, "memory_pin_failed")}), 500
+    if not updated:
+        return jsonify({"error": status_message(language, "memory_not_found")}), 404
+    return jsonify({"ok": True, "pinned": pinned})
+
+
 @index_bp.post("/api/memory/reindex")
 def memory_reindex_post():
     """Reset the SQLite index; the next consolidation run rebuilds it."""

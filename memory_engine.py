@@ -28,6 +28,7 @@ import os
 import re
 import sqlite3
 import struct
+import tempfile
 import threading
 import time
 import unicodedata
@@ -95,6 +96,7 @@ DEFAULT_MEMORY_SETTINGS: dict[str, Any] = {
     "retrieval": True,
     "retrieval_items": 4,
     "retrieval_chars": 800,
+    "max_entries": 200,
 }
 
 # Words that carry no topic on their own. Both languages are listed because the
@@ -123,7 +125,8 @@ _THAI_RE = re.compile(r"^[\u0e00-\u0e7f]+$")
 _MEMORY_MARKER_RE = re.compile(
     r"<!-- mem:(?P<id>[0-9a-fA-F-]{36}) score=(?P<score>[0-9.]+) "
     r"date=(?P<date>[^ ]+) sources=(?P<sources>[^ ]*)"
-    r"(?: hash=(?P<hash>[0-9a-f]{64}))? -->\n"
+    r"(?: hash=(?P<hash>[0-9a-f]{64}))?"
+    r"(?: pin=(?P<pin>1))? -->\n"
     r"(?P<body>(?:(?!<!-- (?:mem:|/mem:)).)*)",
     re.DOTALL,
 )
@@ -384,6 +387,7 @@ def normalize_settings(raw: Any) -> dict[str, Any]:
     as_int("max_items", 25, 1, 200)
     as_int("retrieval_items", 4, 1, 10)
     as_int("retrieval_chars", 800, 200, 2000)
+    as_int("max_entries", 200, 10, 1000)
     as_float("threshold", 0.65, 0.0, 1.0)
     as_float("dedupe", 0.92, 0.5, 1.0)
 
@@ -1570,6 +1574,17 @@ def run(
         else:
             connection.execute("COMMIT")
             committed = True
+            # Trim only after the entries are durable, and only when this run
+            # promoted something: lowering the cap alone must not delete an
+            # existing memory on the next run that finds nothing to add.
+            stats["evicted"] = 0
+            if written:
+                stats["evicted"] = len(
+                    _trim_to_cap(
+                        int(config["max_entries"]),
+                        protect={item["id"] for item in written},
+                    )
+                )
             connection.execute("BEGIN")
             _set_meta(connection, "last_run_at", started)
             _set_meta(connection, "last_run_status", status)
@@ -1644,6 +1659,7 @@ def entries() -> list[dict[str, Any]]:
                 "date": match.group("date"),
                 "sources": [part for part in match.group("sources").split(",") if part],
                 "text": body.strip(),
+                "pinned": match.group("pin") == "1",
             }
         )
     items.sort(key=lambda item: (item["date"], item["score"]), reverse=True)
@@ -1833,6 +1849,122 @@ def _remove_promoted_entries(memory_ids: set[str]) -> None:
         os.chmod(MEMORY_FILE, 0o600)
     except OSError:
         pass
+
+
+def pin(memory_id: str, pinned: bool) -> bool:
+    """Set or clear the pin on one promoted memory.
+
+    A pinned entry is kept when MEMORY.md is trimmed to its entry cap.
+    """
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", str(memory_id or "")):
+        return False
+    # The pin edits MEMORY.md, so it must not interleave with a run's rewrite.
+    if not _RUN_LOCK.acquire(blocking=False):
+        raise RuntimeError("memory_busy")
+    try:
+        try:
+            text = MEMORY_FILE.read_text(encoding="utf-8")
+        except OSError:
+            return False
+        start = text.find(f"<!-- mem:{memory_id} ")
+        if start == -1:
+            return False
+        end = text.find(" -->", start)
+        if end == -1:
+            return False
+        line = text[start : end + len(" -->")]
+        if pinned and " pin=1" not in line:
+            updated_line = line[: -len(" -->")].rstrip() + " pin=1 -->"
+        elif not pinned and " pin=1" in line:
+            updated_line = line.replace(" pin=1", "", 1)
+        else:
+            return True
+        # A write failure is a server error, not a missing entry: let the
+        # caller report memory_pin_failed.
+        MEMORY_FILE.write_text(
+            text[:start] + updated_line + text[end + len(" -->") :],
+            encoding="utf-8",
+        )
+        try:
+            os.chmod(MEMORY_FILE, 0o600)
+        except OSError:
+            pass
+        return True
+    finally:
+        _RUN_LOCK.release()
+
+
+def _atomic_write_memory(text: str) -> None:
+    """Replace MEMORY.md only after the complete new text is on disk."""
+    MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(
+        dir=str(MEMORY_FILE.parent), prefix=f".{MEMORY_FILE.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, 0o600)
+        os.replace(temp_path, MEMORY_FILE)
+    except BaseException:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _trim_to_cap(max_total: int, protect: set[str] | None = None) -> list[str]:
+    """Drop the oldest unpinned entries beyond the cap and return their ids.
+
+    Called while a run holds _RUN_LOCK, so it never takes the lock itself.
+    Pinned entries are never evicted, so the cap can be exceeded when more
+    entries are pinned than the cap allows.
+    """
+    try:
+        max_total = max(1, int(max_total))
+    except (TypeError, ValueError):
+        max_total = int(DEFAULT_MEMORY_SETTINGS["max_entries"])
+    items = entries()
+    excess = len(items) - max_total
+    if excess <= 0:
+        return []
+    protected = protect or set()
+    if protected:
+        # New entries may fill only the room the pinned entries leave; beyond
+        # that the lowest-scoring new entries are evictable like any other.
+        capacity = max(0, max_total - sum(1 for item in items if item["pinned"]))
+        ranked = sorted(
+            (item for item in items if item["id"] in protected),
+            key=lambda item: (item["score"], item["date"], item["id"]),
+            reverse=True,
+        )
+        protected = {item["id"] for item in ranked[:capacity]}
+    candidates = sorted(
+        (item for item in items if not item["pinned"] and item["id"] not in protected),
+        key=lambda item: (item["date"], item["score"], item["id"]),
+    )
+    if not candidates:
+        return []
+    try:
+        text = MEMORY_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    removed: list[str] = []
+    for item in candidates[:excess]:
+        start, end = _memory_entry_bounds(text, item["id"])
+        if start == -1:
+            continue
+        text = text[:start] + text[end:]
+        removed.append(item["id"])
+    if removed:
+        try:
+            _atomic_write_memory(text)
+        except OSError:
+            # The old file is untouched, so nothing was evicted after all.
+            return []
+    return removed
 
 
 def forget(memory_id: str) -> bool:
