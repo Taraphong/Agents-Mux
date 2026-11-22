@@ -24,8 +24,11 @@ from core.log import log_event
 from core.model_cache import (
     MODEL_LIST_CACHE,
     MODEL_LIST_CACHE_TTL,
+    MODEL_LIST_ERROR_LOGGED,
+    MODEL_LIST_REFRESH_INTERVAL,
     MODEL_LIST_REFRESH_LOCK,
     MODEL_LIST_REFRESH_STARTED,
+    MODEL_LIST_REFRESH_TIMEOUT,
     remember_model_names,
 )
 from core.messages import status_message
@@ -194,11 +197,6 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
     )
     models = response.json().get("data", [])
     return [{"id": item["id"], "name": item["id"]} for item in sorted(models, key=lambda item: item.get("id", ""))]
-MODEL_LIST_ERROR_LOGGED: dict[str, float] = {}
-# An autocomplete never waits on the provider API: it answers from the cache or
-# the static list and lets a daemon thread refresh the real list.
-MODEL_LIST_REFRESH_TIMEOUT = 8
-MODEL_LIST_REFRESH_INTERVAL = 15
 
 
 def static_model_names(provider: str, settings: dict[str, Any]) -> list[str]:

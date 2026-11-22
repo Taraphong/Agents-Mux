@@ -37,12 +37,11 @@ from core.history import (
 from core.http_cache import compress_response
 from core.log import APP_LOGS, APP_LOG_LOCK, log_event
 from core.messages import normalize_language, request_language, status_message
-from core.model_cache import forget_model_names
+from core.model_cache import MODEL_LIST_ERROR_LOGGED, forget_model_names
 from core.providers import (
     GEMINI_DECISION_MODEL,
     GEMINI_DEFAULT_AGENT,
     GEMINI_LIVE_FALLBACK_MODEL,
-    MODEL_LIST_ERROR_LOGGED,
     PROVIDER_NETWORK_ERRORS,
     ProviderEmptyResponse,
     STATUS_CACHE,

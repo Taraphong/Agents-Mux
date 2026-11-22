@@ -3,8 +3,8 @@
 ``app`` is the assembly point: it imports from ``core``, ``services`` and
 ``routes``, never the other way around. A reverse import would create a cycle
 and pull the whole Flask application into pure helpers, so this test fails on
-one. ``memory_engine`` keeps its core imports lazy but must not reach back into
-the application object either.
+one. ``memory_engine`` imports core modules directly but must not reach back
+into the application object either.
 """
 
 import ast

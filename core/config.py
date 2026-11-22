@@ -104,3 +104,24 @@ When the user explicitly asks to create or change a scheduled job/Cron, use crea
 """.strip()
 TOOL_ALIASES = {"execute_command": "run_command"}
 TOOL_CALL_BLOCK_PATTERN = re.compile(r"<tool_call>.*?</tool_call>", re.DOTALL)
+# Defaults for the background memory engine. They live here so core.settings can
+# build its defaults without importing memory_engine, which imports core.log.
+DEFAULT_MEMORY_SETTINGS = {
+    "enabled": True,
+    "schedule": "0 3 * * *",
+    "lookback_days": 7,
+    "threshold": 0.65,
+    "idle_minutes": 15,
+    "max_items": 25,
+    "include_locked": False,
+    "llm": True,
+    "provider": "",
+    "model": "",
+    "base_url": "",
+    "window_end": "06:00",
+    "dedupe": 0.92,
+    "retrieval": True,
+    "retrieval_items": 4,
+    "retrieval_chars": 800,
+    "max_entries": 200,
+}

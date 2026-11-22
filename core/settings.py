@@ -11,13 +11,11 @@ import threading
 import uuid
 from typing import Any
 
-import memory_engine
-
-from core.config import SENSITIVE_ENV_PARTS, SETTINGS_FILE
+from core.config import DEFAULT_MEMORY_SETTINGS, SENSITIVE_ENV_PARTS, SETTINGS_FILE
 from core.model_cache import forget_model_names
 
 DEFAULT_SETTINGS = {
-    "memory": memory_engine.DEFAULT_MEMORY_SETTINGS.copy(),
+    "memory": DEFAULT_MEMORY_SETTINGS.copy(),
     "agent_name": "Mux",
     "agent_role": "A versatile AI assistant",
     "response_language": "auto",

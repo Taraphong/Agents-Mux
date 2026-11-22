@@ -39,6 +39,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
+from core.config import DEFAULT_MEMORY_SETTINGS
+from core.log import log_event
+from core.redaction import redact_secrets
+
 
 def _location(name: str, default: str) -> Path:
     """Resolve a configured path relative to the project folder."""
@@ -79,26 +83,6 @@ RETRIEVAL_HEADER = (
 RETRIEVAL_MIN_SIMILARITY = 0.05
 RETRIEVAL_ITEM_CHARS = 240
 RETRIEVAL_HALF_LIFE_DAYS = 90
-
-DEFAULT_MEMORY_SETTINGS: dict[str, Any] = {
-    "enabled": True,
-    "schedule": "0 3 * * *",
-    "lookback_days": 7,
-    "threshold": 0.65,
-    "idle_minutes": 15,
-    "max_items": 25,
-    "include_locked": False,
-    "llm": True,
-    "provider": "",
-    "model": "",
-    "base_url": "",
-    "window_end": "06:00",
-    "dedupe": 0.92,
-    "retrieval": True,
-    "retrieval_items": 4,
-    "retrieval_chars": 800,
-    "max_entries": 200,
-}
 
 # Words that carry no topic on their own. Both languages are listed because the
 # conversation itself may be Thai, English or a mix of the two.
@@ -186,10 +170,8 @@ def is_running() -> bool:
 
 
 def _log(event: str, message: str, **details: Any) -> None:
-    """Write to the app log without importing it at module load time."""
+    """Write to the app log; a logging failure must never stop the engine."""
     try:
-        from core.log import log_event  # lazy: core.log reaches this module through settings
-
         log_event(event, message, **details)
     except Exception:
         pass
@@ -216,8 +198,6 @@ def _redact(text: str) -> str:
     """Strip credentials before text is stored, indexed or summarised."""
     value = str(text or "")
     try:
-        from core.redaction import redact_secrets
-
         value = redact_secrets(value)
     except Exception:
         pass

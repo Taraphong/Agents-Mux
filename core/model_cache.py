@@ -1,6 +1,6 @@
-"""The model-id cache shared by autocomplete and settings saving.
+"""The model-id cache and its refresh policy, shared by every layer.
 
-It lives in its own module so ``core.settings`` can drop the cache after a save
+The cache lives in its own module so ``core.settings`` can drop it after a save
 without importing the provider layer, which imports settings in turn.
 """
 
@@ -9,6 +9,11 @@ import time
 
 MODEL_LIST_CACHE_TTL = 600
 MODEL_LIST_CACHE: dict[str, tuple[float, list[str]]] = {}
+MODEL_LIST_ERROR_LOGGED: dict[str, float] = {}
+# An autocomplete never waits on the provider API: it answers from the cache or
+# the static list and lets a daemon thread refresh the real list.
+MODEL_LIST_REFRESH_TIMEOUT = 8
+MODEL_LIST_REFRESH_INTERVAL = 15
 MODEL_LIST_REFRESH_LOCK = threading.Lock()
 MODEL_LIST_REFRESH_STARTED: dict[str, float] = {}
 
