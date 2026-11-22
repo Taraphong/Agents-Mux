@@ -1431,8 +1431,10 @@ def promote(entries_to_add: list[dict[str, Any]], limit: int) -> list[dict[str, 
 def write_dreams(stats: dict[str, Any], promoted: list[dict[str, Any]], language: str) -> None:
     """Append the readable nightly summary to DREAMS.md."""
     DREAMS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    if not DREAMS_FILE.exists():
-        DREAMS_FILE.write_text("# DREAMS\n\nNightly notes from the memory filter.\n", encoding="utf-8")
+    if DREAMS_FILE.exists():
+        existing = DREAMS_FILE.read_text(encoding="utf-8")
+    else:
+        existing = "# DREAMS\n\nNightly notes from the memory filter.\n"
     stamp = now_local().strftime("%Y-%m-%d %H:%M")
     themes = ", ".join(stats.get("themes") or []) or "-"
     lines = [
@@ -1447,12 +1449,10 @@ def write_dreams(stats: dict[str, Any], promoted: list[dict[str, Any]], language
         lines.append(f"- ⭐ **{item.get('theme') or 'Note'}** — {item['text'][:160]}")
     if not promoted:
         lines.append("- ไม่มีอะไรผ่านเกณฑ์คืนนี้" if language == "th" else "- Nothing passed the threshold tonight")
-    with DREAMS_FILE.open("a", encoding="utf-8") as handle:
-        handle.write("\n".join(lines) + "\n")
-    try:
-        os.chmod(DREAMS_FILE, 0o600)
-    except OSError:
-        pass
+    # Write through the atomic helper: a crash mid-write must not leave a
+    # half-written section in the file. Read-modify-write is safe because the
+    # only caller, run(), already holds _RUN_LOCK.
+    _atomic_write_text(DREAMS_FILE, existing + "\n".join(lines) + "\n")
     _trim_dreams()
 
 
@@ -1473,7 +1473,9 @@ def _trim_dreams() -> None:
         if size > DREAMS_MAX_BYTES // 2:
             break
         kept.append(section)
-    DREAMS_FILE.write_text(header + "".join("\n## " + item for item in reversed(kept)), encoding="utf-8")
+    _atomic_write_text(
+        DREAMS_FILE, header + "".join("\n## " + item for item in reversed(kept))
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1885,11 +1887,11 @@ def pin(memory_id: str, pinned: bool) -> bool:
         _RUN_LOCK.release()
 
 
-def _atomic_write_memory(text: str) -> None:
-    """Replace MEMORY.md only after the complete new text is on disk."""
-    MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+def _atomic_write_text(path, text: str) -> None:
+    """Replace a text file only after the complete new text is on disk."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_path = tempfile.mkstemp(
-        dir=str(MEMORY_FILE.parent), prefix=f".{MEMORY_FILE.name}.", suffix=".tmp"
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -1897,13 +1899,18 @@ def _atomic_write_memory(text: str) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temp_path, 0o600)
-        os.replace(temp_path, MEMORY_FILE)
+        os.replace(temp_path, path)
     except BaseException:
         try:
             os.unlink(temp_path)
         except OSError:
             pass
         raise
+
+
+def _atomic_write_memory(text: str) -> None:
+    """Replace MEMORY.md only after the complete new text is on disk."""
+    _atomic_write_text(MEMORY_FILE, text)
 
 
 def _trim_to_cap(max_total: int, protect: set[str] | None = None) -> list[str]:
