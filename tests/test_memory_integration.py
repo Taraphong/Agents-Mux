@@ -97,6 +97,7 @@ def test_a_remote_endpoint_still_requires_a_key(engine):
 
 def test_model_discovery_only_allows_a_keyless_loopback_endpoint(engine, monkeypatch):
     import app
+    import core.providers
 
     calls = []
 
@@ -109,7 +110,8 @@ def test_model_discovery_only_allows_a_keyless_loopback_endpoint(engine, monkeyp
 
         return FakeResponse()
 
-    monkeypatch.setattr(app, "provider_models_get", fake_models_get)
+    # list_models() calls this in core.providers, next to the code that sends it.
+    monkeypatch.setattr(core.providers, "provider_models_get", fake_models_get)
     # Reuse the keyless rule; no network request is made.
     assert app.list_models("openai", provider_settings("openai")) == [
         {"id": "local-model", "name": "local-model"}
