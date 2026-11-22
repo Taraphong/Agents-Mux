@@ -137,6 +137,18 @@ def test_trim_can_protect_the_entries_a_run_just_wrote(engine):
     assert protected in by_id(engine)
 
 
+def test_a_run_without_promotions_does_not_trim(engine):
+    ids = {remember(engine, f"kept memory {index}", score=0.2 + index / 100)
+           for index in range(11)}
+
+    result = engine.run(settings={"memory": {"llm": False, "max_entries": 10}}, language="en")
+
+    assert result["stats"]["promoted"] == 0
+    assert result["stats"]["evicted"] == 0
+    # Lowering the cap only takes effect on a run that promotes something.
+    assert set(by_id(engine)) == ids
+
+
 def test_a_failed_run_does_not_evict_an_old_memory(engine, monkeypatch):
     old_ids = {remember(engine, f"old memory {index}", score=0.1 + index / 100)
                for index in range(10)}

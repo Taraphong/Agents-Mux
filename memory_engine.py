@@ -1573,15 +1573,17 @@ def run(
         else:
             connection.execute("COMMIT")
             committed = True
-            # Trim only after the entries are durable. Evicting before COMMIT
-            # would lose the old entry for good when recovery rolls the run
-            # back and only removes the newly written entries.
-            stats["evicted"] = len(
-                _trim_to_cap(
-                    int(config["max_entries"]),
-                    protect={item["id"] for item in written},
+            # Trim only after the entries are durable, and only when this run
+            # promoted something: lowering the cap alone must not delete an
+            # existing memory on the next run that finds nothing to add.
+            stats["evicted"] = 0
+            if written:
+                stats["evicted"] = len(
+                    _trim_to_cap(
+                        int(config["max_entries"]),
+                        protect={item["id"] for item in written},
+                    )
                 )
-            )
             connection.execute("BEGIN")
             _set_meta(connection, "last_run_at", started)
             _set_meta(connection, "last_run_status", status)
