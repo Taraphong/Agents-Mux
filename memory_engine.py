@@ -28,6 +28,7 @@ import os
 import re
 import sqlite3
 import struct
+import tempfile
 import threading
 import time
 import unicodedata
@@ -1893,6 +1894,27 @@ def pin(memory_id: str, pinned: bool) -> bool:
         _RUN_LOCK.release()
 
 
+def _atomic_write_memory(text: str) -> None:
+    """Replace MEMORY.md only after the complete new text is on disk."""
+    MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(
+        dir=str(MEMORY_FILE.parent), prefix=f".{MEMORY_FILE.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, 0o600)
+        os.replace(temp_path, MEMORY_FILE)
+    except BaseException:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+
 def _trim_to_cap(max_total: int, protect: set[str] | None = None) -> list[str]:
     """Drop the oldest unpinned entries beyond the cap and return their ids.
 
@@ -1909,6 +1931,16 @@ def _trim_to_cap(max_total: int, protect: set[str] | None = None) -> list[str]:
     if excess <= 0:
         return []
     protected = protect or set()
+    if protected:
+        # New entries may fill only the room the pinned entries leave; beyond
+        # that the lowest-scoring new entries are evictable like any other.
+        capacity = max(0, max_total - sum(1 for item in items if item["pinned"]))
+        ranked = sorted(
+            (item for item in items if item["id"] in protected),
+            key=lambda item: (item["score"], item["date"], item["id"]),
+            reverse=True,
+        )
+        protected = {item["id"] for item in ranked[:capacity]}
     candidates = sorted(
         (item for item in items if not item["pinned"] and item["id"] not in protected),
         key=lambda item: (item["date"], item["score"], item["id"]),
@@ -1928,9 +1960,9 @@ def _trim_to_cap(max_total: int, protect: set[str] | None = None) -> list[str]:
         removed.append(item["id"])
     if removed:
         try:
-            MEMORY_FILE.write_text(text, encoding="utf-8")
-            os.chmod(MEMORY_FILE, 0o600)
+            _atomic_write_memory(text)
         except OSError:
+            # The old file is untouched, so nothing was evicted after all.
             return []
     return removed
 

@@ -137,6 +137,35 @@ def test_trim_can_protect_the_entries_a_run_just_wrote(engine):
     assert protected in by_id(engine)
 
 
+def test_trim_does_not_protect_more_entries_than_the_cap_allows(engine):
+    ids = {remember(engine, f"promoted {index}", score=0.1 + index / 10): index
+           for index in range(11)}
+
+    removed = engine._trim_to_cap(10, protect=set(ids))
+
+    assert len(removed) == 1
+    assert len(by_id(engine)) == 10
+    # The lowest-scoring new entry is the one that has to go.
+    assert removed == [min(ids, key=ids.get)]
+
+
+def test_a_failed_trim_write_leaves_memory_intact(engine, monkeypatch):
+    remember(engine, "kept one", score=0.1)
+    remember(engine, "kept two", score=0.2)
+    remember(engine, "kept three", score=0.3)
+    original = engine.MEMORY_FILE.read_text(encoding="utf-8")
+
+    def failing_replace(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(engine.os, "replace", failing_replace)
+    removed = engine._trim_to_cap(2)
+
+    assert removed == []
+    assert engine.MEMORY_FILE.read_text(encoding="utf-8") == original
+    assert not list(engine.MEMORY_FILE.parent.glob(".MEMORY.md.*.tmp"))
+
+
 def test_a_run_without_promotions_does_not_trim(engine):
     ids = {remember(engine, f"kept memory {index}", score=0.2 + index / 100)
            for index in range(11)}
