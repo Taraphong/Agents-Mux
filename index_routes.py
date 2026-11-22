@@ -7,6 +7,7 @@ which registers this blueprint.
 
 from flask import Blueprint, abort, jsonify, render_template, request, send_from_directory
 
+import memory_engine
 from app import (
     APPROVAL_TTL_SECONDS,
     APP_LOGS,
@@ -27,6 +28,8 @@ from app import (
     PROJECT_ROOT,
     PROVIDERS,
     PROVIDER_LABELS,
+    PROVIDER_NETWORK_ERRORS,
+    ProviderEmptyResponse,
     rate_limit_response,
     Path,
     SCHEDULE_LOCK,
@@ -55,6 +58,7 @@ from app import (
     apply_settings_update,
     apply_tls_environment,
     approval_required_tools,
+    build_system_prompt,
     call_provider,
     clean_messages,
     compress_response,
@@ -289,6 +293,109 @@ def schedules_delete(job_id: str):
     return jsonify({"ok": True})
 
 
+@index_bp.get("/api/memory/status")
+def memory_status_get():
+    """Report the memory engine state, counts and capabilities."""
+    return jsonify(memory_engine.status(load_settings()))
+
+
+@index_bp.get("/api/memory/entries")
+def memory_entries_get():
+    """List promoted memories and the newest dream log text."""
+    return jsonify({"items": memory_engine.entries(), "dreams": memory_engine.recent_dreams()})
+
+
+@index_bp.post("/api/memory/run")
+def memory_run_post():
+    """Run the consolidation phases now, optionally as a dry run."""
+    limited = rate_limit_response("chat")
+    if limited:
+        return limited
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        body = {}
+    language = request_language()
+    dry_run = bool(body.get("dry_run"))
+    try:
+        result = memory_engine.run(
+            trigger="manual",
+            dry_run=dry_run,
+            settings=load_settings(),
+            language=language,
+        )
+        safe_result = dict(result) if isinstance(result, dict) else result
+        if isinstance(safe_result, dict) and isinstance(safe_result.get("stats"), dict):
+            safe_stats = dict(safe_result["stats"])
+            # The engine already stores a category. Only a known category may
+            # leave the server, so raw exception text can never reach the page.
+            kind = str(safe_stats.get("llm_error") or "")
+            safe_stats["llm_error"] = kind if kind in memory_engine.LLM_ERROR_KINDS else ""
+            safe_result["stats"] = safe_stats
+        return jsonify(safe_result)
+    except RuntimeError as exc:
+        if str(exc) == "memory_busy":
+            return jsonify({"error": status_message(language, "memory_busy")}), 409
+        log_event("memory.error", "Memory run failed", error=redact_secrets(str(exc))[:300])
+        return jsonify({"error": status_message(language, "memory_run_failed", error=redact_secrets(str(exc))[:200])}), 500
+    except Exception as exc:  # noqa: BLE001 - report the real reason to the page
+        log_event("memory.error", "Memory run failed", error=redact_secrets(str(exc))[:300])
+        return jsonify({"error": status_message(language, "memory_run_failed", error=redact_secrets(str(exc))[:200])}), 500
+
+
+@index_bp.delete("/api/memory/entries/<memory_id>")
+def memory_entry_delete(memory_id: str):
+    """Forget one promoted memory in both tiers."""
+    language = request_language()
+    try:
+        removed = memory_engine.forget(memory_id)
+    except RuntimeError as exc:
+        if str(exc) == "memory_busy":
+            return jsonify({"error": status_message(language, "memory_busy")}), 409
+        return jsonify({"error": status_message(language, "memory_forget_failed")}), 500
+    except OSError:
+        return jsonify({"error": status_message(language, "memory_forget_failed")}), 500
+    if not removed:
+        return jsonify({"error": status_message(language, "memory_not_found")}), 404
+    return jsonify({"ok": True})
+
+
+@index_bp.put("/api/memory/entries/<memory_id>/pin")
+def memory_entry_pin(memory_id: str):
+    """Pin or unpin one memory so the entry cap never evicts it."""
+    language = request_language()
+    body = request.get_json(silent=True) or {}
+    # A valid JSON array or number is truthy but has no .get(): treat it as an
+    # invalid payload instead of raising AttributeError and returning 500.
+    if not isinstance(body, dict):
+        body = {}
+    pinned = body.get("pinned")
+    if not isinstance(pinned, bool):
+        return jsonify({"error": status_message(language, "memory_pin_invalid")}), 400
+    try:
+        updated = memory_engine.pin(memory_id, pinned)
+    except RuntimeError as exc:
+        if str(exc) == "memory_busy":
+            return jsonify({"error": status_message(language, "memory_busy")}), 409
+        return jsonify({"error": status_message(language, "memory_pin_failed")}), 500
+    except OSError:
+        return jsonify({"error": status_message(language, "memory_pin_failed")}), 500
+    if not updated:
+        return jsonify({"error": status_message(language, "memory_not_found")}), 404
+    return jsonify({"ok": True, "pinned": pinned})
+
+
+@index_bp.post("/api/memory/reindex")
+def memory_reindex_post():
+    """Reset the SQLite index; the next consolidation run rebuilds it."""
+    language = request_language()
+    try:
+        return jsonify(memory_engine.reindex())
+    except RuntimeError:
+        return jsonify({"error": status_message(language, "memory_busy")}), 409
+    except Exception as exc:  # noqa: BLE001 - surface the reason instead of a 500 page
+        return jsonify({"error": status_message(language, "memory_reindex_failed", error=redact_secrets(str(exc))[:200])}), 500
+
+
 @index_bp.get("/templates/<page>/<filename>")
 def page_asset(page: str, filename: str):
     """Serve the CSS/JS stored beside a page template.
@@ -411,6 +518,10 @@ def status_get():
 def history_list():
     """Return history summaries sorted by most recently updated."""
     records = []
+    # The same conversation can exist more than once when an older build wrote a
+    # relative path under history/history. Keep only the newest copy per id so
+    # the sidebar never lists one conversation twice.
+    positions = {}
     if HISTORY_ROOT.exists():
         for path in HISTORY_ROOT.rglob("*.json"):
             try:
@@ -420,7 +531,16 @@ def history_list():
             if not isinstance(record, dict):
                 # A stray list/scalar JSON file must not break the whole list.
                 continue
-            records.append({key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked", "pinned")})
+            item = {key: record.get(key) for key in ("id", "title", "created_at", "updated_at", "locked", "pinned")}
+            identity = item.get("id")
+            if isinstance(identity, str) and identity:
+                position = positions.get(identity)
+                if position is not None:
+                    if str(item.get("updated_at") or "") >= str(records[position].get("updated_at") or ""):
+                        records[position] = item
+                    continue
+                positions[identity] = len(records)
+            records.append(item)
     # A record whose timestamp is missing or null must not break the whole list.
     records.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
     return jsonify({"items": records})
@@ -1081,15 +1201,7 @@ def chat():
         command_mode = body.get("command_mode", settings.get("command_mode", "ask"))
         if command_mode not in {"ask", "auto", "fast"}:
             command_mode = "ask"
-        settings["system_prompt"] = "\n\n".join(
-            part for part in (
-                settings.get("system_prompt", ""),
-                agent_profile_prompt(settings),
-                f"Memory review guidance:\n{settings.get('memory_review', '')}" if settings.get("memory_review") else "",
-                selected_skill_prompt(settings),
-                TOOL_INSTRUCTIONS,
-            ) if part
-        )
+        settings["system_prompt"] = build_system_prompt(settings, messages)
         provider = str(settings.get("provider", "openai")).lower()
         messages = clean_messages(messages, settings)
         unsupported = None
@@ -1199,11 +1311,34 @@ def chat():
         log_event("provider.error", "The provider answered with an HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
         api_key = safe_stored_api_key(provider, settings)
         if exc.response is not None and exc.response.status_code in {429, 503}:
-            provider_label = {"openai": "OpenAI", "gemini": "Gemini", "anthropic": "Anthropic"}.get(provider, "The provider")
+            provider_label = PROVIDER_LABELS.get(provider, "The provider")
             return jsonify({"error": status_message(request_language(), "chat_busy", label=provider_label)}), 503
         fallback_detail = status_message(request_language(), "chat_provider_error")
         detail = redact_secrets(exc.response.text if exc.response is not None else fallback_detail, api_key=api_key)[:500]
         return jsonify({"error": status_message(request_language(), "chat_api_failed", detail=detail)}), 502
+    except PROVIDER_NETWORK_ERRORS as exc:
+        # requests timeouts and connection failures are OSError subclasses, so
+        # they must be reported here before the generic handler turns them into
+        # "could not process the message": the provider or the network failed.
+        log_event("provider.network_error", "Could not reach the provider", provider=provider, error=str(exc)[:300])
+        status = 504 if isinstance(exc, requests.Timeout) else 502
+        return jsonify({
+            "error": status_message(
+                request_language(),
+                "chat_network_failed",
+                label=PROVIDER_LABELS.get(provider, provider),
+            )
+        }), status
+    except ProviderEmptyResponse as exc:
+        log_event("provider.empty_response", "The provider returned no text", provider=provider, reason=exc.finish_reason)
+        return jsonify({
+            "error": status_message(
+                request_language(),
+                "chat_empty_response",
+                label=PROVIDER_LABELS.get(provider, provider),
+                reason=exc.finish_reason or "unknown",
+            )
+        }), 502
     except (KeyError, IndexError, RuntimeError, ValueError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
         log_event("chat.error", "Could not process the message", error=str(exc))
         return jsonify({"error": status_message(request_language(), "chat_failed")}), 500

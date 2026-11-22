@@ -4839,4 +4839,65 @@ body:not(.light-theme) .history-actions .history-action:hover:not(:disabled) {
 .message-action:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: 1px;
+/* Memory view: status cells, promoted entries and the nightly log. */
+.memory-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.memory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.memory-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.1);
+}
+.memory-stat small {
+  opacity: 0.72;
+}
+.memory-stat strong {
+  font-size: 1.05rem;
+  word-break: break-word;
+}
+.memory-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.memory-entry {
+  padding: 10px 12px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 10px;
+}
+.memory-entry-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.memory-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+.memory-entry-meta button {
+  margin-left: auto;
+}
+.memory-dreams {
+  max-height: 420px;
+  overflow: auto;
+  margin-top: 10px;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }

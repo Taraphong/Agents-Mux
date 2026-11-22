@@ -42,6 +42,10 @@ from werkzeug.serving import (
 
 load_dotenv()
 
+# Imported after load_dotenv(): the module resolves AI_WEB_MEMORY_* paths at
+# import time, so a value that exists only in .env must already be loaded.
+import memory_engine  # noqa: E402
+
 
 def env_int(name: str, default: int, minimum: int) -> int:
     """Read an integer environment variable, clamping invalid input to safe bounds."""
@@ -96,6 +100,10 @@ ASSET_GZIP_CACHE: dict[tuple[str, int, int], bytes] = {}
 ASSET_GZIP_LOCK = threading.Lock()
 ASSET_GZIP_CACHE_LIMIT = 8
 SKILLS_ROOT = Path(os.getenv("AI_WEB_SKILLS_DIR", "skills"))
+# The AI's own working folder: file tools resolve relative paths here and the
+# unrestricted shell starts here, so the agent works in one place instead of
+# the app's source tree. It is created on start and its files stay out of Git.
+WORKSPACE_ROOT = Path(os.getenv("AI_WEB_WORKSPACE_DIR", "workspace"))
 # CodeQL's py/path-injection query only honours a startswith() prefix check
 # inside the function that performs the file access, so these normalized roots
 # are used by the re-checks written next to those accesses.
@@ -119,7 +127,16 @@ SCHEDULE_RUNNING_LOCK = threading.Lock()
 _SCHEDULER_STARTED = False
 _SCHEDULER_START_LOCK = threading.Lock()
 _SCHEDULER_LOCK_HANDLE: Any = None
-PROTECTED_NAMES = {".env", ".app-settings.json", ".app-auth.json"}
+PROTECTED_NAMES = {
+    ".env",
+    ".app-settings.json",
+    ".app-auth.json",
+    ".app-memory.db",
+    ".app-memory.db-wal",
+    ".app-memory.db-shm",
+    "MEMORY.md",
+    "DREAMS.md",
+}
 PROTECTED_PARTS = {"history", ".venv", ".git", "__pycache__", "certs"}
 COMMAND_TIMEOUT_SECONDS = 60
 COMMAND_MAX_OUTPUT_BYTES = 100_000
@@ -157,7 +174,7 @@ if AUTH_TRUST_PROXY:
     # request.is_secure (and the Secure session cookie) reflects the client.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 TOOL_INSTRUCTIONS = """
-You have full tool access to this machine: absolute paths and ~/... reach anywhere on the machine, and run_command runs through a real shell (including sudo when the user running the app has permission), starting in the project folder.
+You have full tool access to this machine: absolute paths and ~/... reach anywhere on the machine, and run_command runs through a real shell (including sudo when the user running the app has permission), starting in the AI workspace folder (workspace/ inside the app folder). In list_files, read_file and write_file a relative path is also resolved inside that workspace, so put the files you create there.
 Every tool call pauses and waits for the user to approve it in the chat, and one approval covers a single request. Never assume approval or skip asking for it.
 Call format: <tool_call>{"name":"read_file","arguments":{"path":"/etc/hostname"}}</tool_call> or <tool_call>{"name":"list_files","arguments":{"path":"~"}}</tool_call>
 Use write_file to write files, run_command (the older name execute_command also works) to run commands, and list_files/read_file to explore the machine.
@@ -267,6 +284,7 @@ def log_event(event: str, message: str, **details: Any) -> None:
 load_persisted_logs()
 
 DEFAULT_SETTINGS = {
+    "memory": memory_engine.DEFAULT_MEMORY_SETTINGS.copy(),
     "agent_name": "Mux",
     "agent_role": "A versatile AI assistant",
     "response_language": "auto",
@@ -770,6 +788,10 @@ def resolve_project_path(raw_path: str, must_exist: bool = False) -> Path:
     relative_parts: list[str] = [] if relative_text == os.curdir else relative_text.split(os.sep)
     if any(part in PROTECTED_PARTS for part in relative_parts) or candidate.name in PROTECTED_NAMES:
         raise ValueError("Access to files or folders holding secrets is not allowed")
+    resolved_candidate = candidate.resolve()
+    for target in configured_secret_targets():
+        if resolved_candidate == target or target in resolved_candidate.parents:
+            raise ValueError("Access to files or folders holding secrets is not allowed")
     if must_exist and not candidate.exists():
         raise FileNotFoundError(f"Path not found: {raw_path}")
     return candidate
@@ -838,11 +860,52 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
     return candidate
 
 
+def workspace_directory() -> Path:
+    """Return the AI workspace folder, creating it on first use."""
+    root = Path(os.path.normpath(str(PROJECT_ROOT / WORKSPACE_ROOT)))
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def workspace_tool_path(raw_path: Any) -> Path:
+    """Resolve a tool path against the AI workspace instead of the app folder.
+
+    A relative path (or no path at all) belongs to the workspace, while an
+    absolute path or one starting with ~ still reaches the rest of the machine
+    when machine access is on.
+    """
+    text = "" if raw_path is None else str(raw_path).strip()
+    if not text or text in {".", "./"}:
+        return workspace_directory()
+    expanded = os.path.expanduser(text)
+    if os.path.isabs(expanded):
+        return Path(os.path.normpath(expanded))
+    return Path(os.path.normpath(os.path.join(str(workspace_directory()), expanded)))
+
+
+try:
+    workspace_directory()
+except OSError as exc:
+    LOGGER.warning("Could not create the AI workspace folder: %s", exc)
+
+
 def configured_secret_targets() -> list[Path]:
-    """Return the settings, auth, history and certificate paths in use."""
+    """Return the settings, auth, history, memory and certificate paths in use."""
     # ENV_FILE is included because .env itself can be a symlink: resolving the
     # write target would otherwise hide the protected name behind its target.
     targets = [SETTINGS_FILE, AUTH_FILE, HISTORY_ROOT, ENV_FILE]
+    # The memory paths can be moved with AI_WEB_MEMORY_*; the static names above
+    # would then miss them, so the configured locations are compared too.
+    targets.extend(
+        [
+            memory_engine.MEMORY_FILE,
+            memory_engine.DREAMS_FILE,
+            memory_engine.DATABASE_FILE,
+            Path(f"{memory_engine.DATABASE_FILE}-wal"),
+            Path(f"{memory_engine.DATABASE_FILE}-shm"),
+            memory_engine.MEMORY_DIR,
+        ]
+    )
     for name in ("AI_WEB_TLS_CERT", "AI_WEB_TLS_KEY"):
         value = os.getenv(name, "").strip()
         if value:
@@ -1084,10 +1147,11 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
     if name == "list_files":
         machine_access = machine_access_enabled()
+        requested_path = str(workspace_tool_path(arguments.get("path", ".")))
         if machine_access:
-            root = resolve_machine_path(arguments.get("path", "."), must_exist=True)
+            root = resolve_machine_path(requested_path, must_exist=True)
         else:
-            root = resolve_tool_path(arguments.get("path", "."), must_exist=True)
+            root = resolve_tool_path(requested_path, must_exist=True)
             root_text = os.path.normpath(str(root))
             if root_text == PROJECT_ROOT_TEXT:
                 root_text = PROJECT_ROOT_TEXT + os.sep
@@ -1116,10 +1180,15 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
 
     if name == "read_file":
         machine_access = machine_access_enabled()
+        if not str(arguments.get("path") or "").strip():
+            raise ValueError("A file path is required (relative paths resolve inside the workspace folder)")
+        requested_path = str(workspace_tool_path(arguments.get("path", "")))
         if machine_access:
-            path = resolve_tool_path(arguments.get("path", ""), must_exist=True)
+            # Same scope as list_files and write_file: any path on the machine,
+            # including a workspace folder configured outside the project.
+            path = resolve_machine_path(requested_path, must_exist=True)
         else:
-            path = resolve_project_path(arguments.get("path", ""), must_exist=True)
+            path = resolve_project_path(requested_path, must_exist=True)
             file_text = os.path.normpath(str(path))
             if not file_text.startswith(PROJECT_ROOT_TEXT + os.sep):
                 raise PermissionError("The path is outside the project folder and is not allowed")
@@ -1152,10 +1221,13 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         if not approved:
             raise PermissionError("Writing a file needs approval first")
         machine_access = machine_access_enabled()
+        if not str(arguments.get("path") or "").strip():
+            raise ValueError("A file path is required (relative paths resolve inside the workspace folder)")
+        requested_path = str(workspace_tool_path(arguments.get("path", "")))
         if machine_access:
-            path = resolve_machine_path(arguments.get("path", ""))
+            path = resolve_machine_path(requested_path)
         else:
-            path = resolve_tool_path(arguments.get("path", ""))
+            path = resolve_tool_path(requested_path)
             write_text = os.path.normpath(str(path))
             if not write_text.startswith(PROJECT_ROOT_TEXT + os.sep):
                 raise PermissionError("The path is outside the project folder and is not allowed")
@@ -1184,7 +1256,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             # A real shell with the app user's privileges: any binary, pipes,
             # sudo (when the user may run it without a password prompt), and
             # any path on the machine. The approval click is the boundary.
-            returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_shell_process(command, PROJECT_ROOT)
+            returncode, stdout, stderr, timed_out, truncated, duration_ms, launch_secrets = run_shell_process(command, workspace_directory())
             if timed_out:
                 returncode = 124
             secrets_found = secret_values(launch_secrets)
@@ -1798,6 +1870,20 @@ ALLOW_INSECURE_PROVIDER_HTTP = os.getenv("AI_WEB_ALLOW_INSECURE_PROVIDER_HTTP", 
 }
 
 
+def endpoint_is_loopback(url: str) -> bool:
+    """Return whether a URL points at this machine (where plain HTTP is fine)."""
+    try:
+        host = (urlsplit(url).hostname or "").strip().lower()
+    except ValueError:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def ensure_secure_model_endpoint(url: str) -> None:
     """Refuse a model request that would send the provider key over plain HTTP."""
     try:
@@ -1861,7 +1947,9 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
     """Fetch the available models for a provider, using its API key."""
     provider = normalize_provider(provider)
     key = get_api_key(provider, settings)
-    if not key:
+    # A local llama-server/Ollama serves /models without a key, matching the
+    # rule call_openai() and provider_readiness() use for the chat request.
+    if not key and not keyless_loopback_provider(provider, settings):
         raise RuntimeError("No API key is configured, so the model list cannot be fetched")
     if provider == "gemini":
         response = provider_models_get(
@@ -1893,7 +1981,7 @@ def list_models(provider: str, settings: dict[str, Any], timeout: float = 30) ->
     base_url = get_base_url(provider, settings)
     response = provider_models_get(
         f"{base_url}/models",
-        headers={"Authorization": f"Bearer {key}"},
+        headers={"Authorization": f"Bearer {key}"} if key else None,
         timeout=timeout,
     )
     models = response.json().get("data", [])
@@ -2081,6 +2169,14 @@ STATUS_MESSAGES = {
         "gemini_agents_invalid": "ข้อมูล Agents ไม่ถูกต้อง: ต้องระบุ agent และ input",
         "gemini_live_failed": "สร้าง Live API token ไม่สำเร็จ: {detail}",
         "gemini_request_failed": "เรียก Gemini API ไม่สำเร็จ: {detail}",
+        "memory_schedule_invalid": "รูปแบบ cron ของ Memory ไม่ถูกต้อง",
+        "memory_busy": "ระบบความจำกำลังทำงานอยู่ กรุณารอสักครู่",
+        "memory_run_failed": "รันระบบความจำไม่สำเร็จ: {error}",
+        "memory_not_found": "ไม่พบรายการความจำนี้",
+        "memory_forget_failed": "ลบรายการความจำไม่สำเร็จ",
+        "memory_pin_failed": "ตั้งหรือยกเลิก pin ไม่สำเร็จ",
+        "memory_pin_invalid": "ต้องระบุ pinned เป็น true หรือ false",
+        "memory_reindex_failed": "สร้างดัชนีความจำใหม่ไม่สำเร็จ: {error}",
         "invalid_body": "รูปแบบข้อมูลไม่ถูกต้อง: ต้องเป็น JSON object",
         "attachment_unsupported": "ไฟล์ {name} ({mime}) เป็นชนิดที่ผู้ให้บริการนี้ส่งไม่ได้ — ไฟล์เสียงและวิดีโอใช้ได้กับ Gemini ส่วน PDF ใช้ได้กับ Gemini หรือ Anthropic",
         "pairing_required": "อุปกรณ์นี้ยังไม่ได้จับคู่ — กรุณาใส่ Pairing Key",
@@ -2131,6 +2227,8 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} กำลังมีผู้ใช้หนาแน่นหรือถูกจำกัดอัตราการเรียก กรุณาลองใหม่อีกครั้ง หรือเลือกโมเดลอื่น",
         "chat_provider_error": "ผู้ให้บริการตอบกลับข้อผิดพลาด กรุณาตรวจสอบ API key และโมเดล",
         "chat_api_failed": "เรียก API ไม่สำเร็จ: {detail}",
+        "chat_network_failed": "ติดต่อ {label} ไม่สำเร็จ เพราะรอคำตอบนานเกินกำหนดหรือเครือข่ายไม่พร้อมใช้งาน (ลองใหม่ให้แล้ว 1 ครั้ง) กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง",
+        "chat_empty_response": "{label} ตอบกลับมาโดยไม่มีข้อความ (finishReason: {reason}) — โมเดลมักใช้โควตาคำตอบไปกับการคิดจนหมด ลองเพิ่ม Max tokens หรือลดระดับการคิด",
         "rate_limited": "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
     },
     "en": {
@@ -2149,6 +2247,14 @@ STATUS_MESSAGES = {
         "server_action_invalid": "Invalid server action",
         "server_script_missing": "start_web.sh was not found in the project folder",
         "server_busy": "A server control command is already running",
+        "memory_schedule_invalid": "The memory cron expression is invalid",
+        "memory_busy": "A memory consolidation run is already in progress",
+        "memory_run_failed": "The memory run failed: {error}",
+        "memory_not_found": "That memory entry does not exist",
+        "memory_forget_failed": "Could not forget that memory entry",
+        "memory_pin_failed": "Could not update the pin on that memory entry",
+        "memory_pin_invalid": "pinned must be true or false",
+        "memory_reindex_failed": "Could not rebuild the memory index: {error}",
         "server_action_failed": "Could not start the server control command: {error}",
         "gemini_key_missing": "No Gemini API key is configured — add one in Settings before using this feature",
         "gemini_capability_failed": "Could not check the Gemini key capabilities ({error})",
@@ -2206,6 +2312,8 @@ STATUS_MESSAGES = {
         "chat_busy": "{label} is busy or rate-limited; try again or choose another model",
         "chat_provider_error": "The provider returned an error; check the API key and the model",
         "chat_api_failed": "API request failed: {detail}",
+        "chat_network_failed": "Could not reach {label}: the request timed out or the network is unavailable (retried once). Check the connection and try again",
+        "chat_empty_response": "{label} returned no text (finishReason: {reason}); the model usually uses its whole output budget on thinking. Raise Max tokens or lower the thinking level",
         "rate_limited": "Too many requests; wait a moment and try again",
     },
 }
@@ -2368,6 +2476,17 @@ def provider_key_check(provider: str, settings: dict[str, Any], language: str = 
     return {**result, "cached": False}
 
 
+def keyless_loopback_provider(provider: str, settings: dict[str, Any]) -> bool:
+    """Whether a provider is a local endpoint that works without an API key.
+
+    ``call_openai()`` accepts a loopback endpoint with no key (llama-server,
+    Ollama), and Gemini and Anthropic always need one.
+    """
+    return provider not in {"gemini", "anthropic"} and endpoint_is_loopback(
+        get_base_url(provider, settings)
+    )
+
+
 def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[str, Any]:
     """Check locally, then remotely, whether the selected provider and model are usable."""
     provider = normalize_provider(settings.get("provider"))
@@ -2375,10 +2494,15 @@ def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[s
     label = PROVIDER_LABELS[provider]
     key = get_api_key(provider, settings)
     base = {"provider": provider, "model": model}
-    if not key:
+    keyless_local = keyless_loopback_provider(provider, settings)
+    if not key and not keyless_local:
         return {**base, "ready": False, "reason": status_message(language, "missing_key", label=label), "checked": "local"}
     if not model:
         return {**base, "ready": False, "reason": status_message(language, "missing_model", label=label), "checked": "local"}
+    if keyless_local and not key:
+        # A no-key local server is usable, and the request path already accepts
+        # it: without this the page disabled Send for a working setup.
+        return {**base, "ready": True, "reason": "", "checked": "local"}
     if not key_looks_plausible(key, provider, get_base_url(provider, settings)):
         return {**base, "ready": False, "reason": status_message(language, "invalid_key_shape", label=label), "checked": "local"}
     check = provider_key_check(provider, settings, language)
@@ -2628,6 +2752,53 @@ def attachment_payload(value: Any) -> dict[str, str] | None:
     return {"name": name, "mime_type": mime_type, "data": data}
 
 
+def memory_context_block(messages: list[dict[str, Any]], settings: dict[str, Any]) -> str:
+    """Return the memory block for the newest user turn, or an empty string."""
+    query = ""
+    for item in reversed(messages):
+        if not isinstance(item, dict) or item.get("role") != "user":
+            continue
+        content = item.get("content")
+        text = content if isinstance(content, str) else memory_engine.message_text(item)
+        if text.strip():
+            query = text
+            break
+    if not query:
+        return ""
+    try:
+        block, _ids = memory_engine.build_context(query, settings)
+    except Exception:
+        return ""
+    return block
+
+
+def build_system_prompt(
+    settings: dict[str, Any],
+    messages: list[dict[str, Any]],
+    *,
+    include_memory_review: bool = True,
+) -> str:
+    """Assemble the system prompt with the memory block before tool rules.
+
+    The block sits before the skill and tool instructions: a stored note must
+    never occupy the position the model treats as the strongest instruction.
+    """
+    memory_review = (
+        f"Memory review guidance:\n{settings.get('memory_review', '')}"
+        if include_memory_review and settings.get("memory_review")
+        else ""
+    )
+    parts = (
+        settings.get("system_prompt", ""),
+        agent_profile_prompt(settings),
+        memory_review,
+        memory_context_block(messages, settings),
+        selected_skill_prompt(settings),
+        TOOL_INSTRUCTIONS,
+    )
+    return "\n\n".join(part for part in parts if part)
+
+
 def clean_messages(messages: list[dict[str, Any]], settings: dict[str, Any]) -> list[dict[str, Any]]:
     """Keep text and validated inline attachments, then prepend the system prompt."""
     result: list[dict[str, Any]] = [{"role": "system", "content": settings.get("system_prompt", "")}] if settings.get("system_prompt") else []
@@ -2753,14 +2924,31 @@ def rejects_sampling_params(provider: str, model: str) -> bool:
     return bool(re.match(r"^(?:o[1-9](?:-|$)|gpt-5)", name))
 
 
+class ProviderEmptyResponse(RuntimeError):
+    """The provider answered without any text, so there is nothing to show.
+
+    Thinking models count their reasoning tokens against the output budget, so
+    a small Max tokens can end the answer before the first text token. That is
+    not an app failure and must not be reported as one.
+    """
+
+    def __init__(self, message: str, finish_reason: str = "") -> None:
+        super().__init__(message)
+        self.finish_reason = finish_reason
+
+
 def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
     """Send one chat completion request to an OpenAI-compatible endpoint."""
     key = get_api_key(settings["provider"], settings)
-    if not key:
-        raise RuntimeError("No API key is configured")
-
     base_url = get_base_url(settings["provider"], settings)
     ensure_secure_model_endpoint(f"{base_url}/chat/completions")
+    # A local model server (llama.cpp's llama-server, Ollama) usually needs no
+    # key. Only a loopback endpoint may run without one: a remote endpoint that
+    # silently accepted an empty key would fail anyway, and this keeps the rest
+    # of the app honest about needing credentials.
+    if not key and not endpoint_is_loopback(base_url):
+        raise RuntimeError("No API key is configured")
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
     model = str(settings["model"])
     reasoning_model = is_openai_reasoning_model(settings["provider"], model)
     payload: dict[str, Any] = {
@@ -2785,7 +2973,7 @@ def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
         payload["reasoning_effort"] = settings["thinking_level"]
     response = requests.post(
         f"{base_url}/chat/completions",
-        headers={"Authorization": f"Bearer {key}"},
+        headers=headers,
         json=payload,
         timeout=90,
         allow_redirects=False,
@@ -2794,7 +2982,16 @@ def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
         raise RuntimeError("The endpoint answered with a redirect; the API key is not forwarded across it")
     response.raise_for_status()
     data = response.json()
-    return data["choices"][0]["message"]["content"], normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens")
+    choice = data["choices"][0]
+    content = choice.get("message", {}).get("content")
+    if not str(content or "").strip():
+        # A reasoning model can spend its whole output budget before it writes
+        # text; a blank bubble would look like the app silently failed.
+        raise ProviderEmptyResponse(
+            f"OpenAI-compatible response contained no text (finishReason={choice.get('finish_reason')})",
+            str(choice.get("finish_reason") or ""),
+        )
+    return content, normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens")
 
 
 def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
@@ -2862,7 +3059,10 @@ def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
     )
     if not text:
         finish_reason = str(candidate.get("finishReason") or "unknown")
-        raise RuntimeError(f"Gemini response contained no text (finishReason={finish_reason})")
+        raise ProviderEmptyResponse(
+            f"Gemini response contained no text (finishReason={finish_reason})",
+            finish_reason,
+        )
     return text, normalize_usage(
         usage, "promptTokenCount", "candidatesTokenCount", "totalTokenCount"
     )
@@ -2953,18 +3153,39 @@ def call_anthropic(messages: list[dict[str, Any]], settings: dict[str, Any]) -> 
     if not text:
         # An end_turn response with no text block is valid for the API but
         # useless here: returning an empty string would surface a blank reply.
-        raise RuntimeError("Anthropic response contained no text block")
+        stop_reason = str(data.get("stop_reason") or "unknown")
+        raise ProviderEmptyResponse(
+            f"Anthropic response contained no text block (stop_reason={stop_reason})",
+            stop_reason,
+        )
     return text, normalize_usage(usage, "input_tokens", "output_tokens", None)
 
 
+# A timeout or a dropped connection means the provider or the network failed,
+# not the app: retry once and let the caller report it as such.
+PROVIDER_NETWORK_ERRORS = (
+    requests.Timeout,
+    requests.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+)
+
+
 def call_provider(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
-    """Dispatch one chat turn to the provider selected in settings."""
+    """Dispatch one chat turn, retrying once when the provider is unreachable."""
     provider = settings["provider"].lower()
-    if provider == "gemini":
-        return call_gemini(messages, settings)
-    if provider == "anthropic":
-        return call_anthropic(messages, settings)
-    return call_openai(messages, settings)
+    for attempt in range(2):
+        try:
+            if provider == "gemini":
+                return call_gemini(messages, settings)
+            if provider == "anthropic":
+                return call_anthropic(messages, settings)
+            return call_openai(messages, settings)
+        except PROVIDER_NETWORK_ERRORS as exc:
+            if attempt:
+                raise
+            # A stalled read or a dropped link usually clears on the next try.
+            log_event("provider.retry", "Retrying the provider after a network error", provider=provider, error=str(exc)[:200])
+            time.sleep(1)
 
 
 def get_discord_token(settings: dict[str, Any] | None = None) -> str:
@@ -3181,13 +3402,8 @@ def start_discord_bot() -> None:
             messages = list(context)
         try:
             settings_for_chat = load_settings()
-            settings_for_chat["system_prompt"] = "\n\n".join(
-                part for part in (
-                    settings_for_chat.get("system_prompt", ""),
-                    agent_profile_prompt(settings_for_chat),
-                    selected_skill_prompt(settings_for_chat),
-                    TOOL_INSTRUCTIONS,
-                ) if part
+            settings_for_chat["system_prompt"] = build_system_prompt(
+                settings_for_chat, messages, include_memory_review=False
             )
             messages = clean_messages(messages, settings_for_chat)
             fallback_used = ""
@@ -3797,14 +4013,17 @@ def reject_cross_site_mutation():
         log_event("security.cross_site", "Rejected a cross-site request", path=request.path, method=request.method, site=fetch_site)
         return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
     origin = request.headers.get("Origin", "").strip()
-    if not origin:
-        # Non-browser clients (curl, scripts) do not send Origin.
-        return None
-    parsed = urlsplit(origin)
-    if parsed.scheme in {"http", "https"} and parsed.netloc.lower() == request.host.lower():
-        return None
-    log_event("security.cross_origin", "Rejected a request from another origin", path=request.path, method=request.method)
-    return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
+    if origin:
+        parsed = urlsplit(origin)
+        if not (parsed.scheme in {"http", "https"} and parsed.netloc.lower() == request.host.lower()):
+            log_event("security.cross_origin", "Rejected a request from another origin", path=request.path, method=request.method)
+            return jsonify({"error": status_message(request_language(), "cross_origin")}), 403
+    # Only a request that will actually be served counts as the owner being
+    # active: recording it before these checks let rejected cross-site requests
+    # postpone the nightly memory run. An unpaired client is rejected below.
+    if not AUTH_ENABLED or current_auth_session():
+        memory_engine.touch_activity()
+    return None
 
 
 @app.errorhandler(413)
@@ -3946,7 +4165,7 @@ def apply_settings_update():
     body = request.get_json(silent=True) or {}
     current = load_settings()
     previous_provider = normalize_provider(current.get("provider"))
-    allowed = {"agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "gemini_live_model", "gemini_agent", "gemini_decision_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "machine_access"}
+    allowed = {"memory", "agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "gemini_live_model", "gemini_agent", "gemini_decision_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "machine_access"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -4005,7 +4224,6 @@ def apply_settings_update():
         except ValueError:
             return jsonify({"error": status_message(request_language(), "custom_key_name_invalid")}), 400
         custom_value = custom_key.get("value")
-        custom_value = custom_key.get("value")
         if isinstance(custom_value, str) and "\x00" in custom_value:
             return jsonify({"error": status_message(request_language(), "custom_key_nul")}), 400
         if isinstance(custom_value, str) and custom_value.strip() and custom_value.strip() != "••••••••":
@@ -4023,6 +4241,10 @@ def apply_settings_update():
             keys.pop(removed_name, None)
             current["custom_api_keys"] = keys
     current.pop("api_key", None)
+    try:
+        current["memory"] = memory_engine.normalize_settings(current.get("memory"))
+    except ValueError:
+        return jsonify({"error": status_message(request_language(), "memory_schedule_invalid")}), 400
     save_settings(current)
     STATUS_CACHE.clear()
     if current.get("discord_enabled"):
@@ -4512,6 +4734,7 @@ def auth_cli(argv: list[str]) -> bool:
 
 if os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower() in {"1", "true", "yes"}:
     start_scheduler()
+    memory_engine.start_scheduler()
 
 
 # Register the page blueprints only here, after the Flask app and every shared
@@ -4529,6 +4752,7 @@ if __name__ == "__main__":
     if auth_cli(sys.argv[1:]):
         raise SystemExit(0)
     start_scheduler()
+    memory_engine.start_scheduler()
     start_discord_bot()
     print_pairing_banner(bootstrap_pairing_key())
     port = int(os.getenv("PORT", "5000"))
