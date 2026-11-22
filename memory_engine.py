@@ -1880,15 +1880,11 @@ def pin(memory_id: str, pinned: bool) -> bool:
         else:
             return True
         # A write failure is a server error, not a missing entry: let the
-        # caller report memory_pin_failed.
-        MEMORY_FILE.write_text(
-            text[:start] + updated_line + text[end + len(" -->") :],
-            encoding="utf-8",
+        # caller report memory_pin_failed. Writing through the atomic helper
+        # keeps the old file intact when the replacement cannot be completed.
+        _atomic_write_memory(
+            text[:start] + updated_line + text[end + len(" -->") :]
         )
-        try:
-            os.chmod(MEMORY_FILE, 0o600)
-        except OSError:
-            pass
         return True
     finally:
         _RUN_LOCK.release()

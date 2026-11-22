@@ -149,6 +149,22 @@ def test_trim_does_not_protect_more_entries_than_the_cap_allows(engine):
     assert removed == [min(ids, key=ids.get)]
 
 
+def test_a_failed_pin_write_leaves_memory_intact(engine, monkeypatch):
+    memory_id = remember(engine, "candidate to pin")
+    original = engine.MEMORY_FILE.read_text(encoding="utf-8")
+
+    def failing_replace(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(engine.os, "replace", failing_replace)
+    with pytest.raises(OSError):
+        engine.pin(memory_id, True)
+
+    assert engine.MEMORY_FILE.read_text(encoding="utf-8") == original
+    assert by_id(engine)[memory_id]["pinned"] is False
+    assert not list(engine.MEMORY_FILE.parent.glob(".MEMORY.md.*.tmp"))
+
+
 def test_a_failed_trim_write_leaves_memory_intact(engine, monkeypatch):
     remember(engine, "kept one", score=0.1)
     remember(engine, "kept two", score=0.2)
