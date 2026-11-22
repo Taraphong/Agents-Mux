@@ -364,6 +364,10 @@ def memory_entry_pin(memory_id: str):
     """Pin or unpin one memory so the entry cap never evicts it."""
     language = request_language()
     body = request.get_json(silent=True) or {}
+    # A valid JSON array or number is truthy but has no .get(): treat it as an
+    # invalid payload instead of raising AttributeError and returning 500.
+    if not isinstance(body, dict):
+        body = {}
     pinned = body.get("pinned")
     if not isinstance(pinned, bool):
         return jsonify({"error": status_message(language, "memory_pin_invalid")}), 400

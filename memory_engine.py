@@ -1556,7 +1556,6 @@ def run(
                 )
             written_ids = {item["id"] for item in written}
             promoted = [item for item in promoted if item["id"] in written_ids]
-            stats["evicted"] = len(_trim_to_cap(int(config["max_entries"])))
         else:
             stats["promoted"] = len(promoted)
         # An empty answer means the model had nothing usable to say within its
@@ -1574,6 +1573,15 @@ def run(
         else:
             connection.execute("COMMIT")
             committed = True
+            # Trim only after the entries are durable. Evicting before COMMIT
+            # would lose the old entry for good when recovery rolls the run
+            # back and only removes the newly written entries.
+            stats["evicted"] = len(
+                _trim_to_cap(
+                    int(config["max_entries"]),
+                    protect={item["id"] for item in written},
+                )
+            )
             connection.execute("BEGIN")
             _set_meta(connection, "last_run_at", started)
             _set_meta(connection, "last_run_status", status)
@@ -1883,7 +1891,7 @@ def pin(memory_id: str, pinned: bool) -> bool:
         _RUN_LOCK.release()
 
 
-def _trim_to_cap(max_total: int) -> list[str]:
+def _trim_to_cap(max_total: int, protect: set[str] | None = None) -> list[str]:
     """Drop the oldest unpinned entries beyond the cap and return their ids.
 
     Called while a run holds _RUN_LOCK, so it never takes the lock itself.
@@ -1898,8 +1906,9 @@ def _trim_to_cap(max_total: int) -> list[str]:
     excess = len(items) - max_total
     if excess <= 0:
         return []
+    protected = protect or set()
     candidates = sorted(
-        (item for item in items if not item["pinned"]),
+        (item for item in items if not item["pinned"] and item["id"] not in protected),
         key=lambda item: (item["date"], item["score"], item["id"]),
     )
     if not candidates:

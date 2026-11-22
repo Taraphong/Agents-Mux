@@ -4,7 +4,9 @@ A pin lives in the entry's hidden marker, survives new promotions, and keeps
 an entry from being evicted when the file is trimmed to its cap.
 """
 
+import json
 import uuid
+from datetime import timedelta
 
 import pytest
 
@@ -26,6 +28,25 @@ def remember(engine, text, *, score=0.5):
 
 def by_id(engine):
     return {item["id"]: item for item in engine.entries()}
+
+
+def write_history(module, messages, *, age_minutes=90):
+    stamp_dt = module.now_local() - timedelta(minutes=age_minutes)
+    folder = module.HISTORY_ROOT / stamp_dt.strftime("%Y-%m-%d")
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = stamp_dt.isoformat(timespec="seconds")
+    record = {
+        "id": CONVERSATION_ID,
+        "title": "Test chat",
+        "created_at": stamp,
+        "updated_at": stamp,
+        "locked": False,
+        "pinned": False,
+        "messages": messages,
+    }
+    (folder / f"{stamp_dt.strftime('%H-%M-%S')}_{CONVERSATION_ID}.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
 
 
 def test_pin_sets_and_clears_the_marker(engine):
@@ -104,6 +125,41 @@ def test_pinned_entries_are_never_evicted_even_over_the_cap(engine):
     assert len(engine.entries()) == 2
 
 
+def test_trim_can_protect_the_entries_a_run_just_wrote(engine):
+    protected = remember(engine, "new low score entry", score=0.10)
+    remember(engine, "middle entry", score=0.30)
+    remember(engine, "highest entry", score=0.40)
+
+    removed = engine._trim_to_cap(2, protect={protected})
+
+    assert removed
+    assert protected not in removed
+    assert protected in by_id(engine)
+
+
+def test_a_failed_run_does_not_evict_an_old_memory(engine, monkeypatch):
+    old_ids = {remember(engine, f"old memory {index}", score=0.1 + index / 100)
+               for index in range(10)}
+    write_history(
+        engine,
+        [
+            {"role": "user", "content": "remember that the deploy key lives in the safe"},
+            {"role": "assistant", "content": "Noted."},
+        ],
+    )
+
+    def failing_dreams(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(engine, "write_dreams", failing_dreams)
+    with pytest.raises(OSError):
+        engine.run(settings={"memory": {"llm": False, "max_entries": 10}}, language="en")
+
+    # The run rolled back before the cap was applied, so every old entry stays.
+    remaining = by_id(engine)
+    assert set(remaining) == old_ids
+
+
 def test_max_entries_settings_are_normalised(engine):
     defaults = engine.normalize_settings({})
     assert defaults["max_entries"] == 200
@@ -131,6 +187,11 @@ def test_the_pin_route_toggles_and_validates(engine):
     with app_module.app.test_request_context(url, method="PUT", json={"pinned": "yes"}):
         _invalid, invalid_status = index_routes.memory_entry_pin(memory_id)
     assert invalid_status == 400
+
+    # A JSON array is truthy but not an object; it must be a 400, not a 500.
+    with app_module.app.test_request_context(url, method="PUT", json=["x"]):
+        _array, array_status = index_routes.memory_entry_pin(memory_id)
+    assert array_status == 400
 
     missing_id = str(uuid.uuid4())
     with app_module.app.test_request_context(
