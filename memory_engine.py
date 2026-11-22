@@ -393,7 +393,7 @@ def normalize_settings(raw: Any) -> dict[str, Any]:
 
     schedule = str(result.get("schedule") or DEFAULT_MEMORY_SETTINGS["schedule"]).strip()
     try:
-        from app import validate_cron
+        from core.schedule_store import validate_cron
 
         schedule = validate_cron(schedule)
     except ValueError:

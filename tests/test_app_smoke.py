@@ -17,10 +17,12 @@ def app_module(monkeypatch):
     return app
 
 
-def test_project_root_is_the_repository(app_module):
+def test_project_root_is_the_repository():
     from pathlib import Path
 
-    assert app_module.PROJECT_ROOT == Path(__file__).resolve().parents[1]
+    from core.config import PROJECT_ROOT
+
+    assert PROJECT_ROOT == Path(__file__).resolve().parents[1]
 
 
 def test_flask_app_exists(app_module):

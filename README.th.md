@@ -243,7 +243,10 @@ path แบบ relative ที่ส่งให้ `list_files`, `read_file`, `
 
 | Path | เนื้อหา | commit ไว้ |
 | --- | --- | --- |
-| `app.py` | เซิร์ฟเวอร์ Flask, API, เครื่องมือ, Scheduler, Discord bot | ใช่ |
+| `app.py` | จุดประกอบแอป Flask และ entrypoint (app, hooks, blueprints, เซิร์ฟเวอร์) | ใช่ |
+| `core/` | การตั้งค่า, ที่เก็บข้อมูล, provider, เครื่องมือ, TLS และตัวช่วยที่ใช้ร่วมกัน | ใช่ |
+| `services/` | Scheduler แบบ cron และ Discord bot (ถ้าเปิดใช้) | ใช่ |
+| `routes/` | Blueprint ของหน้าแชตและหน้าจับคู่ | ใช่ |
 | `memory_engine.py` | ระบบคัดกรองความจำเบื้องหลัง (Light/REM/Deep) | ใช่ |
 | `templates/index/` | HTML, CSS, JS ของหน้าแชต (chat, settings, schedule, logs, about) | ใช่ |
 | `templates/pair/` | HTML, CSS, JS ของหน้าจับคู่ | ใช่ |
