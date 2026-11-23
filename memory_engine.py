@@ -613,7 +613,14 @@ def ensure_storage() -> None:
                 )
             except sqlite3.DatabaseError as exc:
                 _VEC_STATE["ready"] = False
-                _VEC_STATE["error"] = str(exc)[:200]
+                # This reason is reported by /api/memory/status and the run
+                # result, so the sqlite message goes to the log only.
+                _log(
+                    "memory.vector",
+                    "Could not create the sqlite-vec table",
+                    error=_redact(str(exc))[:200],
+                )
+                _VEC_STATE["error"] = VECTOR_LOAD_ERROR
 
 
 def _get_meta(connection: sqlite3.Connection, key: str, default: str = "") -> str:
