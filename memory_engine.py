@@ -1096,12 +1096,16 @@ def _ask_model(
         return result, "" if result else "empty_model_answer"
     except Exception as exc:  # noqa: BLE001 - the run must survive a bad model
         message = _redact(str(exc))[:300]
+        _log("memory.llm", "Model summary failed", error=message)
         # Gemini and Anthropic raise on an answer with no text. That is the same
         # outcome as the OpenAI empty answer: the local heuristics covered the
         # run, so it is a skip, not a degraded night.
         if "contained no text" in message:
             return {}, "empty_model_answer"
-        return {}, message
+        # Only a category travels back: these stats are stored in the index and
+        # returned by /api/memory/run, and provider errors carry URLs, request
+        # ids and key fragments. The full message stays in the log above.
+        return {}, safe_llm_error(message)
 
 
 LLM_ERROR_KINDS = frozenset(
@@ -1531,7 +1535,8 @@ def run(
         rem, model_reply = rem_sleep(connection, config, settings or {}, run_id, language, stats)
         # Store only a category: provider errors can carry URLs and key fragments
         # and these stats are persisted and returned by the API.
-        stats["llm_error"] = safe_llm_error(stats.get("llm_error", ""))
+        llm_kind = str(stats.get("llm_error") or "")
+        stats["llm_error"] = llm_kind if llm_kind in LLM_ERROR_KINDS else safe_llm_error(llm_kind)
         stats["themes"] = list(
             dict.fromkeys(group["theme"][:40] for group in list(rem.values())[:5])
         )
