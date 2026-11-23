@@ -306,6 +306,8 @@ const I18N = {
       "บันทึกเป็น description ใน frontmatter ใช้ให้ Agent เลือก Skill ได้ตรงงาน",
     "settings.newSkillDescriptionPlaceholder":
       "บอกว่า Skill นี้ใช้เมื่อไร เช่น รีวิวโค้ดก่อน merge",
+    "settings.newSkillDescriptionRequired":
+      "กรอกคำอธิบาย Skill ก่อนสร้าง เพื่อให้ Agent เลือก Skill ได้ตรงงาน",
     "settings.newSkillContent": "เนื้อหา Skill",
     "settings.newSkillNamePlaceholder": "เช่น code-review",
     "settings.newSkillContentPlaceholder": "เขียนแนวทางการทำงานของ Skill",
@@ -939,6 +941,8 @@ const I18N = {
       "Saved as the frontmatter description so the agent can pick the right skill.",
     "settings.newSkillDescriptionPlaceholder":
       "Say when to use this skill, e.g. review code before merge",
+    "settings.newSkillDescriptionRequired":
+      "Add a skill description before creating it so the agent picks the right skill.",
     "settings.newSkillContent": "Skill content",
     "settings.newSkillNamePlaceholder": "e.g. code-review",
     "settings.newSkillContentPlaceholder": "Describe how the skill should work",
@@ -4678,6 +4682,11 @@ $("create-skill").addEventListener("click", async () => {
   const description = $("new-skill-description").value.trim();
   const content = $("new-skill-content").value.trim();
   if (!name || !content) return;
+  if (!description) {
+    showNotice(t("settings.newSkillDescriptionRequired"), true);
+    $("new-skill-description").focus();
+    return;
+  }
   const r = await fetch("/api/skills", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
