@@ -125,6 +125,9 @@ _MEMORY_MARKER_RE = re.compile(
 _RUN_LOCK = threading.Lock()
 _VEC_LOCK = threading.Lock()
 _VEC_STATE: dict[str, Any] = {"checked": False, "ready": False, "error": ""}
+# The probe reason is returned by /api/memory/status and /api/memory/run, so it
+# must not carry the sqlite error text (paths, versions); that goes to the log.
+VECTOR_LOAD_ERROR = "sqlite-vec could not be loaded"
 _LAST_ACTIVITY = time.time()
 _ACTIVITY_LOCK = threading.Lock()
 _SCHEDULER_STARTED = False
@@ -468,7 +471,12 @@ def _vec_state(connection: sqlite3.Connection) -> dict[str, Any]:
                     connection.load_extension(str(VEC_EXTENSION_FILE))
                     state["ready"] = True
                 except Exception as exc:  # noqa: BLE001 - capability probe
-                    state["error"] = str(exc)[:200]
+                    _log(
+                        "memory.vector",
+                        "Could not load the sqlite-vec extension",
+                        error=_redact(str(exc))[:200],
+                    )
+                    state["error"] = VECTOR_LOAD_ERROR
                 finally:
                     try:
                         connection.enable_load_extension(False)
@@ -484,7 +492,12 @@ def _vec_state(connection: sqlite3.Connection) -> dict[str, Any]:
         connection.load_extension(str(VEC_EXTENSION_FILE))
         return {"checked": True, "ready": True, "error": ""}
     except Exception as exc:  # noqa: BLE001 - a failed load disables vectors
-        return {"checked": True, "ready": False, "error": str(exc)[:200]}
+        _log(
+            "memory.vector",
+            "Could not load the sqlite-vec extension",
+            error=_redact(str(exc))[:200],
+        )
+        return {"checked": True, "ready": False, "error": VECTOR_LOAD_ERROR}
     finally:
         try:
             connection.enable_load_extension(False)
