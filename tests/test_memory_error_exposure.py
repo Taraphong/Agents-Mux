@@ -50,6 +50,34 @@ def test_vector_probe_keeps_the_sqlite_error_out_of_capabilities(engine, tmp_pat
     assert any("broken-vec0.so" in str(entry.get("details", {}).get("error", "")) for entry in logged)
 
 
+def test_vector_table_failure_logs_the_sqlite_error(engine, tmp_path, monkeypatch):
+    import core.log
+    from core.log import APP_LOGS
+
+    monkeypatch.setattr(core.log, "LOG_FILE", tmp_path / "app.log")
+    # Pretend the extension loaded so ensure_storage() tries the vec0 table;
+    # this test machine has no vec0 module, which raises a DatabaseError.
+    monkeypatch.setattr(
+        engine, "_vec_state", lambda _connection: {"checked": True, "ready": True, "error": ""}
+    )
+    # The fixture already built the schema; drop it so ensure_storage() runs the
+    # CREATE VIRTUAL TABLE branch that touches vec0 again.
+    engine.DATABASE_FILE.unlink(missing_ok=True)
+    engine._VEC_STATE.update({"checked": False, "ready": False, "error": ""})
+
+    engine.ensure_storage()
+
+    assert engine._VEC_STATE["ready"] is False
+    assert engine._VEC_STATE["error"] == engine.VECTOR_LOAD_ERROR
+    logged = [
+        entry
+        for entry in APP_LOGS
+        if entry.get("event") == "memory.vector"
+        and "sqlite-vec table" in str(entry.get("message", ""))
+    ]
+    assert logged and "vec0" in str(logged[-1].get("details", {}).get("error", ""))
+
+
 def test_model_summary_failure_returns_a_category_and_logs_the_detail(engine, tmp_path, monkeypatch):
     import core.log
     from core.log import APP_LOGS
