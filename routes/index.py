@@ -104,7 +104,13 @@ import os
 from pathlib import Path
 import re
 import requests
-from routes.shared import apply_settings_update, gemini_agent_answer, gemini_error_detail, models_response
+from routes.shared import (
+    apply_settings_update,
+    error_response,
+    gemini_agent_answer,
+    gemini_error_detail,
+    models_response,
+)
 from services.discord_bot import discord_status
 from services.scheduler import SCHEDULE_RUNNING, SCHEDULE_RUNNING_LOCK, execute_schedule
 import shlex
@@ -385,8 +391,14 @@ def memory_reindex_post():
         return jsonify(memory_engine.reindex())
     except RuntimeError:
         return jsonify({"error": status_message(language, "memory_busy")}), 409
-    except Exception as exc:  # noqa: BLE001 - surface the reason instead of a 500 page
-        return jsonify({"error": status_message(language, "memory_reindex_failed", error=redact_secrets(str(exc))[:200])}), 500
+    except Exception as exc:  # noqa: BLE001 - detail goes to the log, not the page
+        return error_response(
+            language,
+            "memory_reindex_failed",
+            exc=exc,
+            event="memory.error",
+            message="Memory index rebuild failed",
+        )
 
 
 @index_bp.get("/templates/<page>/<filename>")
@@ -1036,7 +1048,14 @@ def server_tls_update():
         try:
             update_env_file(values)
         except OSError as exc:
-            return jsonify({"ok": False, "error": status_message(language, "env_write_failed", error=str(exc))}), 500
+            return error_response(
+                language,
+                "env_write_failed",
+                exc=exc,
+                body={"ok": False},
+                event="system.tls_save_failed",
+                message="Could not write the TLS mode to .env",
+            )
         apply_tls_environment(values)
     log_event("system.tls_saved", "Saved the connection mode from the web page", mode=mode, kind=https_kind)
     return no_store(jsonify({
@@ -1080,7 +1099,14 @@ def server_action():
                     start_new_session=True,
                 )
         except OSError as exc:
-            return jsonify({"ok": False, "error": status_message(language, "server_action_failed", error=str(exc))}), 500
+            return error_response(
+                language,
+                "server_action_failed",
+                exc=exc,
+                body={"ok": False},
+                event="system.server_action_failed",
+                message="Could not start the server control command",
+            )
         SERVER_JOB.update({
             "process": child,
             "action": action,

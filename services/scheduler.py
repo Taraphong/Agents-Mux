@@ -18,7 +18,6 @@ from core.history import find_schedule_conversation_id, load_history_record, sav
 from core.log import log_event
 from core.prompts import agent_profile_prompt
 from core.providers import call_provider, clean_messages
-from core.redaction import redact_secrets
 from core.schedule_store import cron_matches, load_schedules, update_schedule
 from core.settings import load_settings
 from services.discord_bot import send_discord_schedule_result
@@ -76,7 +75,9 @@ def execute_schedule(job: dict[str, Any]) -> None:
         log_event("schedule.success", f"Scheduled job {job['name']} succeeded", job=job["id"], duration_ms=duration_ms)
     except Exception as exc:
         log_event("schedule.error", f"Scheduled job {job.get('name', job.get('id', ''))} failed", error=str(exc))
-        update_schedule(job["id"], last_status="failed", last_error=redact_secrets(str(exc))[:500], last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+        # The job list is returned by /api/schedules, so only the exception
+        # class is stored; the message stays in the log above.
+        update_schedule(job["id"], last_status="failed", last_error=exc.__class__.__name__[:60], last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
     finally:
         job_id = job.get("id") if isinstance(job, dict) else None
         if job_id:
@@ -113,7 +114,7 @@ def schedule_loop() -> None:
                                 SCHEDULE_RUNNING.discard(job_id)
                             raise
                     except (KeyError, TypeError, ValueError):
-                        update_schedule(job.get("id", ""), last_status="failed", last_error="invalid cron")
+                        update_schedule(job.get("id", ""), last_status="failed", last_error="invalid_cron")
             except OSError as exc:
                 log_event("schedule.error", "Could not read or save the scheduled jobs", error=str(exc))
         time.sleep(15)

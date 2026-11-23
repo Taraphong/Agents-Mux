@@ -11,6 +11,7 @@ from flask import jsonify, request
 
 import memory_engine
 
+from core.log import log_event
 from core.messages import request_language, status_message
 from core.model_cache import remember_model_names
 from core.providers import (
@@ -31,6 +32,37 @@ from core.settings import (
 )
 from core.skills import list_skills
 from services.discord_bot import start_discord_bot, stop_discord_bot
+
+
+def error_response(
+    language: str,
+    key: str,
+    *,
+    status: int = 500,
+    exc: BaseException | None = None,
+    body: dict[str, Any] | None = None,
+    event: str = "api.error",
+    message: str,
+    **details: Any,
+):
+    """Log the failure detail and return a generic, localized error body.
+
+    Internal exceptions belong in the log: their text can hold paths, request
+    ids and provider fragments the page must not see. ``message`` is the log
+    line, ``details`` become log fields, and ``body`` adds non-error response
+    fields such as ``{"ok": False}`` - it can never replace ``"error"``.
+
+    Policy: this helper covers failures of our own code. A provider response
+    that is already redacted and bounded (the Gemini endpoints and the settings
+    connection test) keeps its detail, because it is actionable copy for the
+    user rather than an internal trace.
+    """
+    if exc is not None:
+        details.setdefault("error", redact_secrets(str(exc))[:300])
+    if details:
+        log_event(event, message, **details)
+    payload: dict[str, Any] = {**(body or {}), "error": status_message(language, key)}
+    return jsonify(payload), status
 
 
 def models_response(provider: str, settings: dict[str, Any]):

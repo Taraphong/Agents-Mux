@@ -14,6 +14,20 @@ from core.config import SCHEDULE_FILE
 
 
 SCHEDULE_LOCK = threading.Lock()
+_ERROR_KIND_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,60}")
+
+
+def safe_error_kind(value: Any) -> str:
+    """Reduce a stored failure to a category that is safe to return.
+
+    ``last_error`` used to hold exception text, and the whole job list is
+    returned by /api/schedules. Only a bare identifier survives, so old files
+    that still contain a message report "error" instead of leaking it.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text if _ERROR_KIND_RE.fullmatch(text) else "error"
 
 
 def load_schedules() -> list[dict[str, Any]]:
@@ -22,9 +36,14 @@ def load_schedules() -> list[dict[str, Any]]:
         return []
     try:
         data = json.loads(SCHEDULE_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
     except (OSError, json.JSONDecodeError):
         return []
+    if not isinstance(data, list):
+        return []
+    for job in data:
+        if isinstance(job, dict) and "last_error" in job:
+            job["last_error"] = safe_error_kind(job["last_error"])
+    return data
 
 
 def save_schedules(jobs: list[dict[str, Any]]) -> None:
