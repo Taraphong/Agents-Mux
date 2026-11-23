@@ -830,7 +830,21 @@
                           placeholder="เช่น code-review"
                           data-i18n-placeholder="settings.newSkillNamePlaceholder"
                       /></label>
-                      <label
+                      <label class="full"
+                        ><span data-i18n="settings.newSkillDescription"
+                          >คำอธิบาย Skill</span
+                        ><textarea
+                          id="new-skill-description"
+                          rows="2"
+                          placeholder="บอกว่า Skill นี้ใช้เมื่อไร เช่น รีวิวโค้ดก่อน merge"
+                          data-i18n-placeholder="settings.newSkillDescriptionPlaceholder"
+                        ></textarea>
+                        <small class="hint" data-i18n="settings.newSkillDescriptionHint"
+                          >บันทึกเป็น description ใน frontmatter
+                          ใช้ให้ Agent เลือก Skill ได้ตรงงาน</small
+                        >
+                      </label>
+                      <label class="full"
                         ><span data-i18n="settings.newSkillContent"
                           >เนื้อหา Skill</span
                         ><textarea
