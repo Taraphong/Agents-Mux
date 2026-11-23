@@ -326,11 +326,13 @@ def memory_run_post():
     except RuntimeError as exc:
         if str(exc) == "memory_busy":
             return jsonify({"error": status_message(language, "memory_busy")}), 409
+        # The reason goes to the log only: an exception message can carry
+        # paths, request ids and key fragments that must not reach the page.
         log_event("memory.error", "Memory run failed", error=redact_secrets(str(exc))[:300])
-        return jsonify({"error": status_message(language, "memory_run_failed", error=redact_secrets(str(exc))[:200])}), 500
-    except Exception as exc:  # noqa: BLE001 - report the real reason to the page
+        return jsonify({"error": status_message(language, "memory_run_failed")}), 500
+    except Exception as exc:  # noqa: BLE001 - details go to the log, not the page
         log_event("memory.error", "Memory run failed", error=redact_secrets(str(exc))[:300])
-        return jsonify({"error": status_message(language, "memory_run_failed", error=redact_secrets(str(exc))[:200])}), 500
+        return jsonify({"error": status_message(language, "memory_run_failed")}), 500
 
 
 @index_bp.delete("/api/memory/entries/<memory_id>")
