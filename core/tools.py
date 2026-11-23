@@ -38,7 +38,6 @@ from core.config import (
     PROTECTED_PARTS,
     SENSITIVE_ENV_PARTS,
     SETTINGS_FILE,
-    SKILLS_ROOT_TEXT,
     TOOL_ALIASES,
     TOOL_MAX_READ_BYTES,
     TOOL_MAX_WRITE_BYTES,
@@ -60,7 +59,7 @@ from core.settings import (
     secret_values,
     stored_custom_api_keys,
 )
-from core.skills import skill_path
+from core.skills import save_skill, skill_path
 
 
 PENDING_TOOL_REQUESTS: dict[str, dict[str, Any]] = {}
@@ -355,24 +354,29 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
     if name == "create_skill":
         if not approved:
             raise PermissionError("Creating a skill needs approval first")
-        skill_name = arguments.get("name", "")
-        content = arguments.get("content", "")
-        if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
-            raise ValueError("The skill content is invalid or larger than allowed")
-        path = skill_path(skill_name)
-        skill_text = os.path.normpath(str(path))
-        if not skill_text.startswith(SKILLS_ROOT_TEXT + os.sep):
-            raise PermissionError("The skill path is outside the allowed folder")
-        path = Path(skill_text)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content.strip() + "\n", encoding="utf-8")
+        # The tool owns the layout: SKILL.md always gets a name/description
+        # frontmatter, and extra files may only go in scripts/, references/
+        # or assets/ so the folder stays the documented skill structure.
+        created = save_skill(
+            str(arguments.get("name", "")),
+            description=str(arguments.get("description", "")),
+            content=arguments.get("content", ""),
+            files=arguments.get("files"),
+        )
+        path = skill_path(created["name"])
         try:
             display_path = str(path.relative_to(PROJECT_ROOT))
         except ValueError:
             # AI_WEB_SKILLS_DIR may point outside the project; report it as is.
             display_path = str(path)
-        result = {"tool": name, "name": path.parent.name, "path": display_path}
-        log_event("tool.success", f"Created skill {path.parent.name}", tool=name, path=result["path"])
+        result = {
+            "tool": name,
+            "name": created["name"],
+            "path": display_path,
+            "description": created["description"],
+            "files": created["files"],
+        }
+        log_event("tool.success", f"Created skill {created['name']}", tool=name, path=result["path"])
         return result
     if name == "create_schedule":
         if not approved:

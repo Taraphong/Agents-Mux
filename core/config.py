@@ -99,7 +99,13 @@ Every tool call pauses and waits for the user to approve it in the chat, and one
 Call format: <tool_call>{"name":"read_file","arguments":{"path":"/etc/hostname"}}</tool_call> or <tool_call>{"name":"list_files","arguments":{"path":"~"}}</tool_call>
 Use write_file to write files, run_command (the older name execute_command also works) to run commands, and list_files/read_file to explore the machine.
 Known API keys and private keys in the results are redacted automatically.
-To create or improve a skill, use the create_skill tool with a .md file name and clear skill content; writes are limited to the skills folder.
+To create or improve a skill, use the create_skill tool; writes are limited to the skills folder. A skill is a folder with this layout (build only the optional folders the skill really needs):
+<name>/
+  SKILL.md      required: YAML frontmatter (name, description) plus the instructions
+  scripts/      optional runnable code
+  references/   optional documentation to read on demand
+  assets/       optional templates and images
+create_skill takes name, description (what the skill does and when to use it), content (the SKILL.md body) and files (optional object of relative path to text, e.g. {"scripts/fetch.py":"...","references/api.md":"...","assets/template.md":"..."}). The tool writes the frontmatter itself, so content starts with a title and includes "## Guidelines / Rules", "## Step-by-Step Workflow" (number the steps and name the scripts/ or references/ file each step needs) and "## Examples" with a correct input and output. Keep SKILL.md short and point at resource files instead of copying long material into it; read those files only when a step needs them.
 When the user explicitly asks to create or change a scheduled job/Cron, use create_schedule or update_schedule; create_schedule takes the arguments name, schedule (5-field Cron), prompt, model (optional), enabled (optional) and discord_channel_id (optional, a Discord Channel ID), while update_schedule takes job_id and the fields to change, using the server timezone.
 """.strip()
 TOOL_ALIASES = {"execute_command": "run_command"}
