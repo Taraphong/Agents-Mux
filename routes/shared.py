@@ -40,25 +40,29 @@ def error_response(
     *,
     status: int = 500,
     exc: BaseException | None = None,
-    extra: dict[str, Any] | None = None,
+    body: dict[str, Any] | None = None,
     event: str = "api.error",
-    message: str = "",
+    message: str,
     **details: Any,
 ):
     """Log the failure detail and return a generic, localized error body.
 
-    The page only ever sees the localized message for ``key``. Paths, provider
-    text and request ids from the exception stay in the diagnostic log, where
-    ``log_event`` redacts known secrets before writing.
+    Internal exceptions belong in the log: their text can hold paths, request
+    ids and provider fragments the page must not see. ``message`` is the log
+    line, ``details`` become log fields, and ``body`` adds non-error response
+    fields such as ``{"ok": False}`` - it can never replace ``"error"``.
+
+    Policy: this helper covers failures of our own code. A provider response
+    that is already redacted and bounded (the Gemini endpoints and the settings
+    connection test) keeps its detail, because it is actionable copy for the
+    user rather than an internal trace.
     """
     if exc is not None:
         details.setdefault("error", redact_secrets(str(exc))[:300])
     if details:
-        log_event(event, message or key, **details)
-    body: dict[str, Any] = {"error": status_message(language, key)}
-    if extra:
-        body.update(extra)
-    return jsonify(body), status
+        log_event(event, message, **details)
+    payload: dict[str, Any] = {**(body or {}), "error": status_message(language, key)}
+    return jsonify(payload), status
 
 
 def models_response(provider: str, settings: dict[str, Any]):

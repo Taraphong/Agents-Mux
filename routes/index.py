@@ -1052,7 +1052,7 @@ def server_tls_update():
                 language,
                 "env_write_failed",
                 exc=exc,
-                extra={"ok": False},
+                body={"ok": False},
                 event="system.tls_save_failed",
                 message="Could not write the TLS mode to .env",
             )
@@ -1103,7 +1103,7 @@ def server_action():
                 language,
                 "server_action_failed",
                 exc=exc,
-                extra={"ok": False},
+                body={"ok": False},
                 event="system.server_action_failed",
                 message="Could not start the server control command",
             )

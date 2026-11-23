@@ -16,24 +16,41 @@ ROUTES = Path(__file__).resolve().parents[1] / "routes"
 EXCEPTION_NAMES = {"exc", "err", "error"}
 
 
+def _is_exception_name(node: ast.AST) -> bool:
+    return isinstance(node, ast.Name) and node.id in EXCEPTION_NAMES
+
+
 def _is_exception_text(node: ast.AST) -> bool:
-    """Report ``str(exc)`` or an f-string that formats an exception variable."""
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "str"
-        and node.args
-        and isinstance(node.args[0], ast.Name)
-        and node.args[0].id in EXCEPTION_NAMES
-    ):
-        return True
+    """Report exception text built for a response, however it is formatted."""
+    if isinstance(node, ast.Call):
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in {"str", "repr"}:
+            return bool(node.args) and _is_exception_name(node.args[0])
+        if isinstance(func, ast.Name) and func.id == "format_exc":
+            return True
+        if isinstance(func, ast.Attribute) and func.attr == "format_exc":
+            return True
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "format"
+            and isinstance(func.value, ast.Constant)
+            and isinstance(func.value.value, str)
+        ):
+            return any(_is_exception_name(argument) for argument in node.args)
     if isinstance(node, ast.JoinedStr):
         return any(
             isinstance(value, ast.FormattedValue)
-            and isinstance(value.value, ast.Name)
-            and value.value.id in EXCEPTION_NAMES
+            and _is_exception_name(value.value)
             for value in node.values
         )
+    if (
+        isinstance(node, ast.BinOp)
+        and isinstance(node.op, ast.Mod)
+        and isinstance(node.left, ast.Constant)
+        and isinstance(node.left.value, str)
+        and "%" in node.left.value
+    ):
+        return _is_exception_name(node.right)
     return False
 
 
@@ -56,9 +73,23 @@ def _offending_lines(tree: ast.AST) -> list[int]:
     return lines
 
 
-def test_the_guard_detects_exception_text():
-    sample = ast.parse('jsonify({"error": str(exc)})\n')
-    assert _offending_lines(sample) == [1]
+@pytest.mark.parametrize(
+    "source",
+    [
+        'jsonify({"error": str(exc)})',
+        'jsonify({"error": repr(exc)})',
+        'jsonify({"error": f"{exc}"})',
+        'jsonify({"error": "%s" % exc})',
+        'jsonify({"error": "{}".format(exc)})',
+        'jsonify({"error": traceback.format_exc()})',
+    ],
+)
+def test_the_guard_detects_exception_text(source):
+    assert _offending_lines(ast.parse(source)) == [1]
+
+
+def test_the_guard_allows_a_response_without_exception_text():
+    assert _offending_lines(ast.parse('jsonify({"ok": True, "error": "missing"})')) == []
 
 
 def test_routes_never_put_exception_text_in_a_response():
@@ -101,6 +132,28 @@ def _logged_errors(event: str) -> list[str]:
     ]
 
 
+def test_error_response_cannot_be_talked_into_leaking_the_error():
+    from flask import Flask
+
+    from core.messages import status_message
+    from routes.shared import error_response
+
+    app = Flask(__name__)
+    with app.test_request_context("/"):
+        response, status = error_response(
+            "en",
+            "server_busy",
+            message="test",
+            body={"ok": False, "error": "leaked detail"},
+        )
+
+    assert status == 500
+    assert response.get_json() == {
+        "ok": False,
+        "error": status_message("en", "server_busy"),
+    }
+
+
 def test_memory_reindex_failure_is_generic(client, monkeypatch):
     import memory_engine
 
@@ -113,8 +166,8 @@ def test_memory_reindex_failure_is_generic(client, monkeypatch):
     body = response.get_json()
 
     assert response.status_code == 500
+    assert body["error"] == "Could not rebuild the memory index; check the system log"
     assert MARKER not in response.get_data(as_text=True)
-    assert "log" in body["error"].lower()
     assert any(MARKER in error for error in _logged_errors("memory.error"))
 
 
@@ -131,6 +184,7 @@ def test_tls_env_write_failure_is_generic(client, monkeypatch):
 
     assert response.status_code == 500
     assert body["ok"] is False
+    assert body["error"] == "Could not write the .env file; check the system log"
     assert MARKER not in response.get_data(as_text=True)
     assert any(MARKER in error for error in _logged_errors("system.tls_save_failed"))
 
@@ -149,6 +203,7 @@ def test_server_action_failure_is_generic(client, tmp_path, monkeypatch):
 
     assert response.status_code == 500
     assert body["ok"] is False
+    assert body["error"] == "Could not start the server control command; check the system log"
     assert MARKER not in response.get_data(as_text=True)
     assert any(
         MARKER in error for error in _logged_errors("system.server_action_failed")
