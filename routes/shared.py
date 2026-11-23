@@ -11,6 +11,7 @@ from flask import jsonify, request
 
 import memory_engine
 
+from core.log import log_event
 from core.messages import request_language, status_message
 from core.model_cache import remember_model_names
 from core.providers import (
@@ -31,6 +32,33 @@ from core.settings import (
 )
 from core.skills import list_skills
 from services.discord_bot import start_discord_bot, stop_discord_bot
+
+
+def error_response(
+    language: str,
+    key: str,
+    *,
+    status: int = 500,
+    exc: BaseException | None = None,
+    extra: dict[str, Any] | None = None,
+    event: str = "api.error",
+    message: str = "",
+    **details: Any,
+):
+    """Log the failure detail and return a generic, localized error body.
+
+    The page only ever sees the localized message for ``key``. Paths, provider
+    text and request ids from the exception stay in the diagnostic log, where
+    ``log_event`` redacts known secrets before writing.
+    """
+    if exc is not None:
+        details.setdefault("error", redact_secrets(str(exc))[:300])
+    if details:
+        log_event(event, message or key, **details)
+    body: dict[str, Any] = {"error": status_message(language, key)}
+    if extra:
+        body.update(extra)
+    return jsonify(body), status
 
 
 def models_response(provider: str, settings: dict[str, Any]):
