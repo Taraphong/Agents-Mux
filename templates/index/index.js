@@ -2592,7 +2592,7 @@ $("chat-form").addEventListener("submit", async (event) => {
           );
           return;
         }
-        await sendChatMessage(result.prompt, result.skills);
+        await sendChatMessage(result.prompt, result.skills, submittedInput);
       } else if (clearSubmittedInput()) {
         $("input").focus();
       }
@@ -2613,7 +2613,85 @@ function resizeInput() {
   el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   el.style.overflowY = "auto";
 }
+// Prompt recall with ArrowUp/ArrowDown, kept per chat. Each conversation has
+// its own list, seeded from its saved user messages so recall still works after
+// reopening it from history.
+const PROMPT_HISTORY_LIMIT = 100;
+const promptHistories = new Map();
+let promptHistoryKey = null;
+let promptHistoryOffset = 0;
+let promptHistoryDraft = "";
+function promptHistoryKeyForCurrentChat() {
+  return conversationId ? `chat:${conversationId}` : `session:${chatSessionToken}`;
+}
+function resetPromptHistoryCursor() {
+  promptHistoryOffset = 0;
+  promptHistoryDraft = "";
+}
+function trimPromptHistory(entries) {
+  if (entries.length > PROMPT_HISTORY_LIMIT)
+    entries.splice(0, entries.length - PROMPT_HISTORY_LIMIT);
+  return entries;
+}
+function promptHistoryEntries() {
+  const key = promptHistoryKeyForCurrentChat();
+  if (key !== promptHistoryKey) {
+    promptHistoryKey = key;
+    resetPromptHistoryCursor();
+    if (!promptHistories.has(key)) promptHistories.set(key, []);
+  }
+  return promptHistories.get(key);
+}
+function rememberPrompt(text) {
+  const value = String(text ?? "").trim();
+  if (!value) return;
+  const entries = promptHistoryEntries();
+  if (entries[entries.length - 1] !== value) entries.push(value);
+  trimPromptHistory(entries);
+  resetPromptHistoryCursor();
+}
+function seedPromptHistory(recordMessages) {
+  const entries = trimPromptHistory(
+    (Array.isArray(recordMessages) ? recordMessages : [])
+      .filter((message) => message.role === "user" && !message.tool_result)
+      .map((message) => String(message.content ?? "").trim())
+      .filter(Boolean),
+  );
+  promptHistoryKey = promptHistoryKeyForCurrentChat();
+  promptHistories.set(promptHistoryKey, entries);
+  resetPromptHistoryCursor();
+}
+// direction 1 walks back to older prompts, -1 walks forward to the draft.
+function recallPromptHistory(direction) {
+  const input = $("input");
+  const entries = promptHistoryEntries();
+  if (!entries.length) return false;
+  const value = input.value;
+  const caret = input.selectionStart ?? value.length;
+  if (promptHistoryOffset === 0) {
+    if (direction < 0) return false;
+    // Start recalling only from the first line so the arrows still move the
+    // caret inside a multi-line draft.
+    if (value.slice(0, caret).includes("\n")) return false;
+    promptHistoryDraft = value;
+  } else if (direction < 0) {
+    if (value.slice(input.selectionEnd ?? caret).includes("\n")) return false;
+  }
+  const next = Math.min(
+    Math.max(promptHistoryOffset + direction, 0),
+    entries.length,
+  );
+  if (next === promptHistoryOffset) return false;
+  promptHistoryOffset = next;
+  input.value = next === 0 ? promptHistoryDraft : entries[entries.length - next];
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
+  resizeInput();
+  updateSendState();
+  return true;
+}
 $("input").addEventListener("input", () => {
+  resetPromptHistoryCursor();
   resizeInput();
   updateSlashMenu();
   updateSendState();
@@ -2647,6 +2725,22 @@ $("input").addEventListener("keydown", (event) => {
       } else {
         applySlashSuggestion();
       }
+      return;
+    }
+  }
+  if (
+    !event.isComposing &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  ) {
+    if (event.key === "ArrowUp" && recallPromptHistory(1)) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "ArrowDown" && recallPromptHistory(-1)) {
+      event.preventDefault();
       return;
     }
   }
@@ -3000,7 +3094,11 @@ function attachmentProviderUnsupported() {
     ? null
     : pendingAttachment;
 }
-async function sendChatMessage(content, requestedSkills = null) {
+async function sendChatMessage(
+  content,
+  requestedSkills = null,
+  historyEntry = null,
+) {
   const toolResult = pendingToolResult;
   pendingToolResult = false;
   const blockedAttachment = attachmentProviderUnsupported();
@@ -3082,6 +3180,8 @@ async function sendChatMessage(content, requestedSkills = null) {
     targetConversationId = savedConversation.id;
     targetGeneration =
       savedConversation.generation || conversationGeneration || null;
+    // Recorded only once the turn is saved, so a failed send is not recalled.
+    rememberPrompt(historyEntry ?? content);
     $("input").value = "";
     clearAttachment();
     resizeInput();
@@ -4880,6 +4980,7 @@ async function openConversation(id) {
     stampApprovalDeadline(message, record.server_time),
   );
   persistedMessageCount = recordMessages.length;
+  seedPromptHistory(recordMessages);
   const pending = pendingHistoryAppends.get(id)?.messages || [];
   if (pending.length) {
     const savedIds = new Set(
