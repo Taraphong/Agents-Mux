@@ -469,6 +469,9 @@ const I18N = {
       "ใช้เครื่องมือไม่สำเร็จ: {message} (คำขออนุมัตินี้ถูกใช้แล้ว กรุณาส่งข้อความใหม่)",
     "tool.retry": "ลองอีกครั้ง ({message})",
     "tool.resultPrefix": "ผลการใช้เครื่องมือ:",
+    "tool.resultChip": "ใช้ {name} แล้ว",
+    "tool.resultChipUnknown": "เครื่องมือของ Agent",
+    "tool.resultDetails": "ดูผลลัพธ์เครื่องมือ",
     "attachment.tooLarge": "ไฟล์ใหญ่เกิน 1 MB",
     "attachment.binaryTooLarge": "ไฟล์ใหญ่เกิน 6 MB",
     "attachment.readFailed": "อ่านไฟล์ไม่สำเร็จ",
@@ -1088,7 +1091,7 @@ const I18N = {
     "page.schedule": "Scheduled jobs",
     "page.logs": "System logs",
     "page.about": "About",
-    "usage.duration": "Took {duration}s",
+    "usage.duration": "{duration}s",
     "usage.unknownDuration": "unknown duration",
     "usage.unknownTokens": "unknown tokens",
     "usage.summary": "Took {duration} · {tokens}",
@@ -1103,6 +1106,9 @@ const I18N = {
       "The tool failed: {message} (this approval was already used, please send a new message)",
     "tool.retry": "Try again ({message})",
     "tool.resultPrefix": "Tool result:",
+    "tool.resultChip": "Used {name}",
+    "tool.resultChipUnknown": "an agent tool",
+    "tool.resultDetails": "Show the tool output",
     "attachment.tooLarge": "File is larger than 1 MB",
     "attachment.binaryTooLarge": "File is larger than 6 MB",
     "attachment.readFailed": "Could not read the file",
@@ -1364,7 +1370,7 @@ let availableSkills = [];
 let pendingSkill = null;
 // Set right before submitting an approved tool result, so the saved turn can be
 // marked as machine output instead of guessing from its first words.
-let pendingToolResult = false;
+let pendingToolResult = null;
 let chatBusy = false;
 let chatSessionToken = 0;
 let slashMatches = [];
@@ -2078,7 +2084,25 @@ function addMessage(role, content, meta = null, messageIndex = null) {
   const text = document.createElement("div");
   text.className = "message-text";
   text.textContent = content;
+  if (role === "user" && meta?.tool_result) {
+    // An approved tool result is context for the model, not a prompt the user
+    // typed: show a short card instead of a wall of JSON.
+    text.classList.add("message-tool");
+    text.textContent = t("tool.resultChip", {
+      name: meta.tool_name || t("tool.resultChipUnknown"),
+    });
+  }
   el.appendChild(text);
+  if (role === "user" && meta?.tool_result) {
+    const details = document.createElement("details");
+    details.className = "message-tool-detail";
+    const summary = document.createElement("summary");
+    summary.textContent = t("tool.resultDetails");
+    const output = document.createElement("pre");
+    output.textContent = content;
+    details.append(summary, output);
+    el.appendChild(details);
+  }
   if (role === "user" && meta?.attachment?.name) {
     const attachment = document.createElement("small");
     attachment.className = "message-attachment";
@@ -2368,11 +2392,22 @@ async function approveToolRequest(event) {
       // Another chat was opened while the tool ran: leave its composer alone.
       return;
     }
-    $("input").value =
+    const resultText =
       `${t("tool.resultPrefix")}\n${JSON.stringify(data.result, null, 2)}`;
-    resizeInput();
-    pendingToolResult = true;
-    $("chat-form").requestSubmit();
+    if (chatBusy) {
+      // Another turn is still running: keep the result in the composer so it is
+      // not lost, and remember that the next send carries it.
+      $("input").value = resultText;
+      resizeInput();
+      updateSendState();
+      pendingToolResult = { name: request.name };
+      return;
+    }
+    // Send the output directly instead of parking the raw JSON in the composer:
+    // the turn becomes a compact tool card, and the server continues the task
+    // from it instead of starting a new conversation.
+    pendingToolResult = { name: request.name };
+    await sendChatMessage(resultText);
   } catch (error) {
     if (meta) delete meta.approval_running;
     button.disabled = Boolean(error.fatal);
@@ -3002,7 +3037,7 @@ function attachmentProviderUnsupported() {
 }
 async function sendChatMessage(content, requestedSkills = null) {
   const toolResult = pendingToolResult;
-  pendingToolResult = false;
+  pendingToolResult = null;
   const blockedAttachment = attachmentProviderUnsupported();
   if (blockedAttachment) {
     showNotice(
@@ -3054,7 +3089,10 @@ async function sendChatMessage(content, requestedSkills = null) {
       ? [pendingSkill]
       : null;
   if (appliedSkill) userMessage.skill = appliedSkill;
-  if (toolResult) userMessage.tool_result = true;
+  if (toolResult) {
+    userMessage.tool_result = true;
+    userMessage.tool_name = toolResult.name || "";
+  }
   messages.push(userMessage);
   addMessage("user", userMessage.content, userMessage, messages.length - 1);
   addTypingIndicator();

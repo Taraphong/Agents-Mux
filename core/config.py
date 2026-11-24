@@ -97,6 +97,8 @@ TOOL_INSTRUCTIONS = """
 You have full tool access to this machine: absolute paths and ~/... reach anywhere on the machine, and run_command runs through a real shell (including sudo when the user running the app has permission), starting in the AI workspace folder (workspace/ inside the app folder). In list_files, read_file and write_file a relative path is also resolved inside that workspace, so put the files you create there.
 Every tool call pauses and waits for the user to approve it in the chat, and one approval covers a single request. Never assume approval or skip asking for it.
 Call format: <tool_call>{"name":"read_file","arguments":{"path":"/etc/hostname"}}</tool_call> or <tool_call>{"name":"list_files","arguments":{"path":"~"}}</tool_call>
+Run a shell command: <tool_call>{"name":"run_command","arguments":{"command":"curl -s https://example.org"}}</tool_call> and write a file: <tool_call>{"name":"write_file","arguments":{"path":"notes.md","content":"..."}}</tool_call>
+Every call is one JSON object with a "name" and an "arguments" object, and the block must end with </tool_call>. A bare {"command":"..."} is not a tool call.
 Use write_file to write files, run_command (the older name execute_command also works) to run commands, and list_files/read_file to explore the machine.
 Known API keys and private keys in the results are redacted automatically.
 To create or improve a skill, use the create_skill tool; writes are limited to the skills folder. A skill is a folder with this layout (build only the optional folders the skill really needs):
@@ -110,6 +112,15 @@ When the user explicitly asks to create or change a scheduled job/Cron, use crea
 """.strip()
 TOOL_ALIASES = {"execute_command": "run_command"}
 TOOL_CALL_BLOCK_PATTERN = re.compile(r"<tool_call>.*?</tool_call>", re.DOTALL)
+# A reply that was meant to be a tool call but cannot be parsed is retried once
+# with this instruction, instead of being shown to the user as raw JSON.
+TOOL_CALL_REPAIR_INSTRUCTION = (
+    "Your previous reply was meant to be a tool call, but it could not be read: "
+    "the block must be one complete JSON object with a \"name\" and an \"arguments\" object, "
+    "and it must end with </tool_call>, like "
+    "<tool_call>{\"name\":\"run_command\",\"arguments\":{\"command\":\"curl -s https://example.org\"}}</tool_call>. "
+    "Send the same request again as exactly one corrected tool call and nothing else."
+)
 # Defaults for the background memory engine. They live here so core.settings can
 # build its defaults without importing memory_engine, which imports core.log.
 DEFAULT_MEMORY_SETTINGS = {

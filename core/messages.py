@@ -93,6 +93,8 @@ STATUS_MESSAGES = {
         "chat_api_failed": "เรียก API ไม่สำเร็จ: {detail}",
         "chat_network_failed": "ติดต่อ {label} ไม่สำเร็จ เพราะรอคำตอบนานเกินกำหนดหรือเครือข่ายไม่พร้อมใช้งาน (ลองใหม่ให้แล้ว 1 ครั้ง) กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง",
         "chat_empty_response": "{label} ตอบกลับมาโดยไม่มีข้อความ (finishReason: {reason}) — โมเดลมักใช้โควตาคำตอบไปกับการคิดจนหมด ลองเพิ่ม Max tokens หรือลดระดับการคิด",
+        "tool_call_unreadable": "โมเดลส่ง tool call มาในรูปแบบที่อ่านไม่ได้ (JSON ไม่สมบูรณ์ หรือไม่มีชื่อเครื่องมือ) จึงยังไม่ได้รันคำสั่ง — ลองส่งข้อความเดิมอีกครั้ง หรือเปลี่ยนไปใช้โมเดลที่เก่งขึ้น",
+        "chat_reply_cut": "⚠️ คำตอบนี้อาจไม่ครบ: โมเดลหยุดเขียนก่อนจบ (finishReason: {reason}) — ส่งคำถามเดิมอีกครั้ง หรือเปลี่ยนโมเดล",
         "rate_limited": "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
     },
     "en": {
@@ -178,6 +180,8 @@ STATUS_MESSAGES = {
         "chat_api_failed": "API request failed: {detail}",
         "chat_network_failed": "Could not reach {label}: the request timed out or the network is unavailable (retried once). Check the connection and try again",
         "chat_empty_response": "{label} returned no text (finishReason: {reason}); the model usually uses its whole output budget on thinking. Raise Max tokens or lower the thinking level",
+        "tool_call_unreadable": "The model sent a tool call that could not be read (incomplete JSON or no tool name), so nothing was run. Send the message again or switch to a stronger model",
+        "chat_reply_cut": "⚠️ This answer may be incomplete: the model stopped before it finished (finishReason: {reason}). Send the message again or switch models",
         "rate_limited": "Too many requests; wait a moment and try again",
     },
 }

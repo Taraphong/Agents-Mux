@@ -21,6 +21,7 @@ from core.config import (
     SETTINGS_FILE,
     TEMPLATES_ROOT,
     TOOL_ALIASES,
+    TOOL_CALL_REPAIR_INSTRUCTION,
     TOOL_MAX_WRITE_BYTES,
 )
 from core.env import env_int
@@ -40,6 +41,7 @@ from core.messages import normalize_language, request_language, status_message
 from core.model_cache import MODEL_LIST_ERROR_LOGGED, forget_model_names
 from core.prompts import build_system_prompt
 from core.providers import (
+    CUT_FINISH_REASONS,
     GEMINI_DECISION_MODEL,
     GEMINI_DEFAULT_AGENT,
     GEMINI_LIVE_FALLBACK_MODEL,
@@ -80,10 +82,12 @@ from core.tls import (
 from core.tools import (
     approval_required_tools,
     consume_tool_approval,
+    has_tool_marker,
     machine_access_enabled,
     parse_tool_requests,
     request_tool_approval,
     run_local_tool,
+    strip_tool_markers,
 )
 from core.update_job import (
     UPDATE_JOB,
@@ -1196,6 +1200,37 @@ def update_run():
     return jsonify({"ok": True, "mode": mode, "pid": new_process.pid}), 202
 
 
+TOOL_RESULT_CONTINUATION = (
+    "The user approved the tool `{name}` and it has already run. Its output follows.\n\n"
+    "{output}\n\n"
+    "Continue the answer you were giving in plain text: do not greet the user again, do not ask "
+    "what they need, and never show a tool_call or raw JSON unless it is the answer."
+)
+
+
+def prepare_tool_result_turns(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Wrap an approved tool result so the model continues instead of restarting.
+
+    The page sends the tool output as a user turn after an approval, which read
+    like a brand new question: the model greeted the user and began again. The
+    turn keeps its content for the page and the history, but the provider sees a
+    tool-result continuation instead.
+    """
+    prepared: list[dict[str, Any]] = []
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        if item.get("tool_result"):
+            name = str(item.get("tool_name") or "a tool")[:60]
+            prepared.append({
+                "role": item.get("role", "user"),
+                "content": TOOL_RESULT_CONTINUATION.format(name=name, output=str(item.get("content") or "")),
+            })
+            continue
+        prepared.append(item)
+    return prepared
+
+
 @index_bp.post("/api/chat")
 def chat():
     """Answer one chat turn, retrying once with the configured fallback."""
@@ -1234,6 +1269,8 @@ def chat():
             command_mode = "ask"
         settings["system_prompt"] = build_system_prompt(settings, messages)
         provider = str(settings.get("provider", "openai")).lower()
+        # Must run before clean_messages(), which keeps only role and content.
+        messages = prepare_tool_result_turns(messages)
         messages = clean_messages(messages, settings)
         unsupported = None
         if normalize_provider(provider) in {"openai", "hf", "or", "groq"}:
@@ -1281,13 +1318,27 @@ def chat():
             settings["model"] = fallback_model
             answer, usage = call_provider(messages, settings)
             fallback_used = fallback_model
+        repaired = False
         for _ in range(6):
             try:
                 tool_requests = parse_tool_requests(answer)
             except ValueError as exc:
-                log_event("tool.parse_failed", "Skipped an incomplete tool_call", error=str(exc))
+                log_event("tool.parse_failed", "Skipped an unreadable tool_call", error=str(exc))
                 tool_requests = []
             if not tool_requests:
+                # A marker with a broken payload (bad JSON, wrong shape, or a
+                # reply cut off mid-call) used to end up on screen as raw text.
+                # Ask the model once to resend the same call in the documented
+                # format before giving up on the turn.
+                if not repaired and has_tool_marker(answer):
+                    repaired = True
+                    log_event("tool.repair_requested", "Asked the model to resend an unreadable tool_call")
+                    messages.extend([
+                        {"role": "assistant", "content": answer},
+                        {"role": "user", "content": TOOL_CALL_REPAIR_INSTRUCTION},
+                    ])
+                    answer, usage = call_provider(messages, settings)
+                    continue
                 break
             # Refresh required-tool set using both policy observations
             # so machine access enabled during call_provider includes
@@ -1335,9 +1386,28 @@ def chat():
                 {"role": "user", "content": f"Tool results:\n{json.dumps(results, ensure_ascii=False)}\n\nAnswer the user in plain text, describing the name and purpose of each detected Skill. Never show a tool_call or JSON."},
             ])
             answer, usage = call_provider(messages, settings)
+        if has_tool_marker(answer):
+            # Nothing usable came out of the tool protocol in this turn: never
+            # show the raw block (it carries a command and can carry a key).
+            # Text around the block is still delivered; a reply that was only
+            # the unreadable call becomes a clear reason instead.
+            answer = strip_tool_markers(answer)
+            if not answer:
+                log_event("tool.unreadable", "The final answer was only an unreadable tool_call", provider=provider)
+                return jsonify({"error": status_message(request_language(), "tool_call_unreadable")}), 502
+        # A provider can stop before the reply is complete (token budget, a
+        # safety or recitation block). The partial text is still delivered, but
+        # it must never look like a finished answer.
+        finish_reason = str((usage or {}).get("finish_reason") or "").strip()
+        if finish_reason.upper() in CUT_FINISH_REASONS:
+            log_event("chat.reply_cut", "The provider stopped the reply early", provider=provider, reason=finish_reason)
+            answer = f"{answer}\n\n{status_message(request_language(), 'chat_reply_cut', reason=finish_reason)}"
         duration_ms = round((time.perf_counter() - started_at) * 1000)
         log_event("chat.success", "Replied successfully", provider=provider, model=settings["model"], duration_ms=duration_ms)
-        return jsonify({"answer": answer, "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
+        # The model can echo a key it was given (a skill that embeds one, for
+        # example), so what reaches the page - and the saved history - is
+        # redacted here as well as in tool output.
+        return jsonify({"answer": redact_secrets(answer), "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
         log_event("provider.error", "The provider answered with an HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
         api_key = safe_stored_api_key(provider, settings)
