@@ -41,6 +41,7 @@ from core.messages import normalize_language, request_language, status_message
 from core.model_cache import MODEL_LIST_ERROR_LOGGED, forget_model_names
 from core.prompts import build_system_prompt
 from core.providers import (
+    CUT_FINISH_REASONS,
     GEMINI_DECISION_MODEL,
     GEMINI_DEFAULT_AGENT,
     GEMINI_LIVE_FALLBACK_MODEL,
@@ -1361,6 +1362,13 @@ def chat():
             if not answer:
                 log_event("tool.unreadable", "The final answer was only an unreadable tool_call", provider=provider)
                 return jsonify({"error": status_message(request_language(), "tool_call_unreadable")}), 502
+        # A provider can stop before the reply is complete (token budget, a
+        # safety or recitation block). The partial text is still delivered, but
+        # it must never look like a finished answer.
+        finish_reason = str((usage or {}).get("finish_reason") or "").strip()
+        if finish_reason.upper() in CUT_FINISH_REASONS:
+            log_event("chat.reply_cut", "The provider stopped the reply early", provider=provider, reason=finish_reason)
+            answer = f"{answer}\n\n{status_message(request_language(), 'chat_reply_cut', reason=finish_reason)}"
         duration_ms = round((time.perf_counter() - started_at) * 1000)
         log_event("chat.success", "Replied successfully", provider=provider, model=settings["model"], duration_ms=duration_ms)
         # The model can echo a key it was given (a skill that embeds one, for

@@ -745,6 +745,53 @@ def anthropic_content(message: dict[str, Any]) -> Any:
     return blocks
 
 
+# Finish reasons that mean the provider stopped before the reply was complete.
+# The partial text is still worth showing, but the user has to know it was cut.
+CUT_FINISH_REASONS = {
+    "MAX_TOKENS",
+    "LENGTH",
+    "SAFETY",
+    "RECITATION",
+    "BLOCKLIST",
+    "PROHIBITED_CONTENT",
+    "SPII",
+    "MALFORMED_FUNCTION_CALL",
+    "IMAGE_SAFETY",
+    "CONTENT_FILTER",
+    "OTHER",
+}
+
+
+def gemini_text_parts(content_parts: list[Any]) -> str:
+    """Join every text part of a Gemini candidate.
+
+    Gemini can split one reply across several parts, so reading only the first
+    text part returns a fragment that ends mid-sentence. Thought parts are
+    skipped because they are not the answer.
+    """
+    return "".join(
+        str(part.get("text") or "")
+        for part in content_parts
+        if isinstance(part, dict) and part.get("text") and not part.get("thought")
+    )
+
+
+def usage_with_finish_reason(
+    usage: dict[str, Any] | None, finish_reason: Any
+) -> dict[str, Any] | None:
+    """Attach the provider's stop reason so a cut reply can be flagged.
+
+    The reason travels inside the usage object the chat response already
+    carries, so the provider signatures and every caller stay unchanged.
+    """
+    reason = str(finish_reason or "").strip()
+    if not reason:
+        return usage
+    result = dict(usage) if isinstance(usage, dict) else {}
+    result["finish_reason"] = reason
+    return result
+
+
 def normalize_usage(usage: dict[str, Any] | None, input_key: str, output_key: str, total_key: str | None) -> dict[str, int] | None:
     """Map provider-specific usage fields to the fields shown in the UI."""
     if not isinstance(usage, dict):
@@ -862,7 +909,10 @@ def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
             f"OpenAI-compatible response contained no text (finishReason={choice.get('finish_reason')})",
             str(choice.get("finish_reason") or ""),
         )
-    return content, normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens")
+    return content, usage_with_finish_reason(
+        normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens"),
+        choice.get("finish_reason"),
+    )
 
 
 def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, int] | None]:
@@ -918,24 +968,19 @@ def call_gemini(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
     candidates = data.get("candidates") or []
     candidate = candidates[0] if candidates else {}
     content_parts = (candidate.get("content") or {}).get("parts") or []
-    # A blocked or truncated candidate can come back without a text part; read
-    # the first text block instead of assuming parts[0]["text"] exists.
-    text = next(
-        (
-            str(part.get("text") or "")
-            for part in content_parts
-            if isinstance(part, dict) and part.get("text")
-        ),
-        "",
-    )
+    # A blocked or truncated candidate can come back without a text part, and a
+    # complete reply can arrive split across several parts: join all of them
+    # instead of keeping only the first fragment.
+    text = gemini_text_parts(content_parts)
     if not text:
         finish_reason = str(candidate.get("finishReason") or "unknown")
         raise ProviderEmptyResponse(
             f"Gemini response contained no text (finishReason={finish_reason})",
             finish_reason,
         )
-    return text, normalize_usage(
-        usage, "promptTokenCount", "candidatesTokenCount", "totalTokenCount"
+    return text, usage_with_finish_reason(
+        normalize_usage(usage, "promptTokenCount", "candidatesTokenCount", "totalTokenCount"),
+        candidate.get("finishReason"),
     )
 
 
@@ -1012,14 +1057,12 @@ def call_anthropic(messages: list[dict[str, Any]], settings: dict[str, Any]) -> 
     data = response.json()
     usage = data.get("usage", {})
     # With thinking enabled the first content block is a thinking block, so
-    # read the first text block instead of assuming content[0] is the answer.
-    text = next(
-        (
-            block.get("text", "")
-            for block in data.get("content", [])
-            if isinstance(block, dict) and block.get("type") == "text"
-        ),
-        "",
+    # keep every text block (not content[0]) and join them: one answer can be
+    # split across several blocks.
+    text = "".join(
+        str(block.get("text") or "")
+        for block in data.get("content", [])
+        if isinstance(block, dict) and block.get("type") == "text"
     )
     if not text:
         # An end_turn response with no text block is valid for the API but
@@ -1029,7 +1072,10 @@ def call_anthropic(messages: list[dict[str, Any]], settings: dict[str, Any]) -> 
             f"Anthropic response contained no text block (stop_reason={stop_reason})",
             stop_reason,
         )
-    return text, normalize_usage(usage, "input_tokens", "output_tokens", None)
+    return text, usage_with_finish_reason(
+        normalize_usage(usage, "input_tokens", "output_tokens", None),
+        data.get("stop_reason"),
+    )
 # A timeout or a dropped connection means the provider or the network failed,
 # not the app: retry once and let the caller report it as such.
 PROVIDER_NETWORK_ERRORS = (
