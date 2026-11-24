@@ -301,6 +301,13 @@ const I18N = {
     "settings.skills": "Skills ที่ใช้กับ Agent",
     "settings.skillsHint": "เลือกได้หลายสกิล ระบบจะส่งเนื้อหาไปเป็นแนวทางให้ Agent",
     "settings.newSkillName": "ชื่อ Skill ใหม่",
+    "settings.newSkillDescription": "คำอธิบาย Skill",
+    "settings.newSkillDescriptionHint":
+      "บันทึกเป็น description ใน frontmatter ใช้ให้ Agent เลือก Skill ได้ตรงงาน",
+    "settings.newSkillDescriptionPlaceholder":
+      "บอกว่า Skill นี้ใช้เมื่อไร เช่น รีวิวโค้ดก่อน merge",
+    "settings.newSkillDescriptionRequired":
+      "กรอกคำอธิบาย Skill ก่อนสร้าง เพื่อให้ Agent เลือก Skill ได้ตรงงาน",
     "settings.newSkillContent": "เนื้อหา Skill",
     "settings.newSkillNamePlaceholder": "เช่น code-review",
     "settings.newSkillContentPlaceholder": "เขียนแนวทางการทำงานของ Skill",
@@ -929,6 +936,13 @@ const I18N = {
     "settings.skills": "Skills used by the agent",
     "settings.skillsHint": "Select multiple skills. Their content will guide the agent.",
     "settings.newSkillName": "New skill name",
+    "settings.newSkillDescription": "Skill description",
+    "settings.newSkillDescriptionHint":
+      "Saved as the frontmatter description so the agent can pick the right skill.",
+    "settings.newSkillDescriptionPlaceholder":
+      "Say when to use this skill, e.g. review code before merge",
+    "settings.newSkillDescriptionRequired":
+      "Add a skill description before creating it so the agent picks the right skill.",
     "settings.newSkillContent": "Skill content",
     "settings.newSkillNamePlaceholder": "e.g. code-review",
     "settings.newSkillContentPlaceholder": "Describe how the skill should work",
@@ -4665,12 +4679,18 @@ loadUpdateState().then(() => {
 });
 $("create-skill").addEventListener("click", async () => {
   const name = $("new-skill-name").value.trim();
+  const description = $("new-skill-description").value.trim();
   const content = $("new-skill-content").value.trim();
   if (!name || !content) return;
+  if (!description) {
+    showNotice(t("settings.newSkillDescriptionRequired"), true);
+    $("new-skill-description").focus();
+    return;
+  }
   const r = await fetch("/api/skills", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, content }),
+    body: JSON.stringify({ name, description, content }),
   });
   if (!r.ok) {
     const data = await r.json();
@@ -4678,6 +4698,7 @@ $("create-skill").addEventListener("click", async () => {
     return;
   }
   $("new-skill-name").value = "";
+  $("new-skill-description").value = "";
   $("new-skill-content").value = "";
   await loadSettings();
   showNotice(t("settings.createSkillDone"));
@@ -4689,6 +4710,7 @@ $("skills").addEventListener("change", async () => {
   if (!response.ok) return;
   const data = await response.json();
   $("new-skill-name").value = data.name;
+  $("new-skill-description").value = data.description || "";
   $("new-skill-content").value = data.content;
 });
 $("update-skill").addEventListener("click", async () => {
@@ -4697,7 +4719,10 @@ $("update-skill").addEventListener("click", async () => {
   const response = await fetch(`/api/skills/${encodeURIComponent(name)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: $("new-skill-content").value }),
+    body: JSON.stringify({
+      description: $("new-skill-description").value,
+      content: $("new-skill-content").value,
+    }),
   });
   if (response.ok) showNotice(t("settings.skillSaved"));
 });
@@ -4716,6 +4741,7 @@ $("delete-skill").addEventListener("click", async () => {
   if (response.ok) {
     await loadSettings();
     $("new-skill-name").value = "";
+    $("new-skill-description").value = "";
     $("new-skill-content").value = "";
     showNotice(t("settings.skillDeleted"));
   }

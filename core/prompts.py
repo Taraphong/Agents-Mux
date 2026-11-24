@@ -10,7 +10,7 @@ from typing import Any
 import memory_engine
 
 from core.config import TOOL_INSTRUCTIONS
-from core.skills import selected_skill_prompt
+from core.skills import skills_prompt
 
 
 def memory_context_block(messages: list[dict[str, Any]], settings: dict[str, Any]) -> str:
@@ -67,7 +67,7 @@ def build_system_prompt(
         agent_profile_prompt(settings),
         memory_review,
         memory_context_block(messages, settings),
-        selected_skill_prompt(settings),
+        skills_prompt(settings),
         TOOL_INSTRUCTIONS,
     )
     return "\n\n".join(part for part in parts if part)

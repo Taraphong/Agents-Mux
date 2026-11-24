@@ -10,7 +10,7 @@
 - **ผู้ให้บริการ 6 ราย** ผ่านหน้าแชตเดียว: OpenAI (หรือ API ที่เข้ากันได้กับ OpenAI), Google Gemini, Anthropic, Hugging Face, OpenRouter และ Groq
 - **เลือก model และระดับการคิดต่อข้อความ** (`off`, `low`, `medium`, `high`) พร้อม fallback provider/model ที่ลองซ้ำให้หนึ่งครั้ง
 - **ไฟล์แนบ**: ไฟล์ข้อความและโค้ดขนาดไม่เกิน 1 MB อ่านในเบราว์เซอร์ ส่วนรูปภาพและ PDF ขนาดไม่เกิน 6 MB ส่งแบบ inline และไฟล์เสียง/วิดีโอใช้ได้กับ Gemini
-- **Skill**: ไฟล์คำสั่งใน `skills/` ที่เลือกใช้ใน Settings หรือใช้กับข้อความเดียวด้วย `/`
+- **Skill**: โฟลเดอร์ใน `skills/` ที่มี `SKILL.md` (frontmatter YAML พร้อมแนวทาง ขั้นตอนทำงาน และตัวอย่าง) และโฟลเดอร์เสริม `scripts/`, `references/`, `assets/` ตามที่จำเป็น เลือกใช้ใน Settings หรือใช้กับข้อความเดียวด้วย `/`
 - **การจับคู่อุปกรณ์**: หน้าเว็บป้องกันด้วย Pairing Key ที่ใช้ได้ครั้งเดียว และ session ของอุปกรณ์ที่ยกเลิกได้
 - **ประวัติการสนทนา** แยกตามวัน/เวลา เปลี่ยนชื่อ ปักหมุด ล็อก/ปลดล็อก และลบได้
 - **เครื่องมือบนเครื่อง**: โมเดลสามารถ list/read/write ไฟล์ และรันคำสั่ง shell บนเซิร์ฟเวอร์ โดยต้องอนุมัติทุกครั้ง
@@ -160,7 +160,7 @@ path แบบ relative ที่ส่งให้ `list_files`, `read_file`, `
 | `read_file` | อ่านไฟล์ได้สูงสุด 200 KB |
 | `write_file` | เขียนไฟล์ได้สูงสุด 200 KB |
 | `run_command` | รันคำสั่ง shell (จำกัด 60 วินาที ผลลัพธ์ 100 KB) |
-| `create_skill` | สร้าง Skill ใน `skills/` |
+| `create_skill` | สร้างโฟลเดอร์ Skill ใน `skills/`: `SKILL.md` พร้อม frontmatter ชื่อ/คำอธิบาย และไฟล์ใน `scripts/`, `references/`, `assets/` ตามที่ระบุ |
 | `create_schedule`, `update_schedule` | สร้างหรือแก้งานตามเวลาแบบ cron |
 
 ทุกครั้งที่เรียก — รวมถึงการอ่านไฟล์ — ต้องอนุมัติในแชต การอนุมัติใช้ได้ครั้งเดียว ผูกกับชื่อเครื่องมือและ arguments ตรงตัว และมีอายุ 15 นาที API key, token และ PEM private key ที่ระบบรู้จักจะถูกปิดบังในผลลัพธ์
@@ -250,7 +250,7 @@ path แบบ relative ที่ส่งให้ `list_files`, `read_file`, `
 | `memory_engine.py` | ระบบคัดกรองความจำเบื้องหลัง (Light/REM/Deep) | ใช่ |
 | `templates/index/` | HTML, CSS, JS ของหน้าแชต (chat, settings, schedule, logs, about) | ใช่ |
 | `templates/pair/` | HTML, CSS, JS ของหน้าจับคู่ | ใช่ |
-| `skills/` | Skill หนึ่งไฟล์ `<name>/SKILL.md` ต่อหนึ่ง Skill | ใช่ (ยกเว้น Skill ที่คุณเพิ่มเอง) |
+| `skills/` | Skill หนึ่งโฟลเดอร์ต่อหนึ่ง Skill: `SKILL.md` และ `scripts/`, `references/`, `assets/` ตามที่จำเป็น | ใช่ (ยกเว้น Skill ที่คุณเพิ่มเอง) |
 | `install.sh`, `start_web.sh`, `update.sh` | ตัวติดตั้ง ตัวควบคุมโปรเซส และตัวอัปเดต | ใช่ |
 | `.env` | API key และการตั้งค่าตอนรัน | ไม่ |
 | `.app-settings.json` | ค่าที่บันทึกจากหน้าเว็บ | ไม่ |

@@ -69,7 +69,7 @@ from core.settings import (
     stored_api_keys,
     stored_custom_api_keys,
 )
-from core.skills import list_skills, skill_path
+from core.skills import list_skills, read_skill, save_skill, skill_path
 from core.tls import (
     TLS_ENV_LOCK,
     apply_tls_environment,
@@ -449,24 +449,25 @@ def settings_get():
     safe["discord_token"] = "••••••••" if discord_token else ""
     safe["has_discord_token"] = bool(discord_token)
     safe["discord_status"] = discord_status()
-    safe["available_skills"] = [{"name": item["name"]} for item in list_skills()]
+    safe["available_skills"] = [
+        {"name": item["name"], "description": item["description"]} for item in list_skills()
+    ]
     return jsonify(safe)
 
 
 @index_bp.get("/api/skills")
 def skills_get():
-    """List the available skills with their content."""
+    """List the available skills: metadata and resource files, not bodies."""
     return jsonify({"items": list_skills()})
 
 
 @index_bp.get("/api/skills/<name>")
 def skill_get(name: str):
-    """Return one skill's content by name."""
+    """Return one skill's SKILL.md content and its resource files by name."""
     try:
-        path = skill_path(name)
-        if not path.exists():
-            return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
-        return jsonify({"name": path.parent.name, "content": path.read_text(encoding="utf-8")[:20_000]})
+        return jsonify(read_skill(name))
+    except FileNotFoundError:
+        return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
     except (OSError, ValueError):
         return jsonify({"error": status_message(request_language(), "skill_read_failed")}), 400
 
@@ -476,7 +477,16 @@ def skills_create():
     """Create a new skill from the settings UI payload."""
     body = request.get_json(silent=True) or {}
     try:
-        result = run_local_tool("create_skill", {"name": body.get("name", ""), "content": body.get("content", "")}, approved=True)
+        result = run_local_tool(
+            "create_skill",
+            {
+                "name": body.get("name", ""),
+                "description": body.get("description", ""),
+                "content": body.get("content", ""),
+                "files": body.get("files"),
+            },
+            approved=True,
+        )
         return jsonify(result), 201
     except (OSError, PermissionError, ValueError):
         return jsonify({"error": status_message(request_language(), "skill_create_failed")}), 400
@@ -484,7 +494,7 @@ def skills_create():
 
 @index_bp.put("/api/skills/<name>")
 def skills_update(name: str):
-    """Replace the content of an existing skill."""
+    """Replace one skill's SKILL.md, keeping its frontmatter valid."""
     body = request.get_json(silent=True) or {}
     content = body.get("content", "")
     if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > TOOL_MAX_WRITE_BYTES:
@@ -493,8 +503,10 @@ def skills_update(name: str):
         path = skill_path(name)
         if not path.exists():
             return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
-        path.write_text(content.strip() + "\n", encoding="utf-8")
-        return jsonify({"ok": True, "name": path.parent.name})
+        # A null description stays None on purpose: save_skill() then keeps the
+        # description already in the document instead of writing "None".
+        saved = save_skill(name, description=body.get("description", ""), content=content)
+        return jsonify({"ok": True, "name": saved["name"], "description": saved["description"]})
     except (OSError, ValueError):
         return jsonify({"error": status_message(request_language(), "skill_save_failed")}), 400
 

@@ -11,7 +11,7 @@ Self-hosted AI chat that runs on Termux (Android), Linux, or macOS and is used t
 - **Six providers** behind one chat page: OpenAI (or any OpenAI-compatible API), Google Gemini, Anthropic, Hugging Face, OpenRouter, and Groq.
 - **Per-message model and thinking level** (`off`, `low`, `medium`, `high`), plus an optional fallback provider/model that is retried once.
 - **Attachments**: text and code files up to 1 MB are read in the browser; images and PDFs up to 6 MB travel inline; audio and video work with Gemini.
-- **Skills**: instruction files under `skills/` that are applied in Settings or for a single message with `/`.
+- **Skills**: folders under `skills/` with a `SKILL.md` (YAML frontmatter plus guidelines, workflow and examples) and optional `scripts/`, `references/` and `assets/`, applied in Settings or for a single message with `/`.
 - **Pairing**: the page is protected by single-use Pairing Keys and revocable device sessions.
 - **Conversation history** organized by date, with rename, pin, lock/unlock, and delete.
 - **Local tools**: the model can list, read, and write files and run shell commands on the server, with one approval per call.
@@ -161,7 +161,7 @@ With **Machine access** on (the default) the model can use these tools anywhere 
 | `read_file` | Read up to 200 KB of a file |
 | `write_file` | Write up to 200 KB to a file |
 | `run_command` | Run a shell command (60-second timeout, 100 KB output cap) |
-| `create_skill` | Create a skill under `skills/` |
+| `create_skill` | Create a skill folder under `skills/`: `SKILL.md` with a name/description frontmatter and optional `scripts/`, `references/` and `assets/` files |
 | `create_schedule`, `update_schedule` | Create or change cron-style jobs |
 
 Every call — reads included — needs a single-use approval in the chat, bound to the exact tool name and arguments and valid for 15 minutes. Known API keys, tokens, and PEM private keys are redacted from tool output.
@@ -251,7 +251,7 @@ The app can terminate HTTPS itself; `openssl` is the only requirement.
 | `memory_engine.py` | Background memory consolidation (Light/REM/Deep) | yes |
 | `templates/index/` | Chat page HTML, CSS, JS (chat, settings, schedule, logs, about) | yes |
 | `templates/pair/` | Pairing page HTML, CSS, JS | yes |
-| `skills/` | Skills, one `<name>/SKILL.md` per skill | yes (unless you add your own) |
+| `skills/` | Skills, one folder per skill: `SKILL.md` plus optional `scripts/`, `references/` and `assets/` | yes (unless you add your own) |
 | `install.sh`, `start_web.sh`, `update.sh` | Installer, process control, updater | yes |
 | `.env` | Provider keys and runtime configuration | no |
 | `.app-settings.json` | Settings saved from the page | no |
