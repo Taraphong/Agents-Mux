@@ -1088,7 +1088,7 @@ const I18N = {
     "page.schedule": "Scheduled jobs",
     "page.logs": "System logs",
     "page.about": "About",
-    "usage.duration": "Took {duration}s",
+    "usage.duration": "{duration}s",
     "usage.unknownDuration": "unknown duration",
     "usage.unknownTokens": "unknown tokens",
     "usage.summary": "Took {duration} · {tokens}",

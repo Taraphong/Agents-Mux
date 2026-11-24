@@ -53,7 +53,9 @@ def redact_command_output(text: str, secrets_found: list[str]) -> str:
     # mask_unterminated_pem walks the BEGIN/END markers instead of running a
     # DOTALL regex over the whole capture, so large output cannot go quadratic.
     return mask_unterminated_pem(text)
-SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
+# OpenWeather calls carry the key as `appid=`, and a model that saw such a URL
+# can echo it, so the parameter is masked like the other key names.
+SECRET_QUERY_PATTERN = re.compile(r"([?&](?:key|api_key|api-key|appid|token|access_token)=)[^&\s\"'<>]+", re.IGNORECASE)
 
 
 def redact_secrets(text: str, api_key: str | None = None) -> str:

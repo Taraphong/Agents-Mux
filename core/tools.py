@@ -738,6 +738,11 @@ def tool_call_bodies(answer: str) -> list[str]:
         body_start = open_at + len("<tool_call>")
         close_at = lowered.find("</tool_call>", body_start)
         if close_at < 0:
+            # A reply that was cut off, or a model that forgot the closing
+            # marker, can still carry a complete payload. Keep the remainder so
+            # a whole JSON object runs and a broken one reaches the repair step
+            # instead of being printed to the user as raw text.
+            bodies.append(answer[body_start:])
             return bodies
         bodies.append(answer[body_start:close_at])
         start = close_at + len("</tool_call>")
@@ -759,9 +764,67 @@ def parse_tool_requests(answer: str) -> list[dict[str, Any]]:
         except json.JSONDecodeError as exc:
             log_event("tool.parse_failed", "Could not parse the tool_call", error=str(exc))
             raise ValueError("Invalid tool_call format") from exc
-        if not isinstance(request, dict) or not isinstance(request.get("name"), str) or not isinstance(request.get("arguments", {}), dict):
-            raise ValueError("Invalid tool_call payload")
-        tool_request = {"name": request["name"], "arguments": request.get("arguments", {})}
+        tool_request = normalize_tool_payload(request)
         log_event("tool.request", f"The AI requested {tool_request['name']}", tool=tool_request["name"])
         requests.append(tool_request)
     return requests
+
+
+def normalize_tool_payload(request: Any) -> dict[str, Any]:
+    """Coerce the payload shapes small models emit into name + arguments.
+
+    A weaker model sometimes answers with ``{"command": "curl ..."}`` (no tool
+    name) or puts the arguments next to the name instead of inside
+    ``arguments``. Refusing those used to cost the user the whole turn, so an
+    unnamed command becomes ``run_command`` and loose keys become the argument
+    object. Every tool still passes the approval step before it runs.
+    """
+    if not isinstance(request, dict):
+        raise ValueError("Invalid tool_call payload")
+    name = request.get("name")
+    arguments = request.get("arguments")
+    if not isinstance(name, str) or not name.strip():
+        command = request.get("command")
+        if isinstance(command, str) and command.strip():
+            return {"name": "run_command", "arguments": {"command": command}}
+        raise ValueError("Invalid tool_call payload")
+    if not isinstance(arguments, dict):
+        arguments = {
+            key: value
+            for key, value in request.items()
+            if key not in {"name", "arguments"}
+        }
+    return {"name": name.strip(), "arguments": arguments}
+
+
+def has_tool_marker(answer: str) -> bool:
+    """Report whether an answer still contains a tool-call marker."""
+    return isinstance(answer, str) and "<tool_call>" in answer.translate(ASCII_LOWERCASE_TABLE)
+
+
+def strip_tool_markers(answer: str) -> str:
+    """Remove tool-call protocol text from an answer meant for the user.
+
+    A marker scan instead of a DOTALL regular expression, for the same reason as
+    tool_call_bodies(): the model's reply must not be able to make the parser
+    backtrack. A dangling marker drops everything after it, because that tail is
+    the unreadable call itself.
+    """
+    if not isinstance(answer, str):
+        return ""
+    if not has_tool_marker(answer):
+        return answer
+    lowered = answer.translate(ASCII_LOWERCASE_TABLE)
+    pieces: list[str] = []
+    start = 0
+    while True:
+        open_at = lowered.find("<tool_call>", start)
+        if open_at < 0:
+            pieces.append(answer[start:])
+            break
+        pieces.append(answer[start:open_at])
+        close_at = lowered.find("</tool_call>", open_at)
+        if close_at < 0:
+            break
+        start = close_at + len("</tool_call>")
+    return "".join(pieces).strip()

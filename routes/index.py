@@ -21,6 +21,7 @@ from core.config import (
     SETTINGS_FILE,
     TEMPLATES_ROOT,
     TOOL_ALIASES,
+    TOOL_CALL_REPAIR_INSTRUCTION,
     TOOL_MAX_WRITE_BYTES,
 )
 from core.env import env_int
@@ -80,10 +81,12 @@ from core.tls import (
 from core.tools import (
     approval_required_tools,
     consume_tool_approval,
+    has_tool_marker,
     machine_access_enabled,
     parse_tool_requests,
     request_tool_approval,
     run_local_tool,
+    strip_tool_markers,
 )
 from core.update_job import (
     UPDATE_JOB,
@@ -1281,13 +1284,27 @@ def chat():
             settings["model"] = fallback_model
             answer, usage = call_provider(messages, settings)
             fallback_used = fallback_model
+        repaired = False
         for _ in range(6):
             try:
                 tool_requests = parse_tool_requests(answer)
             except ValueError as exc:
-                log_event("tool.parse_failed", "Skipped an incomplete tool_call", error=str(exc))
+                log_event("tool.parse_failed", "Skipped an unreadable tool_call", error=str(exc))
                 tool_requests = []
             if not tool_requests:
+                # A marker with a broken payload (bad JSON, wrong shape, or a
+                # reply cut off mid-call) used to end up on screen as raw text.
+                # Ask the model once to resend the same call in the documented
+                # format before giving up on the turn.
+                if not repaired and has_tool_marker(answer):
+                    repaired = True
+                    log_event("tool.repair_requested", "Asked the model to resend an unreadable tool_call")
+                    messages.extend([
+                        {"role": "assistant", "content": answer},
+                        {"role": "user", "content": TOOL_CALL_REPAIR_INSTRUCTION},
+                    ])
+                    answer, usage = call_provider(messages, settings)
+                    continue
                 break
             # Refresh required-tool set using both policy observations
             # so machine access enabled during call_provider includes
@@ -1335,9 +1352,21 @@ def chat():
                 {"role": "user", "content": f"Tool results:\n{json.dumps(results, ensure_ascii=False)}\n\nAnswer the user in plain text, describing the name and purpose of each detected Skill. Never show a tool_call or JSON."},
             ])
             answer, usage = call_provider(messages, settings)
+        if has_tool_marker(answer):
+            # Nothing usable came out of the tool protocol in this turn: never
+            # show the raw block (it carries a command and can carry a key).
+            # Text around the block is still delivered; a reply that was only
+            # the unreadable call becomes a clear reason instead.
+            answer = strip_tool_markers(answer)
+            if not answer:
+                log_event("tool.unreadable", "The final answer was only an unreadable tool_call", provider=provider)
+                return jsonify({"error": status_message(request_language(), "tool_call_unreadable")}), 502
         duration_ms = round((time.perf_counter() - started_at) * 1000)
         log_event("chat.success", "Replied successfully", provider=provider, model=settings["model"], duration_ms=duration_ms)
-        return jsonify({"answer": answer, "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
+        # The model can echo a key it was given (a skill that embeds one, for
+        # example), so what reaches the page - and the saved history - is
+        # redacted here as well as in tool output.
+        return jsonify({"answer": redact_secrets(answer), "provider": provider, "model": settings["model"], "fallback_used": fallback_used, "duration_ms": duration_ms, "usage": usage})
     except requests.HTTPError as exc:
         log_event("provider.error", "The provider answered with an HTTP error", status=exc.response.status_code if exc.response is not None else "unknown")
         api_key = safe_stored_api_key(provider, settings)
