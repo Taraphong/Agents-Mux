@@ -189,8 +189,22 @@ def read_skill(name: str) -> dict[str, Any]:
     return info
 
 
+def _frontmatter_line(key: str, value: str) -> str:
+    """Write one preserved frontmatter key back in a shape the parser reads."""
+    text = re.sub(r"\s+", " ", str(value)).strip()
+    if '"' in text:
+        # The flat form has no escape syntax, so a value with quotes goes out as
+        # a block scalar, which parse_skill_frontmatter() joins back to one line.
+        return f"{key}: >\n  " + text
+    return f'{key}: "{text}"'
+
+
 def skill_document(name: str, description: str | None, content: str) -> str:
-    """Build a SKILL.md with a frontmatter carrying the name and description."""
+    """Build a SKILL.md with a frontmatter carrying the name and description.
+
+    Every other key of the incoming frontmatter (``license``, ``allowed-tools``,
+    …) is kept, so saving a skill only replaces the two fields it owns.
+    """
     meta, body = parse_skill_frontmatter(content)
     final_description = (
         _one_line(_description_text(description))
@@ -203,7 +217,13 @@ def skill_document(name: str, description: str | None, content: str) -> str:
     if not body:
         raise ValueError("The skill content is empty")
     quoted = final_description.replace('"', "'")
-    return f'---\nname: {name}\ndescription: "{quoted}"\n---\n\n{body}\n'
+    lines = [f"name: {name}", f'description: "{quoted}"']
+    lines.extend(
+        _frontmatter_line(key, value)
+        for key, value in meta.items()
+        if key not in {"name", "description"}
+    )
+    return "---\n" + "\n".join(lines) + f"\n---\n\n{body}\n"
 
 
 def _write_skill_file(directory: Path, relative_path: str, content: Any) -> str:

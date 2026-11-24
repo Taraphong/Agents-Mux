@@ -126,6 +126,48 @@ def test_skill_document_rejects_a_description_that_is_not_text(skills):
             skills.skill_document("demo", description, "# Demo\n\nBody.")
 
 
+def test_skill_document_keeps_the_other_frontmatter_keys():
+    from core.skills import parse_skill_frontmatter, skill_document
+
+    document = skill_document(
+        "demo",
+        "A demo",
+        '---\nname: old-name\ndescription: "Old"\nlicense: MIT\nallowed-tools: Read, Write\n---\n\n# Demo\n',
+    )
+    meta, body = parse_skill_frontmatter(document)
+    assert meta["name"] == "demo"
+    assert meta["description"] == "A demo"
+    assert meta["license"] == "MIT"
+    assert meta["allowed-tools"] == "Read, Write"
+    assert list(meta) == ["name", "description", "license", "allowed-tools"]
+    assert body == "# Demo"
+
+
+def test_skill_document_keeps_a_key_whose_value_has_quotes():
+    from core.skills import parse_skill_frontmatter, skill_document
+
+    document = skill_document(
+        "demo",
+        "",
+        '---\ndescription: "A demo"\nnotes: He said "hi" there\n---\n\nBody.\n',
+    )
+    meta, _body = parse_skill_frontmatter(document)
+    assert meta["notes"] == 'He said "hi" there'
+
+
+def test_save_skill_keeps_the_other_frontmatter_keys(skills):
+    saved = skills.save_skill(
+        "demo",
+        "",
+        '---\nlicense: MIT\nallowed-tools: Read\n---\n\n# Demo\n\nBody.\n',
+    )
+    document = (skills_root(skills) / "demo" / "SKILL.md").read_text(encoding="utf-8")
+    meta, _body = skills.parse_skill_frontmatter(document)
+    assert meta["license"] == "MIT"
+    assert meta["allowed-tools"] == "Read"
+    assert saved["description"] == "Body."
+
+
 def test_a_null_description_keeps_the_submitted_frontmatter(skills):
     saved = skills.save_skill(
         "demo",
