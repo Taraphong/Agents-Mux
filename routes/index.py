@@ -1200,6 +1200,37 @@ def update_run():
     return jsonify({"ok": True, "mode": mode, "pid": new_process.pid}), 202
 
 
+TOOL_RESULT_CONTINUATION = (
+    "The user approved the tool `{name}` and it has already run. Its output follows.\n\n"
+    "{output}\n\n"
+    "Continue the answer you were giving in plain text: do not greet the user again, do not ask "
+    "what they need, and never show a tool_call or raw JSON unless it is the answer."
+)
+
+
+def prepare_tool_result_turns(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Wrap an approved tool result so the model continues instead of restarting.
+
+    The page sends the tool output as a user turn after an approval, which read
+    like a brand new question: the model greeted the user and began again. The
+    turn keeps its content for the page and the history, but the provider sees a
+    tool-result continuation instead.
+    """
+    prepared: list[dict[str, Any]] = []
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        if item.get("tool_result"):
+            name = str(item.get("tool_name") or "a tool")[:60]
+            prepared.append({
+                "role": item.get("role", "user"),
+                "content": TOOL_RESULT_CONTINUATION.format(name=name, output=str(item.get("content") or "")),
+            })
+            continue
+        prepared.append(item)
+    return prepared
+
+
 @index_bp.post("/api/chat")
 def chat():
     """Answer one chat turn, retrying once with the configured fallback."""
@@ -1238,6 +1269,8 @@ def chat():
             command_mode = "ask"
         settings["system_prompt"] = build_system_prompt(settings, messages)
         provider = str(settings.get("provider", "openai")).lower()
+        # Must run before clean_messages(), which keeps only role and content.
+        messages = prepare_tool_result_turns(messages)
         messages = clean_messages(messages, settings)
         unsupported = None
         if normalize_provider(provider) in {"openai", "hf", "or", "groq"}:
