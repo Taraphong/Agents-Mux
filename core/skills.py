@@ -97,6 +97,20 @@ def _one_line(text: Any, limit: int = SKILL_DESCRIPTION_LIMIT) -> str:
     return re.sub(r"\s+", " ", str(text)).strip()[:limit]
 
 
+def _description_text(description: str | None) -> str:
+    """Validate a description coming from the API, keeping None as "no value".
+
+    A dict or list from a JSON body is rejected instead of being turned into
+    text, so a malformed payload fails loudly rather than writing Python syntax
+    into the frontmatter.
+    """
+    if description is None:
+        return ""
+    if not isinstance(description, str):
+        raise ValueError("A skill description must be text")
+    return description
+
+
 def skill_description(content: str) -> str:
     """Return a skill description, falling back to the first body paragraph."""
     meta, body = parse_skill_frontmatter(content)
@@ -175,11 +189,11 @@ def read_skill(name: str) -> dict[str, Any]:
     return info
 
 
-def skill_document(name: str, description: Any, content: str) -> str:
+def skill_document(name: str, description: str | None, content: str) -> str:
     """Build a SKILL.md with a frontmatter carrying the name and description."""
     meta, body = parse_skill_frontmatter(content)
     final_description = (
-        _one_line(description)
+        _one_line(_description_text(description))
         or _one_line(meta.get("description"))
         or skill_description(content)
     )
@@ -217,11 +231,12 @@ def _write_skill_file(directory: Path, relative_path: str, content: Any) -> str:
 
 def save_skill(
     name: str,
-    description: Any = "",
+    description: str | None = "",
     content: str = "",
     files: Any = None,
 ) -> dict[str, Any]:
     """Create or replace a skill folder's SKILL.md and optional resources."""
+    description = _description_text(description)
     directory = skill_dir(name)
     if not isinstance(content, str) or not content.strip():
         raise ValueError("The skill content is empty")

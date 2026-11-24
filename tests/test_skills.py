@@ -113,6 +113,19 @@ def test_a_null_description_falls_back_instead_of_becoming_none(skills):
     assert "None" not in document
 
 
+def test_save_skill_rejects_a_description_that_is_not_text(skills):
+    for description in ({"text": "a description"}, ["a description"], 7, True):
+        with pytest.raises(ValueError):
+            skills.save_skill("demo", description, "# Demo\n\nBody.")
+    assert not (skills_root(skills) / "demo").exists()
+
+
+def test_skill_document_rejects_a_description_that_is_not_text(skills):
+    for description in ({"text": "a description"}, ["a description"], 7):
+        with pytest.raises(ValueError):
+            skills.skill_document("demo", description, "# Demo\n\nBody.")
+
+
 def test_a_null_description_keeps_the_submitted_frontmatter(skills):
     saved = skills.save_skill(
         "demo",
