@@ -503,7 +503,9 @@ def skills_update(name: str):
         path = skill_path(name)
         if not path.exists():
             return jsonify({"error": status_message(request_language(), "skill_not_found")}), 404
-        saved = save_skill(name, description=str(body.get("description", "")), content=content)
+        # A null description stays None on purpose: save_skill() then keeps the
+        # description already in the document instead of writing "None".
+        saved = save_skill(name, description=body.get("description", ""), content=content)
         return jsonify({"ok": True, "name": saved["name"], "description": saved["description"]})
     except (OSError, ValueError):
         return jsonify({"error": status_message(request_language(), "skill_save_failed")}), 400

@@ -87,8 +87,14 @@ def parse_skill_frontmatter(content: str) -> tuple[dict[str, str], str]:
 
 
 def _one_line(text: Any, limit: int = SKILL_DESCRIPTION_LIMIT) -> str:
-    """Collapse whitespace so a value can sit on one frontmatter line."""
-    return re.sub(r"\s+", " ", str(text or "")).strip()[:limit]
+    """Collapse whitespace so a value can sit on one frontmatter line.
+
+    A JSON ``null`` arrives here as None and must become an empty string, never
+    the text "None", so the caller's fallback can take over.
+    """
+    if text is None:
+        return ""
+    return re.sub(r"\s+", " ", str(text)).strip()[:limit]
 
 
 def skill_description(content: str) -> str:
@@ -131,10 +137,12 @@ def skill_files(directory: Path) -> list[str]:
 def skill_info(directory: Path) -> dict[str, Any]:
     """Read one skill folder's catalog entry: name, description and resources."""
     content = (Path(directory) / SKILL_FILE).read_text(encoding="utf-8")[:SKILL_CONTENT_LIMIT]
-    meta, _body = parse_skill_frontmatter(content)
+    # skill_description() reads the frontmatter and falls back to the first body
+    # paragraph, so a skill written before the description field existed still
+    # gets a catalog entry instead of an empty one.
     return {
         "name": Path(directory).name,
-        "description": _one_line(meta.get("description")),
+        "description": skill_description(content),
         "files": skill_files(Path(directory)),
     }
 
@@ -167,7 +175,7 @@ def read_skill(name: str) -> dict[str, Any]:
     return info
 
 
-def skill_document(name: str, description: str, content: str) -> str:
+def skill_document(name: str, description: Any, content: str) -> str:
     """Build a SKILL.md with a frontmatter carrying the name and description."""
     meta, body = parse_skill_frontmatter(content)
     final_description = (
@@ -209,7 +217,7 @@ def _write_skill_file(directory: Path, relative_path: str, content: Any) -> str:
 
 def save_skill(
     name: str,
-    description: str = "",
+    description: Any = "",
     content: str = "",
     files: Any = None,
 ) -> dict[str, Any]:

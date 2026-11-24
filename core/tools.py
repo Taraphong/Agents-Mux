@@ -359,7 +359,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         # or assets/ so the folder stays the documented skill structure.
         created = save_skill(
             str(arguments.get("name", "")),
-            description=str(arguments.get("description", "")),
+            description=arguments.get("description", ""),
             content=arguments.get("content", ""),
             files=arguments.get("files"),
         )
