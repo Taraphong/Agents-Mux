@@ -213,6 +213,47 @@ def execute_schedule(job: dict[str, Any]) -> None:
                 SCHEDULE_RUNNING.discard(job_id)
 
 
+def start_job(job: dict[str, Any]) -> None:
+    """Run one due job in its own thread."""
+    threading.Thread(target=execute_schedule, args=(job,), daemon=True).start()
+
+
+def run_due_jobs(now: datetime) -> None:
+    """Start every enabled job whose cron matches this minute.
+
+    Kept apart from the loop so the cron decision can be tested without waiting
+    for 06:00: the loop only decides when to check, this decides what runs.
+    """
+    minute_key = now.strftime("%Y-%m-%d %H:%M")
+    for job in load_schedules():
+        if not job.get("enabled", True) or job.get("last_run_key") == minute_key:
+            continue
+        try:
+            due = cron_matches(job["schedule"], now)
+        except (KeyError, TypeError, ValueError):
+            # Only a broken cron expression lands here: a save failure below must
+            # not be reported as an invalid schedule.
+            update_schedule(job.get("id", ""), last_status="failed", last_error="invalid_cron")
+            continue
+        if not due:
+            continue
+        job_id = str(job.get("id") or "")
+        if not job_id:
+            continue
+        with SCHEDULE_RUNNING_LOCK:
+            if job_id in SCHEDULE_RUNNING:
+                log_event("schedule.skipped", "Skipped a job that is still running", job=job_id)
+                continue
+            SCHEDULE_RUNNING.add(job_id)
+        try:
+            update_schedule(job_id, last_run_key=minute_key)
+            start_job(job)
+        except Exception:
+            with SCHEDULE_RUNNING_LOCK:
+                SCHEDULE_RUNNING.discard(job_id)
+            raise
+
+
 def schedule_loop() -> None:
     """Check due jobs every 15 seconds and dispatch them in threads."""
     last_minute = ""
@@ -222,27 +263,7 @@ def schedule_loop() -> None:
         if minute_key != last_minute:
             last_minute = minute_key
             try:
-                for job in load_schedules():
-                    if not job.get("enabled", True) or job.get("last_run_key") == minute_key:
-                        continue
-                    try:
-                        if not cron_matches(job["schedule"], now):
-                            continue
-                        job_id = job["id"]
-                        with SCHEDULE_RUNNING_LOCK:
-                            if job_id in SCHEDULE_RUNNING:
-                                log_event("schedule.skipped", "Skipped a job that is still running", job=job_id)
-                                continue
-                            SCHEDULE_RUNNING.add(job_id)
-                        try:
-                            update_schedule(job_id, last_run_key=minute_key)
-                            threading.Thread(target=execute_schedule, args=(job,), daemon=True).start()
-                        except Exception:
-                            with SCHEDULE_RUNNING_LOCK:
-                                SCHEDULE_RUNNING.discard(job_id)
-                            raise
-                    except (KeyError, TypeError, ValueError):
-                        update_schedule(job.get("id", ""), last_status="failed", last_error="invalid_cron")
+                run_due_jobs(now)
             except OSError as exc:
                 log_event("schedule.error", "Could not read or save the scheduled jobs", error=str(exc))
         time.sleep(15)
