@@ -144,6 +144,7 @@ def tools_get():
             {"name": "run_command", "approval_required": "run_command" in required},
             {"name": "create_skill", "approval_required": "create_skill" in required},
             {"name": "create_schedule", "approval_required": "create_schedule" in required},
+            {"name": "list_schedules", "approval_required": "list_schedules" in required},
             {"name": "update_schedule", "approval_required": "update_schedule" in required},
             {"name": "execute_command", "alias_for": "run_command", "approval_required": "run_command" in required},
         ],
@@ -177,8 +178,16 @@ def tools_execute():
         log_event("tool.error", f"{name} failed", tool=name, error=str(exc))
         # ``approved`` means the single-use token was already consumed above, so
         # the client must ask for a new approval instead of offering a retry
-        # with a token this endpoint will reject.
-        return jsonify({"ok": False, "error": status_message(request_language(), "tool_failed"), "approval_consumed": approved}), 400
+        # with a token this endpoint will reject. The generic message alone
+        # hides the reason (a wrong job id, a rejected command), so the redacted
+        # exception text is returned as ``detail`` for the card to show.
+        detail = redact_secrets(str(exc)).strip()[:400]
+        return jsonify({
+            "ok": False,
+            "error": status_message(request_language(), "tool_failed"),
+            "detail": detail,
+            "approval_consumed": approved,
+        }), 400
 
 
 @index_bp.get("/api/logs")

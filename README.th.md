@@ -161,7 +161,8 @@ path แบบ relative ที่ส่งให้ `list_files`, `read_file`, `
 | `write_file` | เขียนไฟล์ได้สูงสุด 200 KB |
 | `run_command` | รันคำสั่ง shell (จำกัด 60 วินาที ผลลัพธ์ 100 KB) |
 | `create_skill` | สร้างโฟลเดอร์ Skill ใน `skills/`: `SKILL.md` พร้อม frontmatter ชื่อ/คำอธิบาย และไฟล์ใน `scripts/`, `references/`, `assets/` ตามที่ระบุ |
-| `create_schedule`, `update_schedule` | สร้างหรือแก้งานตามเวลาแบบ cron |
+| `list_schedules` | แสดงงานตามเวลาทั้งหมดพร้อม id, cron, prompt และ Discord channel |
+| `create_schedule`, `update_schedule` | สร้างหรือแก้งานตามเวลาแบบ cron (หา id ของงานได้จาก `list_schedules`) |
 
 ทุกครั้งที่เรียก — รวมถึงการอ่านไฟล์ — ต้องอนุมัติในแชต การอนุมัติใช้ได้ครั้งเดียว ผูกกับชื่อเครื่องมือและ arguments ตรงตัว และมีอายุ 15 นาที API key, token และ PEM private key ที่ระบบรู้จักจะถูกปิดบังในผลลัพธ์
 

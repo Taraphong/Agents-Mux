@@ -2371,7 +2371,9 @@ async function approveToolRequest(event) {
     });
     const data = await response.json();
     if (!response.ok || !data.ok) {
-      const error = new Error(data.error || t("tool.error"));
+      // The server reports the real failure in detail; the generic error text
+      // alone never says why (a wrong job id, a rejected command).
+      const error = new Error(data.detail || data.error || t("tool.error"));
       // 403 is a rejected or already used token. A 400 is fatal too when the
       // server reports that the token was consumed before the tool failed.
       error.consumed = Boolean(data.approval_consumed);
