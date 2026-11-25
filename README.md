@@ -162,7 +162,8 @@ With **Machine access** on (the default) the model can use these tools anywhere 
 | `write_file` | Write up to 200 KB to a file |
 | `run_command` | Run a shell command (60-second timeout, 100 KB output cap) |
 | `create_skill` | Create a skill folder under `skills/`: `SKILL.md` with a name/description frontmatter and optional `scripts/`, `references/` and `assets/` files |
-| `create_schedule`, `update_schedule` | Create or change cron-style jobs |
+| `list_schedules` | List the scheduled jobs with their ids, cron, prompt and Discord channel |
+| `create_schedule`, `update_schedule` | Create or change cron-style jobs (job ids come from `list_schedules`) |
 
 Every call — reads included — needs a single-use approval in the chat, bound to the exact tool name and arguments and valid for 15 minutes. Known API keys, tokens, and PEM private keys are redacted from tool output.
 

@@ -409,6 +409,35 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             save_schedules(jobs)
         log_event("schedule.created", f"Created scheduled job {job['name']}", job=job["id"], schedule=schedule)
         return {"tool": name, "job": job, "timezone": datetime.now().astimezone().tzname()}
+    if name == "list_schedules":
+        # update_schedule needs the real job id, so the model has to be able to
+        # look the list up instead of guessing a UUID. The fields mirror
+        # /api/schedules (stored failure text already reduced to a category);
+        # last_error is left out because a listing does not need it.
+        items = [
+            {
+                "id": job.get("id", ""),
+                "name": job.get("name", ""),
+                "schedule": job.get("schedule", ""),
+                "prompt": job.get("prompt", ""),
+                "model": job.get("model", ""),
+                "discord_channel_id": job.get("discord_channel_id", ""),
+                "enabled": bool(job.get("enabled", True)),
+                "last_status": job.get("last_status", ""),
+                "last_run_at": job.get("last_run_at"),
+            }
+            for job in load_schedules()
+            if isinstance(job, dict)
+        ]
+        result = {
+            "tool": name,
+            "jobs": items,
+            "count": len(items),
+            "timezone": datetime.now().astimezone().tzname(),
+        }
+        log_event("tool.success", f"Used {name}", tool=name, count=len(items))
+        return result
+
     if name == "update_schedule":
         if not approved:
             raise PermissionError("Editing a scheduled job needs approval first")
@@ -419,7 +448,7 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             jobs = load_schedules()
             job = next((item for item in jobs if item.get("id") == job_id), None)
             if not job:
-                raise ValueError("Scheduled job not found")
+                raise ValueError("Scheduled job not found (call list_schedules to read the real job ids)")
             if "schedule" in arguments:
                 job["schedule"] = validate_cron(arguments["schedule"])
             if "name" in arguments:

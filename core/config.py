@@ -53,7 +53,7 @@ MAX_PENDING_APPROVALS = 50
 APPROVAL_REQUIRED_TOOLS = {"write_file", "run_command", "create_skill", "create_schedule", "update_schedule"}
 # With machine access on, every tool can touch the whole host, so every tool
 # call is also an approval-required call.
-MACHINE_TOOL_NAMES = {"list_files", "read_file", "write_file", "run_command", "create_skill", "create_schedule", "update_schedule"}
+MACHINE_TOOL_NAMES = {"list_files", "read_file", "write_file", "run_command", "create_skill", "create_schedule", "list_schedules", "update_schedule"}
 SCHEDULE_LOCK_FILE = Path(f"{SCHEDULE_FILE}.lock")
 SCHEDULE_CONTEXT_MESSAGES = 40
 PROTECTED_NAMES = {
@@ -108,7 +108,7 @@ To create or improve a skill, use the create_skill tool; writes are limited to t
   references/   optional documentation to read on demand
   assets/       optional templates and images
 create_skill takes name, description (what the skill does and when to use it), content (the SKILL.md body) and files (optional object of relative path to text, e.g. {"scripts/fetch.py":"...","references/api.md":"...","assets/template.md":"..."}). The tool writes the frontmatter itself, so content starts with a title and includes "## Guidelines / Rules", "## Step-by-Step Workflow" (number the steps and name the scripts/ or references/ file each step needs) and "## Examples" with a correct input and output. Keep SKILL.md short and point at resource files instead of copying long material into it; read those files only when a step needs them.
-When the user explicitly asks to create or change a scheduled job/Cron, use create_schedule or update_schedule; create_schedule takes the arguments name, schedule (5-field Cron), prompt, model (optional), enabled (optional) and discord_channel_id (optional, a Discord Channel ID), while update_schedule takes job_id and the fields to change, using the server timezone.
+When the user explicitly asks to create or change a scheduled job/Cron, use create_schedule or update_schedule; create_schedule takes the arguments name, schedule (5-field Cron), prompt, model (optional), enabled (optional) and discord_channel_id (optional, a Discord Channel ID), while update_schedule takes job_id and the fields to change, using the server timezone. Job ids are UUIDs: call list_schedules first to read the real id (with the current prompt, schedule, model, discord_channel_id and enabled flag) instead of guessing one.
 """.strip()
 TOOL_ALIASES = {"execute_command": "run_command"}
 # The assistant turn that only asks for a tool approval is a placeholder for the
