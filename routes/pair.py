@@ -40,6 +40,17 @@ from core.messages import request_language, status_message
 pair_bp = Blueprint("pair", __name__)
 
 
+def clear_session_cookies(response, names=AUTH_SESSION_COOKIE_NAMES) -> None:
+    """Delete session cookies with the Secure flag each one was created with.
+
+    The flag is not part of a cookie's identity, but an insecure origin may not
+    overwrite a Secure cookie (RFC 6265bis), so the deletion only takes effect
+    when its flag matches the scheme that created that cookie.
+    """
+    for name in names:
+        response.delete_cookie(name, path="/", secure=name == AUTH_SESSION_COOKIE, samesite="Lax")
+
+
 @pair_bp.get("/pair")
 def pair_page():
     """Render the pairing page where a client submits the server key."""
@@ -97,7 +108,7 @@ def auth_pair():
     # Drop a leftover cookie from the other scheme so an old token cannot be
     # picked up later when the app runs over the other protocol.
     other_name = AUTH_SESSION_COOKIE_HTTP if request.is_secure else AUTH_SESSION_COOKIE
-    response.delete_cookie(other_name, path="/", secure=request.is_secure, samesite="Lax")
+    clear_session_cookies(response, (other_name,))
     return response
 
 
@@ -151,8 +162,7 @@ def auth_logout():
                 state["sessions"] = remaining
                 save_auth_state(state)
     response = jsonify({"ok": True, "redirect": "/pair"})
-    for name in AUTH_SESSION_COOKIE_NAMES:
-        response.delete_cookie(name, path="/", secure=request.is_secure, samesite="Lax")
+    clear_session_cookies(response)
     return response
 
 

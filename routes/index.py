@@ -60,7 +60,7 @@ from core.providers import (
     safe_stored_api_key,
 )
 from core.ratelimit import rate_limit_response
-from core.redaction import redact_secrets
+from core.redaction import mask_url_credentials, redact_secrets
 from core.runtime import APP_STARTED_AT, SERVER_JOB, SERVER_JOB_LOCK
 from core.schedule_store import SCHEDULE_LOCK, load_schedules, save_schedules, validate_cron
 from core.settings import (
@@ -308,7 +308,12 @@ def schedules_delete(job_id: str):
 @index_bp.get("/api/memory/status")
 def memory_status_get():
     """Report the memory engine state, counts and capabilities."""
-    return jsonify(memory_engine.status(load_settings()))
+    status = memory_engine.status(load_settings())
+    # The report carries the memory engine's Base URL, which can hold the same
+    # credentials as the chat URL; mask it the way /api/settings does.
+    if isinstance(status, dict):
+        status["base_url"] = mask_url_credentials(status.get("base_url"))
+    return jsonify(status)
 
 
 @index_bp.get("/api/memory/entries")
@@ -454,6 +459,14 @@ def settings_get():
     provider = normalize_provider(settings.get("provider"))
     key = get_api_key(provider, settings)
     safe = {key_: value for key_, value in settings.items() if key_ not in {"api_keys", "api_key", "discord_token", "custom_api_keys"}}
+    # A Base URL can carry credentials (https://user:token@host/v1); the page
+    # only needs the endpoint, so the userinfo stays on the server.
+    safe["base_url"] = mask_url_credentials(safe.get("base_url"))
+    memory = safe.get("memory")
+    if isinstance(memory, dict):
+        # The memory engine can run on its own endpoint, which can carry the
+        # same kind of credentials, so it is masked the same way.
+        safe["memory"] = {**memory, "base_url": mask_url_credentials(memory.get("base_url"))}
     safe["provider"] = provider
     safe["api_key"] = "" if not key else "••••••••"
     safe["has_api_key"] = bool(key)
@@ -756,8 +769,9 @@ def models_post():
     provider = normalize_provider(body.get("provider") or settings.get("provider", "openai"))
     base_url = body.get("base_url")
     # An explicit empty string means "use the provider default"; only an
-    # omitted base_url leaves the configured value untouched.
-    if isinstance(base_url, str):
+    # omitted base_url leaves the configured value untouched. A masked value is
+    # the one the settings page was shown, so it must not replace the real URL.
+    if isinstance(base_url, str) and "••" not in base_url:
         settings["base_url"] = base_url.strip()
     submitted_key = body.get("api_key")
     if isinstance(submitted_key, str) and submitted_key.strip() and submitted_key != "••••••••":
@@ -784,9 +798,13 @@ def settings_test():
     body = request.get_json(silent=True) or {}
     # Test submitted settings without persisting credentials first. This lets
     # the UI validate a new key before it becomes part of the saved settings.
+    stored_base_url = settings.get("base_url")
     for key in {"provider", "model", "base_url", "system_prompt", "memory_review", "temperature", "max_tokens", "top_p", "thinking_level"}:
         if key in body:
             settings[key] = body[key]
+    if "••" in str(settings.get("base_url") or ""):
+        # The page sends back the masked Base URL it was shown; test the real one.
+        settings["base_url"] = stored_base_url
     submitted_key = body.get("api_key")
     if isinstance(submitted_key, str) and submitted_key.strip() and submitted_key != "••••••••":
         keys = stored_api_keys(settings)

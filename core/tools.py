@@ -336,12 +336,18 @@ def consume_tool_approval(approval_id: Any, name: str, arguments: dict[str, Any]
         return False
     now = time.time()
     with PENDING_APPROVAL_LOCK:
-        pending = PENDING_TOOL_REQUESTS.pop(approval_id, None)
-    if not pending:
-        return False
-    if now - pending.get("created_at", 0) > APPROVAL_TTL_SECONDS:
-        return False
-    return pending.get("name") == name and pending.get("arguments") == arguments
+        # Validate before popping: an expired or mismatched attempt must not
+        # destroy a token the page can still retry with the same values.
+        pending = PENDING_TOOL_REQUESTS.get(approval_id)
+        if not pending:
+            return False
+        if now - pending.get("created_at", 0) > APPROVAL_TTL_SECONDS:
+            PENDING_TOOL_REQUESTS.pop(approval_id, None)
+            return False
+        if pending.get("name") != name or pending.get("arguments") != arguments:
+            return False
+        PENDING_TOOL_REQUESTS.pop(approval_id, None)
+    return True
 
 
 def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False) -> dict[str, Any]:
@@ -602,9 +608,47 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
             )
             return result
         argv = parse_command(command)
-        completed = subprocess.run(argv, cwd=PROJECT_ROOT, shell=False, capture_output=True, text=True, timeout=30)
-        result = {"tool": name, "command": command, "returncode": completed.returncode, "stdout": completed.stdout[-20_000:], "stderr": completed.stderr[-20_000:], "scope": "project"}
-        log_event("tool.success" if completed.returncode == 0 else "tool.failed", f"Command finished ({completed.returncode})", tool=name, command=command)
+        # The same limits the machine scope uses: a whitelisted git or
+        # py_compile call can still hang or print far more than fits in a turn.
+        secrets_found = secret_values()
+        timed_out = False
+        try:
+            completed = subprocess.run(
+                argv,
+                cwd=PROJECT_ROOT,
+                shell=False,
+                capture_output=True,
+                text=True,
+                timeout=COMMAND_TIMEOUT_SECONDS,
+            )
+            returncode = completed.returncode
+            stdout, stderr = completed.stdout, completed.stderr
+        except subprocess.TimeoutExpired as exc:
+            # Report the timeout in the result like the machine scope instead of
+            # letting it escape as an unhandled 500.
+            timed_out = True
+            returncode = 124
+            stdout, stderr = captured_text(exc.stdout), captured_text(exc.stderr)
+        stdout, stdout_cut = tail_text(stdout)
+        stderr, stderr_cut = tail_text(stderr)
+        # Project-scope commands inherit the server environment, so their output
+        # can echo a key; redact it the same way the machine scope does.
+        result = {
+            "tool": name,
+            "command": redact_command_output(command, secrets_found),
+            "returncode": returncode,
+            "stdout": redact_command_output(stdout, secrets_found),
+            "stderr": redact_command_output(stderr, secrets_found),
+            "timed_out": timed_out,
+            "truncated": stdout_cut or stderr_cut,
+            "scope": "project",
+        }
+        log_event(
+            "tool.success" if returncode == 0 else "tool.failed",
+            f"Command finished ({returncode})",
+            tool=name,
+            command=redact_command_output(command, secrets_found)[:300],
+        )
         return result
 
     raise ValueError("Unknown tool")
@@ -692,6 +736,25 @@ def kill_process_group(pgid: int) -> None:
         pass
 
 
+def captured_text(value: Any) -> str:
+    """Decode one captured stream from a finished or timed-out subprocess."""
+    if not value:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def tail_text(text: str) -> tuple[str, bool]:
+    """Keep the tail of a capture within the byte cap, like the shell runner."""
+    if not text:
+        return "", False
+    data = text.encode("utf-8")
+    if len(data) <= COMMAND_MAX_OUTPUT_BYTES:
+        return text, False
+    return data[-COMMAND_MAX_OUTPUT_BYTES:].decode("utf-8", errors="replace"), True
+
+
 def run_shell_process(command: str, cwd: Path) -> tuple[int, str, str, bool, bool, int, list[str]]:
     """Run a command with capped output and a hard timeout for the whole process group."""
     started_at = time.perf_counter()
@@ -748,6 +811,37 @@ ASCII_LOWERCASE_TABLE = str.maketrans(
 )
 
 
+def tool_call_close(lowered: str, body_start: int) -> int:
+    """Find the closing marker that ends a payload, skipping ones inside strings.
+
+    A model that echoes a user message carrying "</tool_call>" inside a JSON
+    string used to cut the payload in half at that marker, which lost the whole
+    turn. The scan walks the body once and tracks whether it is inside a JSON
+    string, so only a marker outside one closes the block. A body that is too
+    malformed to track falls back to the first marker, keeping the old repair
+    path for a broken payload.
+    """
+    marker = "</tool_call>"
+    in_string = False
+    escaped = False
+    index = body_start
+    while index < len(lowered):
+        char = lowered[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif lowered.startswith(marker, index):
+            return index
+        index += 1
+    return lowered.find(marker, body_start)
+
+
 def tool_call_bodies(answer: str) -> list[str]:
     """Return the body of every <tool_call> block in *answer*.
 
@@ -765,7 +859,7 @@ def tool_call_bodies(answer: str) -> list[str]:
         if open_at < 0:
             return bodies
         body_start = open_at + len("<tool_call>")
-        close_at = lowered.find("</tool_call>", body_start)
+        close_at = tool_call_close(lowered, body_start)
         if close_at < 0:
             # A reply that was cut off, or a model that forgot the closing
             # marker, can still carry a complete payload. Keep the remainder so
