@@ -115,6 +115,14 @@ TOOL_ALIASES = {"execute_command": "run_command"}
 # page, not a model answer. It is never replayed to the provider: a small model
 # reads its own sentence back and repeats it instead of using the tool result.
 APPROVAL_PLACEHOLDER = "The AI requested a tool that needs approval first"
+# A scheduled job runs unattended, so it may use tools in a bounded loop without
+# a chat approval. The cap keeps one job from looping on tool calls forever.
+SCHEDULE_TOOL_ROUNDS = 6
+
+
+def is_approval_placeholder(value: object) -> bool:
+    """Return whether a message is the page-only approval placeholder."""
+    return str(value or "").strip() == APPROVAL_PLACEHOLDER
 TOOL_CALL_BLOCK_PATTERN = re.compile(r"<tool_call>.*?</tool_call>", re.DOTALL)
 # A reply that was meant to be a tool call but cannot be parsed is retried once
 # with this instruction, instead of being shown to the user as raw JSON.
