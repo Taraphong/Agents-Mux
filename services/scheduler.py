@@ -46,6 +46,11 @@ TOOL_RESULT_CONTINUATION = (
     "JSON unless it is the answer, and never ask the user for approval."
 )
 
+JOB_RUN_GUIDANCE = (
+    "This is an automated scheduled run. Carry out the job instruction and report only its "
+    "result in plain text. Never ask the user questions, and never create or edit scheduled jobs."
+)
+
 
 class ScheduleAnswerError(RuntimeError):
     """A scheduled run produced something that cannot be reported."""
@@ -55,18 +60,24 @@ class ScheduleAnswerError(RuntimeError):
         self.kind = kind
 
 
-def schedule_context_messages(previous_messages: list[Any]) -> list[dict[str, Any]]:
-    """Return the job's real previous turns to send to the provider.
+def schedule_context_messages(
+    previous_messages: list[Any],
+    job_id: str = "",
+) -> list[dict[str, Any]]:
+    """Return the job's own previous runs to send to the provider.
 
-    The approval placeholder is page text and tool results are transient, so
-    neither belongs in a job's context: a model that reads its own placeholder
-    back repeats it instead of reporting the tool result.
+    Only turns this scheduler wrote for the same job are kept. Chat messages
+    share the job's conversation, and replaying them made a job answer "I updated
+    the scheduled job" instead of running its prompt. The approval placeholder
+    is page text and tool results are transient, so both are dropped as well.
     """
     context: list[dict[str, Any]] = []
     for message in previous_messages:
         if not isinstance(message, dict):
             continue
         if message.get("role") not in {"user", "assistant"} or message.get("tool_result"):
+            continue
+        if job_id and str(message.get("schedule_id") or "") != job_id:
             continue
         content = str(message.get("content") or "")
         if message.get("role") == "assistant" and is_approval_placeholder(content):
@@ -153,13 +164,14 @@ def execute_schedule(job: dict[str, Any]) -> None:
                 settings.get("system_prompt", ""),
                 agent_profile_prompt(settings),
                 skills_prompt(settings),
+                JOB_RUN_GUIDANCE,
                 TOOL_INSTRUCTIONS,
             ) if part
         )
         conversation_id = schedule_conversation_id(job)
         record = load_history_record(conversation_id)
         previous_messages = record.get("messages") if isinstance(record.get("messages"), list) else []
-        context_messages = schedule_context_messages(previous_messages)
+        context_messages = schedule_context_messages(previous_messages, str(job.get("id") or ""))
         prompt_message = {"role": "user", "content": job["prompt"], "schedule_id": job["id"]}
         messages = clean_messages(context_messages + [prompt_message], settings)
         started_at = time.perf_counter()

@@ -65,17 +65,21 @@ def run(monkeypatch):
     return state
 
 
-def test_approval_placeholder_and_tool_results_are_not_replayed(run):
+def test_only_the_jobs_own_runs_are_replayed(run):
+    job_id = JOB["id"]
     run["history"] = [
-        {"role": "user", "content": "แชตเก่า"},
-        {"role": "assistant", "content": APPROVAL_PLACEHOLDER},
+        {"role": "user", "content": "แชตเก่าที่ผู้ใช้คุยในบทสนทนานี้"},
+        {"role": "assistant", "content": "ผมได้อัปเดตงานให้แล้ว"},
+        {"role": "user", "content": "รายงานรอบก่อน", "schedule_id": job_id},
+        {"role": "assistant", "content": "รายงานเก่า", "schedule_id": job_id},
+        {"role": "assistant", "content": APPROVAL_PLACEHOLDER, "schedule_id": job_id},
         {
             "role": "user",
             "content": "Tool result: ...",
             "tool_result": True,
             "tool_name": "run_command",
+            "schedule_id": job_id,
         },
-        {"role": "assistant", "content": "รายงานครั้งก่อน"},
     ]
     run["answers"] = ["รายงานใหม่"]
 
@@ -83,11 +87,14 @@ def test_approval_placeholder_and_tool_results_are_not_replayed(run):
 
     sent = run["provider_messages"][0]
     contents = [message.get("content") for message in sent]
+    assert "แชตเก่าที่ผู้ใช้คุยในบทสนทนานี้" not in contents
+    assert "ผมได้อัปเดตงานให้แล้ว" not in contents
     assert APPROVAL_PLACEHOLDER not in contents
     assert "Tool result: ..." not in contents
-    assert "แชตเก่า" in contents
-    assert "รายงานครั้งก่อน" in contents
+    assert "รายงานรอบก่อน" in contents
+    assert "รายงานเก่า" in contents
     assert JOB["prompt"] in contents
+    assert "automated scheduled run" in sent[0]["content"]
 
 
 def test_tools_run_without_an_approval_and_the_answer_is_reported(run):
