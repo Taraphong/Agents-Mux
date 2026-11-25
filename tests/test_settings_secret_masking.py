@@ -3,7 +3,7 @@
 A self-hosted chat or memory endpoint can carry credentials
 (https://user:token@host/v1) and the settings page only needs the endpoint.
 Saving the masked value back must keep the stored URL instead of overwriting
-it with the mask.
+it with the mask, and the memory status report masks the same value.
 """
 
 from types import SimpleNamespace
@@ -84,6 +84,31 @@ def test_a_real_new_url_is_still_saved(settings_app):
     assert response.status_code == 200
     assert settings_app.saved["base_url"] == "https://new:other@new.example/v1"
     assert settings_app.saved["memory"]["base_url"] == "https://mem:new@mem.example/v1"
+
+
+def test_memory_status_masks_credentials_in_its_base_url(settings_app, monkeypatch):
+    monkeypatch.setattr(
+        index_routes.memory_engine,
+        "status",
+        lambda settings: {
+            "enabled": True,
+            "base_url": "https://memory:memsecret@local.example/v1",
+        },
+    )
+    body = settings_app.client.get("/api/memory/status").get_json()
+    assert body["base_url"] == "https://memory:••••••••@local.example/v1"
+    assert "memsecret" not in str(body)
+    assert "local.example" in body["base_url"]
+
+
+def test_memory_status_keeps_a_url_without_credentials(settings_app, monkeypatch):
+    monkeypatch.setattr(
+        index_routes.memory_engine,
+        "status",
+        lambda settings: {"enabled": True, "base_url": "http://127.0.0.1:11434/v1"},
+    )
+    body = settings_app.client.get("/api/memory/status").get_json()
+    assert body["base_url"] == "http://127.0.0.1:11434/v1"
 
 
 def test_mask_url_credentials_keeps_the_host():

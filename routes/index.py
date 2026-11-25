@@ -308,7 +308,12 @@ def schedules_delete(job_id: str):
 @index_bp.get("/api/memory/status")
 def memory_status_get():
     """Report the memory engine state, counts and capabilities."""
-    return jsonify(memory_engine.status(load_settings()))
+    status = memory_engine.status(load_settings())
+    # The report carries the memory engine's Base URL, which can hold the same
+    # credentials as the chat URL; mask it the way /api/settings does.
+    if isinstance(status, dict):
+        status["base_url"] = mask_url_credentials(status.get("base_url"))
+    return jsonify(status)
 
 
 @index_bp.get("/api/memory/entries")
