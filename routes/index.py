@@ -457,6 +457,11 @@ def settings_get():
     # A Base URL can carry credentials (https://user:token@host/v1); the page
     # only needs the endpoint, so the userinfo stays on the server.
     safe["base_url"] = mask_url_credentials(safe.get("base_url"))
+    memory = safe.get("memory")
+    if isinstance(memory, dict):
+        # The memory engine can run on its own endpoint, which can carry the
+        # same kind of credentials, so it is masked the same way.
+        safe["memory"] = {**memory, "base_url": mask_url_credentials(memory.get("base_url"))}
     safe["provider"] = provider
     safe["api_key"] = "" if not key else "••••••••"
     safe["has_api_key"] = bool(key)

@@ -82,6 +82,8 @@ def apply_settings_update():
     current = load_settings()
     previous_provider = normalize_provider(current.get("provider"))
     previous_base_url = current.get("base_url")
+    previous_memory = current.get("memory") if isinstance(current.get("memory"), dict) else {}
+    previous_memory_base_url = previous_memory.get("base_url")
     allowed = {"memory", "agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "gemini_live_model", "gemini_agent", "gemini_decision_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "machine_access"}
     for key in allowed:
         if key in body:
@@ -162,6 +164,11 @@ def apply_settings_update():
             keys.pop(removed_name, None)
             current["custom_api_keys"] = keys
     current.pop("api_key", None)
+    memory_update = current.get("memory")
+    if isinstance(memory_update, dict) and "••" in str(memory_update.get("base_url") or ""):
+        # /api/settings masks credentials inside the memory Base URL too, so a
+        # value that still carries the mask keeps the stored URL like base_url.
+        current["memory"] = {**memory_update, "base_url": previous_memory_base_url}
     try:
         current["memory"] = memory_engine.normalize_settings(current.get("memory"))
     except ValueError:
