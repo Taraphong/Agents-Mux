@@ -6,6 +6,8 @@ prompt asked for, while still recording the run as a success.
 """
 
 import copy
+import re
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -138,6 +140,29 @@ def test_an_empty_answer_marks_the_job_failed(run):
     assert run["saved"] == []
     assert run["discord"] == []
     assert run["updates"][-1]["last_error"] == "empty_answer"
+
+
+def test_the_time_note_carries_the_machine_offset():
+    note = scheduler.schedule_time_note(
+        datetime(2026, 11, 25, 19, 26, 9, tzinfo=timezone(timedelta(hours=7)))
+    )
+
+    assert note.startswith("Current local time on this machine: 2026-11-25T19:26:09+07:00")
+    assert "never guess" in note
+
+
+def test_the_system_prompt_tells_the_model_the_machine_time(run):
+    run["answers"] = ["รายงาน"]
+
+    scheduler.execute_schedule(dict(JOB))
+
+    system_prompt = run["provider_messages"][0][0]["content"]
+    match = re.search(r"Current local time on this machine: (\S+)\.", system_prompt)
+    assert match, system_prompt
+    moment = datetime.fromisoformat(match.group(1))
+    assert moment.utcoffset() is not None
+    # The time note must stay before the tool rules, which work best last.
+    assert system_prompt.index("Current local time") < system_prompt.index("<tool_call>")
 
 
 def test_a_tool_call_that_never_resolves_marks_the_job_failed(run):
