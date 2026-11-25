@@ -10,6 +10,7 @@ from flask import Blueprint, abort, jsonify, render_template, request, send_from
 import memory_engine
 from core.auth import no_store
 from core.config import (
+    APPROVAL_PLACEHOLDER,
     APPROVAL_TTL_SECONDS,
     ASSET_CACHE_CONTROL,
     HISTORY_ROOT,
@@ -1215,10 +1216,19 @@ def prepare_tool_result_turns(messages: list[dict[str, Any]]) -> list[dict[str, 
     like a brand new question: the model greeted the user and began again. The
     turn keeps its content for the page and the history, but the provider sees a
     tool-result continuation instead.
+
+    The placeholder turn that asked for the approval is dropped on the way: it
+    is page text, and replaying it made a small model copy the sentence instead
+    of answering from the tool result.
     """
     prepared: list[dict[str, Any]] = []
     for item in messages:
         if not isinstance(item, dict):
+            continue
+        if (
+            item.get("role") == "assistant"
+            and str(item.get("content") or "").strip() == APPROVAL_PLACEHOLDER
+        ):
             continue
         if item.get("tool_result"):
             name = str(item.get("tool_name") or "a tool")[:60]
@@ -1359,7 +1369,7 @@ def chat():
             ):
                 approval_id, approval_expires_at = request_tool_approval(approval_request["name"], approval_request["arguments"])
                 return jsonify({
-                    "answer": "The AI requested a tool that needs approval first",
+                    "answer": APPROVAL_PLACEHOLDER,
                     "provider": provider,
                     "tool_request": approval_request,
                     "approval_id": approval_id,

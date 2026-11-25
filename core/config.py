@@ -111,6 +111,10 @@ create_skill takes name, description (what the skill does and when to use it), c
 When the user explicitly asks to create or change a scheduled job/Cron, use create_schedule or update_schedule; create_schedule takes the arguments name, schedule (5-field Cron), prompt, model (optional), enabled (optional) and discord_channel_id (optional, a Discord Channel ID), while update_schedule takes job_id and the fields to change, using the server timezone.
 """.strip()
 TOOL_ALIASES = {"execute_command": "run_command"}
+# The assistant turn that only asks for a tool approval is a placeholder for the
+# page, not a model answer. It is never replayed to the provider: a small model
+# reads its own sentence back and repeats it instead of using the tool result.
+APPROVAL_PLACEHOLDER = "The AI requested a tool that needs approval first"
 TOOL_CALL_BLOCK_PATTERN = re.compile(r"<tool_call>.*?</tool_call>", re.DOTALL)
 # A reply that was meant to be a tool call but cannot be parsed is retried once
 # with this instruction, instead of being shown to the user as raw JSON.
