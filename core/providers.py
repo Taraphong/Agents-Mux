@@ -900,18 +900,23 @@ def call_openai(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tup
         raise RuntimeError("The endpoint answered with a redirect; the API key is not forwarded across it")
     response.raise_for_status()
     data = response.json()
-    choice = data["choices"][0]
+    # An OpenAI-compatible router can answer 200 with an empty or missing
+    # choices list; reporting that like the other providers keeps it a graceful
+    # ProviderEmptyResponse instead of an IndexError/KeyError 500.
+    choices = data.get("choices") if isinstance(data, dict) else None
+    choice = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
     content = choice.get("message", {}).get("content")
+    finish_reason = str(choice.get("finish_reason") or "")
     if not str(content or "").strip():
         # A reasoning model can spend its whole output budget before it writes
         # text; a blank bubble would look like the app silently failed.
         raise ProviderEmptyResponse(
-            f"OpenAI-compatible response contained no text (finishReason={choice.get('finish_reason')})",
-            str(choice.get("finish_reason") or ""),
+            f"OpenAI-compatible response contained no text (finishReason={finish_reason or 'none'})",
+            finish_reason,
         )
     return content, usage_with_finish_reason(
         normalize_usage(data.get("usage"), "prompt_tokens", "completion_tokens", "total_tokens"),
-        choice.get("finish_reason"),
+        finish_reason,
     )
 
 

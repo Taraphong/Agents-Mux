@@ -372,6 +372,7 @@ const I18N = {
     "auth.offline": "โหลดสถานะอุปกรณ์ไม่สำเร็จ",
     "auth.logoutFailed": "ออกจากระบบไม่สำเร็จ กรุณาลองใหม่",
     "settings.save": "บันทึกการตั้งค่า",
+    "settings.loadFailed": "โหลดการตั้งค่าไม่สำเร็จ: {error}",
     "settings.test": "ทดสอบการเชื่อมต่อ",
     "settings.reset": "รีเซ็ต",
     "schedule.title": "งานตามเวลา (Cron jobs)",
@@ -424,6 +425,7 @@ const I18N = {
     "schedule.toggleDisable": "ปิดใช้งาน",
     "schedule.added": "เพิ่มงานตามเวลาแล้ว",
     "schedule.addFailed": "เพิ่มงานไม่สำเร็จ",
+    "schedule.loadFailed": "โหลดงานตามเวลาไม่สำเร็จ: {error}",
     "schedule.runNow": "รันทันที",
     "schedule.started": "เริ่มรันงานแล้ว",
     "schedule.edit": "แก้ไข",
@@ -565,6 +567,7 @@ const I18N = {
     "history.delete": "ลบ",
     "history.pinned": "ปักหมุด",
     "history.empty": "ยังไม่มีประวัติ",
+    "history.loadFailed": "โหลดประวัติไม่สำเร็จ: {error}",
     "history.unknownDate": "ไม่ทราบวันที่",
     "history.deleteTitle": "ลบประวัติ",
     "history.deleteConfirm":
@@ -1010,6 +1013,7 @@ const I18N = {
     "auth.offline": "Could not load device status",
     "auth.logoutFailed": "Could not sign out. Please try again.",
     "settings.save": "Save settings",
+    "settings.loadFailed": "Could not load settings: {error}",
     "settings.test": "Test connection",
     "settings.reset": "Reset",
     "schedule.title": "Scheduled jobs (Cron)",
@@ -1061,6 +1065,7 @@ const I18N = {
     "schedule.toggleDisable": "Disable",
     "schedule.added": "Scheduled job added",
     "schedule.addFailed": "Could not add the scheduled job",
+    "schedule.loadFailed": "Could not load scheduled jobs: {error}",
     "schedule.runNow": "Run now",
     "schedule.started": "Job started",
     "schedule.edit": "Edit",
@@ -1202,6 +1207,7 @@ const I18N = {
     "history.delete": "Delete",
     "history.pinned": "Pinned",
     "history.empty": "No history yet",
+    "history.loadFailed": "Could not load history: {error}",
     "history.unknownDate": "Unknown date",
     "history.deleteTitle": "Delete conversation",
     "history.deleteConfirm":
@@ -3360,14 +3366,19 @@ function renderSchedules(items) {
     .join("");
 }
 async function loadSchedules() {
-  const response = await fetch("/api/schedules");
-  if (response.ok) {
+  try {
+    const response = await fetch("/api/schedules");
+    // A 401 answers with HTML, so the failure must be reported instead of
+    // leaving the old list on screen as if it were current.
+    if (!response.ok) throw new Error(`${response.status}`);
     const data = await response.json();
     currentSchedules = data.items || [];
     currentScheduleTimezone =
       data.timezone || t("schedule.timezoneFallback");
     $("schedule-timezone").textContent = currentScheduleTimezone;
     renderSchedules(currentSchedules);
+  } catch (error) {
+    showNotice(t("schedule.loadFailed", { error: error.message }), true);
   }
 }
 let memoryStatusCache = null;
@@ -4384,8 +4395,17 @@ function updateDiscordTokenHint() {
     : t("settings.discordTokenHintMissing");
 }
 async function loadSettings() {
-  const r = await fetch("/api/settings");
-  const s = await r.json();
+  let s;
+  try {
+    const r = await fetch("/api/settings");
+    // An expired session answers with HTML, which json() would fail on; report
+    // the status instead of an unhandled rejection.
+    if (!r.ok) throw new Error(`${r.status}`);
+    s = await r.json();
+  } catch (error) {
+    showNotice(t("settings.loadFailed", { error: error.message }), true);
+    return;
+  }
   availableSkills = (s.available_skills || []).map((skill) => skill.name);
   defaultSkills = Array.isArray(s.skills) ? s.skills.map(String) : [];
   connectionState.provider = s.provider ?? connectionState.provider;
@@ -4408,7 +4428,13 @@ async function loadSettings() {
     PROVIDER_BASE_URLS.openai;
   activeProvider = $("provider").value;
   const loadedBase = $("base_url").value.trim().replace(/\/+$/, "");
-  if (loadedBase && loadedBase !== (PROVIDER_BASE_URLS[activeProvider] ?? "")) {
+  // A masked Base URL still carries credentials on the server; remembering it
+  // as this provider's URL would send the mask back on the next provider switch.
+  if (
+    loadedBase &&
+    !loadedBase.includes("••") &&
+    loadedBase !== (PROVIDER_BASE_URLS[activeProvider] ?? "")
+  ) {
     customBaseUrls[activeProvider] = loadedBase;
   }
   $("system_prompt").value = s.system_prompt ?? "";
@@ -4988,10 +5014,13 @@ function renderHistoryList(items) {
     `<div class="history-day">${escapeHtml(t("history.empty"))}</div>`;
 }
 async function loadHistoryList() {
-  const response = await fetch("/api/history");
-  if (response.ok) {
+  try {
+    const response = await fetch("/api/history");
+    if (!response.ok) throw new Error(`${response.status}`);
     renderHistoryList((await response.json()).items || []);
     if (pendingHistoryAppends.size) flushPendingAppends();
+  } catch (error) {
+    showNotice(t("history.loadFailed", { error: error.message }), true);
   }
 }
 async function openConversation(id) {

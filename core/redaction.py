@@ -5,6 +5,7 @@ like a key, token or PEM block is masked before it leaves the process.
 """
 
 import re
+from typing import Any
 
 from core.settings import secret_values
 
@@ -44,6 +45,25 @@ def mask_unterminated_pem(text: str, starts_inside: bool = False) -> str:
     for start, end in reversed(ranges):
         text = text[:start] + PEM_REDACTED_MARKER + text[end:]
     return text
+
+
+MASKED_VALUE = "••••••••"
+# Credentials can also live in a Base URL (https://user:token@host/v1); the
+# browser only needs the endpoint, so the userinfo is masked before it is sent.
+URL_USERINFO_PATTERN = re.compile(r"(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)(?P<userinfo>[^/@\s]+)@")
+
+
+def mask_url_credentials(value: Any) -> str:
+    """Hide the credentials part of a URL, keeping any user name readable."""
+    text = str(value or "")
+
+    def replace(match: re.Match[str]) -> str:
+        scheme = match.group("scheme")
+        userinfo = match.group("userinfo")
+        user = userinfo.split(":", 1)[0] if ":" in userinfo else ""
+        return f"{scheme}{user}:{MASKED_VALUE}@" if user else f"{scheme}{MASKED_VALUE}@"
+
+    return URL_USERINFO_PATTERN.sub(replace, text)
 
 
 def redact_command_output(text: str, secrets_found: list[str]) -> str:
