@@ -52,6 +52,14 @@ JOB_RUN_GUIDANCE = (
 )
 
 
+def schedule_time_note(now: datetime) -> str:
+    """Tell the model the machine's real local time instead of letting it guess."""
+    return (
+        f"Current local time on this machine: {now.isoformat(timespec='seconds')}. "
+        "Use it when the job mentions the time or date; never guess them."
+    )
+
+
 class ScheduleAnswerError(RuntimeError):
     """A scheduled run produced something that cannot be reported."""
 
@@ -158,13 +166,15 @@ def execute_schedule(job: dict[str, Any]) -> None:
             settings["model"] = job["model"]
         # A job must know the tool protocol, exactly like the chat page: without
         # the tool instructions a model answers "I cannot access your API key"
-        # instead of calling run_command itself.
+        # instead of calling run_command itself. The machine's time is given
+        # here because a prompt that asks for the time made the model invent one.
         settings["system_prompt"] = "\n\n".join(
             part for part in (
                 settings.get("system_prompt", ""),
                 agent_profile_prompt(settings),
                 skills_prompt(settings),
                 JOB_RUN_GUIDANCE,
+                schedule_time_note(datetime.now().astimezone()),
                 TOOL_INSTRUCTIONS,
             ) if part
         )
