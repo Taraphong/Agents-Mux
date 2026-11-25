@@ -12,6 +12,7 @@ from core.auth import no_store
 from core.config import (
     APPROVAL_PLACEHOLDER,
     APPROVAL_TTL_SECONDS,
+    is_approval_placeholder,
     ASSET_CACHE_CONTROL,
     HISTORY_ROOT,
     LOG_FILE,
@@ -1234,10 +1235,7 @@ def prepare_tool_result_turns(messages: list[dict[str, Any]]) -> list[dict[str, 
     for item in messages:
         if not isinstance(item, dict):
             continue
-        if (
-            item.get("role") == "assistant"
-            and str(item.get("content") or "").strip() == APPROVAL_PLACEHOLDER
-        ):
+        if item.get("role") == "assistant" and is_approval_placeholder(item.get("content")):
             continue
         if item.get("tool_result"):
             name = str(item.get("tool_name") or "a tool")[:60]

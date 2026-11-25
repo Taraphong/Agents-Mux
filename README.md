@@ -176,6 +176,7 @@ Turn **Settings → Machine access** off to restrict tools to the project folder
 The **Schedule** page stores cron-style jobs (5-field cron) in `scheduled-jobs.json` and runs them while the server is up, using the server's timezone.
 
 - Each job has a name, schedule, prompt, optional model, enable flag, and an optional Discord channel ID for the result.
+- A job runs unattended, so it may call tools itself without a chat approval (at most 6 tool rounds per run). Only a real final answer is saved and posted; an approval placeholder, an unreadable tool call, or an empty reply is recorded as a failed run with a reason instead of being sent.
 - Jobs keep their own conversation in the history, with the last run time, status, and error.
 - `AI_WEB_ENABLE_SCHEDULER=1` enables the scheduler when the app runs under an external WSGI server.
 
