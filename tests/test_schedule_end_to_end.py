@@ -12,7 +12,9 @@ import asyncio
 import json
 import os
 import threading
+import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ import pytest
 from core import history
 from services import discord_bot, scheduler
 
+TZ = timezone(timedelta(hours=7))
 CHANNEL_ID = "1569295865338789979"
 CONVERSATION_ID = "a869e191-c52d-43ed-b1dc-366e972e0c3d"
 JOB = {
@@ -90,6 +93,7 @@ class ScheduledJob:
     discord_messages: list[str]
     answers: list[str] = field(default_factory=list)
     provider_calls: list[list[dict]] = field(default_factory=list)
+    provider_on_main_thread: list[bool] = field(default_factory=list)
     tool_calls: list[dict] = field(default_factory=list)
     update_calls: list[tuple[str, dict]] = field(default_factory=list)
 
@@ -101,6 +105,7 @@ class ScheduledJob:
 
     def answer_as_provider(self, messages, settings):
         self.provider_calls.append(messages)
+        self.provider_on_main_thread.append(threading.current_thread() is threading.main_thread())
         return self.answers.pop(0), {"total_tokens": 7}
 
     def run_tool(self, name, arguments, approved=False):
@@ -108,9 +113,18 @@ class ScheduledJob:
         return {"tool": name, "returncode": 0, "stdout": "30.5"}
 
 
+def wait_for_job(job_id: str, timeout: float = 10.0) -> None:
+    """Block until the job thread the scheduler started has finished."""
+    deadline = time.monotonic() + timeout
+    while job_id in scheduler.SCHEDULE_RUNNING and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert job_id not in scheduler.SCHEDULE_RUNNING, "the job thread did not finish"
+
+
 @pytest.fixture()
 def job(monkeypatch, history_root, discord_messages):
     harness = ScheduledJob(history_root=history_root, discord_messages=discord_messages)
+    monkeypatch.setattr(scheduler, "load_schedules", lambda: [dict(JOB)])
     monkeypatch.setattr(
         scheduler,
         "load_settings",
@@ -123,7 +137,9 @@ def job(monkeypatch, history_root, discord_messages):
         "update_schedule",
         lambda job_id, **changes: harness.update_calls.append((job_id, changes)),
     )
-    return harness
+    scheduler.SCHEDULE_RUNNING.clear()
+    yield harness
+    scheduler.SCHEDULE_RUNNING.clear()
 
 
 def test_a_scheduled_run_writes_history_and_delivers_the_report(job):
@@ -178,6 +194,21 @@ def test_a_long_report_is_split_across_discord_chunks(job):
     assert "".join(job.discord_messages) == f"⏰ {JOB['name']}\n\n{answer}"
     # History keeps the whole report, not one chunk.
     assert record["messages"][-1]["content"] == answer
+
+
+def test_the_cron_path_starts_a_thread_and_delivers_the_report(job):
+    answer = "🌤️ มหาสารคาม 30.5°C"
+    job.answers = [answer]
+
+    scheduler.run_due_jobs(datetime(2026, 11, 25, 6, 0, tzinfo=TZ))
+    wait_for_job(JOB["id"])
+
+    # The report went through a worker thread, not the caller's thread.
+    assert job.provider_on_main_thread == [False]
+    record = history.load_history_record(CONVERSATION_ID)
+    assert [m["content"] for m in record["messages"]] == [JOB["prompt"], answer]
+    assert job.discord_messages == [f"⏰ {JOB['name']}\n\n{answer}"]
+    assert job.update_calls[-1][1]["last_status"] == "success"
 
 
 def test_a_discord_failure_keeps_the_report_in_history(job, monkeypatch):
