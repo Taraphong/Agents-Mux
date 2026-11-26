@@ -1428,6 +1428,13 @@ let connectionState = {
 let currentHistoryItems = [];
 let currentSchedules = [];
 let currentScheduleTimezone = "";
+// The job list carries a retry time that changes without user input, so it is
+// refreshed while the view is open. Only a changed payload repaints it, which
+// keeps the list from flashing and leaves the edit form untouched.
+let scheduleListSignature = "";
+let scheduleLoadInFlight = false;
+let scheduleRefreshTimer = null;
+const SCHEDULE_REFRESH_MS = 20000;
 let currentLogs = [];
 let logsFilter = "system";
 const agentLogPrefixes = ["chat.", "tool.", "provider."];
@@ -2447,7 +2454,12 @@ document.querySelectorAll("nav button").forEach((button) =>
       loadAuthSessions();
       loadServerStatus();
     }
-    if (button.dataset.view === "schedule") loadSchedules();
+    if (button.dataset.view === "schedule") {
+      loadSchedules();
+      startScheduleRefresh();
+    } else {
+      stopScheduleRefresh();
+    }
     if (button.dataset.view === "memory") loadMemory();
     if (button.dataset.view === "logs") loadLogs();
     closeSidebar();
@@ -3380,7 +3392,36 @@ function renderSchedules(items) {
     )
     .join("");
 }
-async function loadSchedules() {
+function schedulesSignature(items) {
+  // Only the fields the list shows: a run that merely moves last_run_at must
+  // not repaint the list, while a new status or retry time must.
+  return JSON.stringify(
+    (items || []).map((job) => [
+      job.id,
+      job.name,
+      job.schedule,
+      job.model,
+      job.enabled,
+      job.last_status,
+      job.retry_at,
+      job.prompt,
+      job.discord_channel_id,
+    ]),
+  );
+}
+function renderSchedulesIfChanged(items) {
+  const signature = schedulesSignature(items);
+  if (signature === scheduleListSignature) return false;
+  scheduleListSignature = signature;
+  renderSchedules(items);
+  return true;
+}
+async function loadSchedules(options = {}) {
+  // A background refresh must not stack requests or scold the user with a
+  // notice every time the server is busy; the button and page loads still do.
+  const quiet = Boolean(options.quiet);
+  if (scheduleLoadInFlight) return;
+  scheduleLoadInFlight = true;
   try {
     const response = await fetch("/api/schedules");
     // A 401 answers with HTML, so the failure must be reported instead of
@@ -3391,11 +3432,32 @@ async function loadSchedules() {
     currentScheduleTimezone =
       data.timezone || t("schedule.timezoneFallback");
     $("schedule-timezone").textContent = currentScheduleTimezone;
-    renderSchedules(currentSchedules);
+    renderSchedulesIfChanged(currentSchedules);
   } catch (error) {
-    showNotice(t("schedule.loadFailed", { error: error.message }), true);
+    if (!quiet)
+      showNotice(t("schedule.loadFailed", { error: error.message }), true);
+  } finally {
+    scheduleLoadInFlight = false;
   }
 }
+function stopScheduleRefresh() {
+  if (scheduleRefreshTimer === null) return;
+  clearInterval(scheduleRefreshTimer);
+  scheduleRefreshTimer = null;
+}
+function startScheduleRefresh() {
+  stopScheduleRefresh();
+  scheduleRefreshTimer = setInterval(() => {
+    // A hidden tab and a different view must not poll: the list is loaded when
+    // the view is opened or the tab becomes visible again.
+    if (document.hidden || activeView() !== "schedule") return;
+    loadSchedules({ quiet: true });
+  }, SCHEDULE_REFRESH_MS);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || activeView() !== "schedule") return;
+  loadSchedules({ quiet: true });
+});
 let memoryStatusCache = null;
 let memoryEntriesCache = { items: [], dreams: "" };
 // Two loads can finish out of order; only the newest may update the caches.
