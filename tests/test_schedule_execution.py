@@ -165,6 +165,51 @@ def test_the_system_prompt_tells_the_model_the_machine_time(run):
     assert system_prompt.index("Current local time") < system_prompt.index("<tool_call>")
 
 
+def test_a_tool_error_names_the_job_in_the_log(run, monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        scheduler,
+        "log_event",
+        lambda event, message, **details: events.append((event, details)),
+    )
+
+    def broken_tool(name, arguments, approved=False):
+        raise OSError("no such file")
+
+    monkeypatch.setattr(scheduler, "run_local_tool", broken_tool)
+    run["answers"] = [
+        '<tool_call>{"name":"read_file","arguments":{"path":"/nope"}}</tool_call>',
+        "รายงาน",
+    ]
+
+    scheduler.execute_schedule(dict(JOB))
+
+    failure = next(details for event, details in events if event == "schedule.tool_error")
+    assert failure["job"] == JOB["id"]
+    assert failure["name"] == JOB["name"]
+    assert failure["tool"] == "read_file"
+    assert failure["error"] == "no such file"
+
+
+def test_an_unreadable_tool_call_names_the_job_in_the_log(run, monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        scheduler,
+        "log_event",
+        lambda event, message, **details: events.append((event, details)),
+    )
+    run["answers"] = ["<tool_call>not json at all</tool_call>", "รายงาน"]
+
+    scheduler.execute_schedule(dict(JOB))
+
+    failure = next(
+        details for event, details in events if event == "schedule.tool_parse_failed"
+    )
+    assert failure["job"] == JOB["id"]
+    assert failure["name"] == JOB["name"]
+    assert failure["error"]
+
+
 def test_a_tool_call_that_never_resolves_marks_the_job_failed(run):
     marker = '<tool_call>{"name":"run_command","arguments":{"command":"true"}}</tool_call>'
     run["answers"] = [marker] * (scheduler.SCHEDULE_TOOL_ROUNDS + 1)

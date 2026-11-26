@@ -421,6 +421,7 @@ const I18N = {
     "schedule.neverRun": "ยังไม่เคยทำงาน",
     "schedule.success": "สำเร็จ",
     "schedule.failed": "ล้มเหลว",
+    "schedule.retryAt": "จะลองใหม่ {time}",
     "schedule.toggleEnable": "เปิดใช้งาน",
     "schedule.toggleDisable": "ปิดใช้งาน",
     "schedule.added": "เพิ่มงานตามเวลาแล้ว",
@@ -1061,6 +1062,7 @@ const I18N = {
     "schedule.neverRun": "Never run",
     "schedule.success": "Success",
     "schedule.failed": "Failed",
+    "schedule.retryAt": "Retry at {time}",
     "schedule.toggleEnable": "Enable",
     "schedule.toggleDisable": "Disable",
     "schedule.added": "Scheduled job added",
@@ -3341,6 +3343,19 @@ function scheduleStatusText(value) {
     return t("schedule.failed");
   return status;
 }
+function scheduleRetryText(job) {
+  // The server writes retry_at as an ISO time with its own offset, so the
+  // browser shows the wall clock the job will actually run at. A time that has
+  // already passed (or cannot be read) means no retry is pending any more.
+  const raw = String((job && job.retry_at) || "").trim();
+  if (!raw) return "";
+  const moment = new Date(raw);
+  if (Number.isNaN(moment.getTime()) || moment.getTime() <= Date.now()) return "";
+  const time = `${String(moment.getHours()).padStart(2, "0")}:${String(
+    moment.getMinutes(),
+  ).padStart(2, "0")}`;
+  return t("schedule.retryAt", { time });
+}
 function renderSchedules(items) {
   const list = $("schedule-list");
   if (!items.length) {
@@ -3352,7 +3367,7 @@ function renderSchedules(items) {
       (job) => `
     <div class="schedule-item" data-schedule-id="${escapeHtml(job.id)}">
       <strong>${escapeHtml(job.name)}</strong>
-      <small>${escapeHtml(job.schedule)} · ${job.model ? `${escapeHtml(t("schedule.modelLabel", { model: job.model }))} · ` : ""}${job.enabled ? t("schedule.enabled") : t("schedule.disabled")} · ${escapeHtml(scheduleStatusText(job.last_status))}</small>
+      <small>${escapeHtml(job.schedule)} · ${job.model ? `${escapeHtml(t("schedule.modelLabel", { model: job.model }))} · ` : ""}${job.enabled ? t("schedule.enabled") : t("schedule.disabled")} · ${escapeHtml(scheduleStatusText(job.last_status))}${scheduleRetryText(job) ? ` · ${escapeHtml(scheduleRetryText(job))}` : ""}</small>
       <small>${escapeHtml(job.prompt)}</small>
       ${job.discord_channel_id ? `<small>${escapeHtml(t("schedule.discordChannel", { id: job.discord_channel_id }))}</small>` : ""}
       <div class="schedule-item-actions">
