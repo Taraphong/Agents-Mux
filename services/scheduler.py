@@ -338,7 +338,11 @@ def run_due_jobs(now: datetime) -> None:
                 update_schedule(job_id, retry_at="")
                 log_event("schedule.retry_start", f"Retrying scheduled job {job.get('name', job_id)}", job=job_id, attempt=retry_attempt_of(job))
             else:
-                update_schedule(job_id, last_run_key=minute_key)
+                # A fresh cron run replaces any pending retry and starts its own
+                # chain: inheriting the old count made a frequent job give up
+                # after three failures spread over unrelated runs.
+                job.update({"last_run_key": minute_key, "retry_at": "", "retry_attempt": 0})
+                update_schedule(job_id, last_run_key=minute_key, retry_at="", retry_attempt=0)
             start_job(job)
         except Exception:
             with SCHEDULE_RUNNING_LOCK:

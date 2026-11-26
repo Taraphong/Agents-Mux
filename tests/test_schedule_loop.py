@@ -88,7 +88,26 @@ def test_a_due_job_starts_at_its_cron_minute(job_env):
     scheduler.run_due_jobs(at(6, 0))
 
     assert [job["id"] for job in job_env["started"]] == [JOB["id"]]
-    assert job_env["updates"] == [(JOB["id"], {"last_run_key": MINUTE_KEY})]
+    assert job_env["updates"] == [
+        (JOB["id"], {"last_run_key": MINUTE_KEY, "retry_at": "", "retry_attempt": 0})
+    ]
+
+
+def test_a_cron_run_starts_its_own_retry_chain(job_env):
+    job_env["jobs"] = [
+        {
+            **JOB,
+            "schedule": "* * * * *",
+            "retry_at": "2026-11-25T06:40:00+07:00",
+            "retry_attempt": 2,
+        }
+    ]
+
+    scheduler.run_due_jobs(at(6, 0))
+
+    started = job_env["started"][0]
+    assert started["retry_attempt"] == 0
+    assert started["retry_at"] == ""
 
 
 @pytest.mark.parametrize(
