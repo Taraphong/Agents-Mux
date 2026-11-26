@@ -95,12 +95,23 @@ def schedule_context_messages(
     return context[-SCHEDULE_CONTEXT_MESSAGES:]
 
 
-def run_schedule_turn(messages: list[dict[str, Any]], settings: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def job_log_details(job: dict[str, Any] | None) -> dict[str, str]:
+    """Name the job in a log record, so a failure can be traced from the log."""
+    data = job or {}
+    return {"job": str(data.get("id") or ""), "name": str(data.get("name") or "")}
+
+
+def run_schedule_turn(
+    messages: list[dict[str, Any]],
+    settings: dict[str, Any],
+    job: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any]]:
     """Call the model and run its tool calls without asking for an approval.
 
     A job is unattended and its prompt was written by the owner, so its tools
     run directly. The loop is bounded so a bad job cannot call tools forever.
     """
+    job_details = job_log_details(job)
     answer, usage = call_provider(messages, settings)
     repaired = False
     for _ in range(SCHEDULE_TOOL_ROUNDS):
@@ -110,6 +121,7 @@ def run_schedule_turn(messages: list[dict[str, Any]], settings: dict[str, Any]) 
             log_event(
                 "schedule.tool_parse_failed",
                 "Skipped an unreadable tool_call in a scheduled job",
+                **job_details,
                 error=str(exc),
             )
             tool_requests = []
@@ -132,6 +144,7 @@ def run_schedule_turn(messages: list[dict[str, Any]], settings: dict[str, Any]) 
                 log_event(
                     "schedule.tool_error",
                     f"Scheduled job tool {name} failed",
+                    **job_details,
                     tool=name,
                     error=str(exc),
                 )
@@ -227,7 +240,7 @@ def execute_schedule(job: dict[str, Any]) -> None:
         prompt_message = {"role": "user", "content": job["prompt"], "schedule_id": job["id"]}
         messages = clean_messages(context_messages + [prompt_message], settings)
         started_at = time.perf_counter()
-        raw_answer, usage = run_schedule_turn(messages, settings)
+        raw_answer, usage = run_schedule_turn(messages, settings, job)
         answer = strip_tool_markers(str(raw_answer or "")).strip()
         duration_ms = round((time.perf_counter() - started_at) * 1000)
         problem = schedule_answer_problem(raw_answer)
@@ -268,8 +281,7 @@ def execute_schedule(job: dict[str, Any]) -> None:
         log_event(
             "schedule.error",
             f"Scheduled job {job.get('name', job.get('id', ''))} failed",
-            job=job.get("id", ""),
-            name=job.get("name", ""),
+            **job_log_details(job),
             error=str(exc),
         )
         moment = datetime.now().astimezone()
