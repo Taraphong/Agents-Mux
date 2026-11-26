@@ -73,6 +73,11 @@ def test_a_failed_run_schedules_the_first_retry(run, monkeypatch):
     delay = datetime.fromisoformat(changes["retry_at"]) - at(6, 2)
     assert delay == timedelta(seconds=SCHEDULE_RETRY_DELAYS[0])
     assert [event for event, _ in run["events"]] == ["schedule.error", "schedule.retry"]
+    # A failure has to name the job in its details; the time alone is ambiguous.
+    error = run["events"][0][1]
+    assert error["job"] == JOB["id"]
+    assert error["name"] == JOB["name"]
+    assert error["error"]
     assert run["discord"] == []
 
 

@@ -263,7 +263,15 @@ def execute_schedule(job: dict[str, Any]) -> None:
         # The job list is returned by /api/schedules, so only a short reason is
         # stored; the message stays in the log above.
         reason = str(getattr(exc, "kind", "") or exc.__class__.__name__)[:60]
-        log_event("schedule.error", f"Scheduled job {job.get('name', job.get('id', ''))} failed", error=str(exc))
+        # The job id and name go in the details so a failure can be traced from
+        # the log alone: the message is free text and the time is not unique.
+        log_event(
+            "schedule.error",
+            f"Scheduled job {job.get('name', job.get('id', ''))} failed",
+            job=job.get("id", ""),
+            name=job.get("name", ""),
+            error=str(exc),
+        )
         moment = datetime.now().astimezone()
         retry = retry_changes(job, moment)
         update_schedule(
