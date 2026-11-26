@@ -2254,6 +2254,12 @@ async function saveMessageEdit() {
   const index = editingMessageIndex;
   const prefix = messages.slice(0, index);
   const targetConversationId = conversationId;
+  // The chat is named after its first question, so editing that question must
+  // rename the conversation too.
+  const editsFirstQuestion = !prefix.some(
+    (message) => message.role === "user",
+  );
+  const previousTitle = conversationTitle;
   if (targetConversationId) {
     // Drop queued retries first so loadHistoryList() inside updateHistory()
     // cannot write the removed answers back.
@@ -2272,6 +2278,15 @@ async function saveMessageEdit() {
   failedSend = null;
   closeMessageEditor();
   renderMessages();
+  if (targetConversationId && editsFirstQuestion) {
+    // Runs beside the new answer, so the summary does not delay the reply.
+    const renamed = refreshTitleAfterPromptEdit(
+      targetConversationId,
+      nextText,
+      previousTitle,
+    );
+    if (renamed) renamed.catch(() => {});
+  }
   // The old answer went away with the edited prompt, so ask the AI again
   // right away instead of only putting the text back in the composer.
   await sendChatMessage(nextText, null, nextText);
@@ -3100,6 +3115,22 @@ async function applyGeneratedTitle(promise, id, fallbackTitle) {
   if (conversationId !== id) return;
   setConversationTitle(generated);
   await loadHistoryList();
+}
+// The conversation title is named after its first question, so editing that
+// question renames the chat with the same cheap summary call. The previous
+// title is the guard: a manual rename that happens while the summary runs wins.
+function refreshTitleAfterPromptEdit(
+  conversationIdForTitle,
+  prompt,
+  previousTitle,
+) {
+  if (!conversationIdForTitle || !prompt) return null;
+  // A failed summary falls back to the edited question, exactly like a new
+  // conversation whose summary failed keeps its first message as the title.
+  const title = requestGeneratedTitle(prompt).then(
+    (generated) => generated || prompt,
+  );
+  return applyGeneratedTitle(title, conversationIdForTitle, previousTitle);
 }
 async function saveConversation(sessionToken = null) {
   if (!messages.length) return null;
