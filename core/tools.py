@@ -157,18 +157,18 @@ def resolve_machine_path(raw_path: str, must_exist: bool = False) -> Path:
 
 
 def workspace_directory() -> Path:
-    """Return the AI workspace folder, creating it on first use."""
+    """Return the agent working folder (the llm-wiki vault by default)."""
     root = Path(os.path.normpath(str(PROJECT_ROOT / WORKSPACE_ROOT)))
     root.mkdir(parents=True, exist_ok=True)
     return root
 
 
 def workspace_tool_path(raw_path: Any) -> Path:
-    """Resolve a tool path against the AI workspace instead of the app folder.
+    """Resolve a tool path against the agent working folder, not the app folder.
 
-    A relative path (or no path at all) belongs to the workspace, while an
-    absolute path or one starting with ~ still reaches the rest of the machine
-    when machine access is on.
+    A relative path (or no path at all) belongs to the llm-wiki vault by
+    default, while an absolute path or one starting with ~ still reaches the
+    rest of the machine when machine access is on.
     """
     text = "" if raw_path is None else str(raw_path).strip()
     if not text or text in {".", "./"}:

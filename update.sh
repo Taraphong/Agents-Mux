@@ -13,7 +13,7 @@
 # The updater only replaces app files (app.py, core/, services/, routes/,
 # templates/, skills/, install scripts). It never touches .env,
 # .app-settings.json, .app-auth.json, certs/, history/, logs/,
-# scheduled-jobs.json, or .venv.
+# the personal llm-wiki vault, scheduled-jobs.json, or .venv.
 #
 # Environment overrides:
 #   AI_WEB_UPDATE_REPO     Default: Taraphong/Agents-mux

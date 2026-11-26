@@ -36,10 +36,16 @@ PAGE_ASSETS = {"index", "pair"}
 # browser may keep them for a year and skip the revalidation round trip.
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 SKILLS_ROOT = Path(os.getenv("AI_WEB_SKILLS_DIR", "skills"))
+# The personal llm-wiki vault: one folder that every agent (chat, scheduled
+# jobs, Discord) reads and writes, seeded on start with its index, rules and
+# note templates. It is user data, so it stays out of Git and out of the deploy
+# copy; the seed only writes files that do not exist yet.
+WIKI_ROOT = Path(os.getenv("AI_WEB_WIKI_DIR", "llm-wiki"))
 # The AI's own working folder: file tools resolve relative paths here and the
 # unrestricted shell starts here, so the agent works in one place instead of
-# the app's source tree. It is created on start and its files stay out of Git.
-WORKSPACE_ROOT = Path(os.getenv("AI_WEB_WORKSPACE_DIR", "workspace"))
+# the app's source tree. It defaults to the llm-wiki vault; set
+# AI_WEB_WORKSPACE_DIR to keep the tools elsewhere. Created on start, out of Git.
+WORKSPACE_ROOT = Path(os.getenv("AI_WEB_WORKSPACE_DIR", str(WIKI_ROOT)))
 # CodeQL's py/path-injection query only honours a startswith() prefix check
 # inside the function that performs the file access, so these normalized roots
 # are used by the re-checks written next to those accesses.
@@ -94,7 +100,8 @@ AUTH_PUBLIC_PREFIXES = ("/static/", "/templates/")
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 AUTH_TRUST_PROXY = os.getenv("AI_WEB_TRUST_PROXY", "").strip().lower() in {"1", "true", "yes", "on"}
 TOOL_INSTRUCTIONS = """
-You have full tool access to this machine: absolute paths and ~/... reach anywhere on the machine, and run_command runs through a real shell (including sudo when the user running the app has permission), starting in the AI workspace folder (workspace/ inside the app folder). In list_files, read_file and write_file a relative path is also resolved inside that workspace, so put the files you create there.
+You have full tool access to this machine: absolute paths and ~/... reach anywhere on the machine, and run_command runs through a real shell (including sudo when the user running the app has permission), starting in the personal llm-wiki vault (llm-wiki/ inside the app folder). In list_files, read_file and write_file a relative path is also resolved inside that vault, so put the files you create there.
+The llm-wiki vault is the shared long-term knowledge base: read llm-wiki/index.md first and follow llm-wiki/AGENTS.md. Write Markdown notes with [[wiki-links]], link every new note from index.md or a project page, capture quick items in llm-wiki/inbox/, and never write API keys, passwords, tokens or private keys into the vault.
 Every tool call pauses and waits for the user to approve it in the chat, and one approval covers a single request. Never assume approval or skip asking for it.
 Call format: <tool_call>{"name":"read_file","arguments":{"path":"/etc/hostname"}}</tool_call> or <tool_call>{"name":"list_files","arguments":{"path":"~"}}</tool_call>
 Run a shell command: <tool_call>{"name":"run_command","arguments":{"command":"curl -s https://example.org"}}</tool_call> and write a file: <tool_call>{"name":"write_file","arguments":{"path":"notes.md","content":"..."}}</tool_call>
