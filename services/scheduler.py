@@ -12,12 +12,13 @@ import subprocess
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from core.config import (
     SCHEDULE_CONTEXT_MESSAGES,
     SCHEDULE_LOCK_FILE,
+    SCHEDULE_RETRY_DELAYS,
     SCHEDULE_TOOL_ROUNDS,
     TOOL_CALL_REPAIR_INSTRUCTION,
     TOOL_INSTRUCTIONS,
@@ -143,6 +144,47 @@ def run_schedule_turn(messages: list[dict[str, Any]], settings: dict[str, Any]) 
     return answer, usage
 
 
+def retry_delay_seconds(attempt: int) -> int:
+    """Seconds to wait before retry number ``attempt`` (0 is the first), or 0 when spent."""
+    if 0 <= attempt < len(SCHEDULE_RETRY_DELAYS):
+        return SCHEDULE_RETRY_DELAYS[attempt]
+    return 0
+
+
+def retry_attempt_of(job: dict[str, Any]) -> int:
+    """Read how many retries this run already used, ignoring a broken value."""
+    try:
+        return max(0, int(job.get("retry_attempt") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def retry_moment(value: Any) -> datetime | None:
+    """Parse a stored retry time; an unreadable value means no retry is pending."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    # A value written without an offset is local time, which is what this
+    # machine's loop compares against.
+    return moment if moment.tzinfo else moment.astimezone()
+
+
+def retry_changes(job: dict[str, Any], now: datetime) -> dict[str, Any]:
+    """Describe the next retry for a failed run, or its end when delays are spent."""
+    attempt = retry_attempt_of(job)
+    delay = retry_delay_seconds(attempt)
+    if not delay:
+        return {"retry_at": "", "retry_attempt": 0}
+    return {
+        "retry_at": (now + timedelta(seconds=delay)).isoformat(timespec="seconds"),
+        "retry_attempt": attempt + 1,
+    }
+
+
 def schedule_answer_problem(answer: str) -> str:
     """Name why a final answer cannot be reported, or return an empty string."""
     text = strip_tool_markers(str(answer or "")).strip()
@@ -208,14 +250,39 @@ def execute_schedule(job: dict[str, Any]) -> None:
             # The answer is already saved in history, so a Discord delivery
             # problem must not mark the AI run itself as failed.
             log_event("schedule.discord_error", f"Could not send scheduled job {job['name']} to Discord", job=job["id"], error=str(exc))
-        update_schedule(job["id"], last_status="success", last_error="", last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+        update_schedule(
+            job["id"],
+            last_status="success",
+            last_error="",
+            last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+            retry_at="",
+            retry_attempt=0,
+        )
         log_event("schedule.success", f"Scheduled job {job['name']} succeeded", job=job["id"], duration_ms=duration_ms)
     except Exception as exc:
         # The job list is returned by /api/schedules, so only a short reason is
         # stored; the message stays in the log above.
         reason = str(getattr(exc, "kind", "") or exc.__class__.__name__)[:60]
         log_event("schedule.error", f"Scheduled job {job.get('name', job.get('id', ''))} failed", error=str(exc))
-        update_schedule(job["id"], last_status="failed", last_error=reason, last_run_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+        moment = datetime.now().astimezone()
+        retry = retry_changes(job, moment)
+        update_schedule(
+            job["id"],
+            last_status="failed",
+            last_error=reason,
+            last_run_at=moment.isoformat(timespec="seconds"),
+            **retry,
+        )
+        if retry["retry_at"]:
+            log_event(
+                "schedule.retry",
+                f"Scheduled job {job.get('name', job.get('id', ''))} will run again",
+                job=job.get("id"),
+                attempt=retry["retry_attempt"],
+                retry_at=retry["retry_at"],
+            )
+        else:
+            log_event("schedule.gave_up", f"Scheduled job {job.get('name', job.get('id', ''))} used all its retries", job=job.get("id"))
     finally:
         job_id = job.get("id") if isinstance(job, dict) else None
         if job_id:
@@ -236,17 +303,25 @@ def run_due_jobs(now: datetime) -> None:
     """
     minute_key = now.strftime("%Y-%m-%d %H:%M")
     for job in load_schedules():
-        if not job.get("enabled", True) or job.get("last_run_key") == minute_key:
+        if not job.get("enabled", True):
             continue
-        try:
-            due = cron_matches(job["schedule"], now)
-        except (KeyError, TypeError, ValueError):
-            # Only a broken cron expression lands here: a save failure below must
-            # not be reported as an invalid schedule.
-            update_schedule(job.get("id", ""), last_status="failed", last_error="invalid_cron")
-            continue
-        if not due:
-            continue
+        # A failed run leaves its retry time behind; it is tried again on the
+        # first check after that moment instead of waiting for the next cron
+        # minute, which for a daily job used to be a whole day later.
+        pending_retry = retry_moment(job.get("retry_at"))
+        is_retry = pending_retry is not None and pending_retry <= now
+        if not is_retry:
+            if job.get("last_run_key") == minute_key:
+                continue
+            try:
+                due = cron_matches(job["schedule"], now)
+            except (KeyError, TypeError, ValueError):
+                # Only a broken cron expression lands here: a save failure below must
+                # not be reported as an invalid schedule.
+                update_schedule(job.get("id", ""), last_status="failed", last_error="invalid_cron")
+                continue
+            if not due:
+                continue
         job_id = str(job.get("id") or "")
         if not job_id:
             continue
@@ -256,7 +331,14 @@ def run_due_jobs(now: datetime) -> None:
                 continue
             SCHEDULE_RUNNING.add(job_id)
         try:
-            update_schedule(job_id, last_run_key=minute_key)
+            if is_retry:
+                # Clear the slot before running so a crashed attempt cannot
+                # dispatch the same retry every minute; a failure writes a new
+                # one before this thread ends.
+                update_schedule(job_id, retry_at="")
+                log_event("schedule.retry_start", f"Retrying scheduled job {job.get('name', job_id)}", job=job_id, attempt=retry_attempt_of(job))
+            else:
+                update_schedule(job_id, last_run_key=minute_key)
             start_job(job)
         except Exception:
             with SCHEDULE_RUNNING_LOCK:

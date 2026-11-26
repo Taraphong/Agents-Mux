@@ -118,6 +118,10 @@ APPROVAL_PLACEHOLDER = "The AI requested a tool that needs approval first"
 # A scheduled job runs unattended, so it may use tools in a bounded loop without
 # a chat approval. The cap keeps one job from looping on tool calls forever.
 SCHEDULE_TOOL_ROUNDS = 6
+# A failed run is tried again after each delay in turn: provider outages and
+# read timeouts are temporary, and a job that only fires once a day used to miss
+# its whole day. After the last delay the job waits for its next cron minute.
+SCHEDULE_RETRY_DELAYS = (300, 900, 1800)
 
 
 def is_approval_placeholder(value: object) -> bool:
