@@ -73,3 +73,11 @@ def test_a_dangling_marker_drops_its_tail():
     assert strip_tool_markers(answer) == "เริ่มแล้ว"
     assert strip_tool_markers('<tool_call>{"command":"ls"') == ""
     assert not has_tool_marker(strip_tool_markers(answer))
+
+
+def test_a_closing_marker_inside_a_json_string_does_not_end_the_block():
+    answer = 'ก่อนรัน\n<tool_call>{"command":"echo </tool_call>"}</tool_call>\nหลังรัน'
+    assert strip_tool_markers(answer) == "ก่อนรัน\n\nหลังรัน"
+    assert parse_tool_requests(answer) == [
+        {"name": "run_command", "arguments": {"command": "echo </tool_call>"}}
+    ]

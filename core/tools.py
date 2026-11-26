@@ -946,7 +946,10 @@ def strip_tool_markers(answer: str) -> str:
             pieces.append(answer[start:])
             break
         pieces.append(answer[start:open_at])
-        close_at = lowered.find("</tool_call>", open_at)
+        # Use the string-aware scan so a "</tool_call>" echoed inside the JSON
+        # payload (for example a command that prints it) does not cut the block
+        # in half and leave raw JSON on screen.
+        close_at = tool_call_close(lowered, open_at + len("<tool_call>"))
         if close_at < 0:
             break
         start = close_at + len("</tool_call>")

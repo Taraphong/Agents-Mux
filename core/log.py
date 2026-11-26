@@ -15,10 +15,6 @@ from core.config import LOG_FILE
 from core.env import env_int
 from core.redaction import redact_secrets
 
-APP_LOGS: deque[dict[str, Any]] = deque(maxlen=env_int("AI_WEB_LOG_MAX_ENTRIES", 1000, 50))
-APP_LOG_LOCK = threading.Lock()
-LOGGER = logging.getLogger("ai-web")
-
 # The in-memory log is a rolling window: a server that runs for weeks on Termux
 # must not keep every event in RAM, so only the newest entries are retained.
 APP_LOGS: deque[dict[str, Any]] = deque(maxlen=env_int("AI_WEB_LOG_MAX_ENTRIES", 1000, 50))
