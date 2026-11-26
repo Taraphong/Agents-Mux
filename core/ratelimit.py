@@ -34,7 +34,7 @@ def api_rate_limited(bucket: str, client: str, limit: int, window: float = 60.0)
         API_RATE_LIMITS[key] = stamps
     return False
 # Per-minute budgets for the endpoints that cost money or touch the machine.
-API_RATE_BUDGETS = {"chat": 30, "tools": 60, "test": 10}
+API_RATE_BUDGETS = {"chat": 30, "title": 30, "tools": 60, "test": 10}
 
 
 def rate_limit_response(bucket: str):
