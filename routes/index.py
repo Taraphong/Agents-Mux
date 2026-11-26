@@ -800,6 +800,50 @@ def summarize_conversation_title(question: str, language: str, settings: dict[st
     return clean_generated_title(answer)
 
 
+TITLE_FALLBACK_STATUSES = {400, 404, 429, 500, 502, 503, 504}
+
+
+def title_fallback_settings(settings: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the configured fallback target, mirroring the chat retry rules."""
+    if not settings.get("fallback_enabled"):
+        return None
+    model = str(settings.get("fallback_model") or "").strip()
+    if not model:
+        return None
+    provider = normalize_provider(settings.get("fallback_provider"))
+    primary_provider = normalize_provider(settings.get("provider"))
+    if provider == primary_provider and model == str(settings.get("model") or "").strip():
+        return None
+    fallback = dict(settings)
+    # A Base URL belongs to the primary provider, so it cannot follow the retry.
+    if provider != primary_provider:
+        fallback["base_url"] = ""
+    fallback["provider"] = provider
+    fallback["model"] = model
+    return fallback
+
+
+def request_conversation_title(question: str, language: str, settings: dict[str, Any]) -> str:
+    """Summarise the question, retrying on the fallback model like /api/chat.
+
+    A busy primary model (503/429) would otherwise leave every new chat with the
+    raw first message as its title, even though a working fallback is configured.
+    """
+    try:
+        return summarize_conversation_title(question, language, settings)
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else None
+        fallback = title_fallback_settings(settings) if status_code in TITLE_FALLBACK_STATUSES else None
+        if fallback is None:
+            raise
+        log_event(
+            "title.retry",
+            "The primary model could not name the conversation, retrying on the fallback",
+            status=status_code,
+        )
+        return summarize_conversation_title(question, language, fallback)
+
+
 @index_bp.post("/api/history/title")
 def history_title():
     """Summarise the first question into a title for a new conversation."""
@@ -816,7 +860,7 @@ def history_title():
         settings["model"] = requested_model.strip()[:200]
     language = request_language()
     try:
-        title = redact_secrets(summarize_conversation_title(
+        title = redact_secrets(request_conversation_title(
             question.strip()[:TITLE_INPUT_MAX_LENGTH], language, settings
         ))
     except (requests.RequestException, RuntimeError, KeyError, ValueError) as exc:
