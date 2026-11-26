@@ -48,6 +48,7 @@ from core.tls import (  # noqa: E402
     tls_configuration,
 )
 from core.tools import workspace_directory  # noqa: E402
+from core.wiki import ensure_wiki  # noqa: E402
 from routes.index import index_bp  # noqa: E402
 from routes.pair import pair_bp  # noqa: E402
 from services.discord_bot import start_discord_bot  # noqa: E402
@@ -66,8 +67,11 @@ load_persisted_logs()
 
 try:
     workspace_directory()
+    # Every agent works in the llm-wiki vault, so its folders, index, rules and
+    # templates must exist before the first chat turn or scheduled job runs.
+    ensure_wiki()
 except OSError as exc:
-    LOGGER.warning("Could not create the AI workspace folder: %s", exc)
+    LOGGER.warning("Could not create the agent working folder or llm-wiki vault: %s", exc)
 
 
 @app.before_request

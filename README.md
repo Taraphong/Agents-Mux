@@ -151,7 +151,7 @@ The Settings view is grouped into cards:
 
 ## Local tools and approvals
 
-Relative paths given to `list_files`, `read_file`, and `write_file`, and the starting folder of `run_command`, are the `workspace/` folder inside the project (override it with `AI_WEB_WORKSPACE_DIR`). The agent keeps the files it creates there, so they stay together and out of Git.
+Relative paths given to `list_files`, `read_file`, and `write_file`, and the starting folder of `run_command`, are the personal `llm-wiki/` vault inside the project (override the working folder with `AI_WEB_WORKSPACE_DIR`). Every agent — chat, scheduled jobs and the Discord bot — works there, so notes and files stay together and out of Git.
 
 With **Machine access** on (the default) the model can use these tools anywhere on the machine:
 
@@ -170,6 +170,24 @@ Every call — reads included — needs a single-use approval in the chat, bound
 Turn **Settings → Machine access** off to restrict tools to the project folder and to the `pwd` / `ls` / `git status|diff|log` allowlist (no shell).
 
 > ⚠️ An approved command runs with the privileges of the user running the app — including `sudo` when that user may use it without a password. Read each command before approving it.
+
+## Personal llm-wiki
+
+`llm-wiki/` is one personal knowledge base that every agent shares: the chat, scheduled jobs, the Discord bot, and the development agents. On start the app creates it if it is missing and seeds only the files that do not exist yet, so notes are never overwritten:
+
+```text
+llm-wiki/
+├── index.md        map of content — every agent reads this first
+├── AGENTS.md       the rules every agent follows in the vault
+├── inbox/          quick captures waiting to be processed
+├── notes/          permanent notes, one topic per file
+├── projects/       one page per project
+├── daily/          YYYY-MM-DD.md daily notes
+├── templates/      note, project and daily templates
+└── attachments/    images and files
+```
+
+Notes are plain Markdown linked with `[[wiki-links]]`, so the folder is also a normal Obsidian vault — open it directly in Obsidian (the app leaves `.obsidian/` alone). The vault is machine-specific user data: it is excluded from Git and from the deploy copy, and it is re-seeded on each machine on start. Change its location with `AI_WEB_WIKI_DIR`, or point only the tool working folder elsewhere with `AI_WEB_WORKSPACE_DIR`.
 
 ## Scheduler
 
