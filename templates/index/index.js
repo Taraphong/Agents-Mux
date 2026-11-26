@@ -64,12 +64,10 @@ const I18N = {
     "message.editPrompt": "แก้ไขคำสั่ง",
     "message.editTitle": "แก้ไขคำสั่ง",
     "message.editHint":
-      "บันทึกแล้วระบบจะลบคำตอบที่ได้จากคำสั่งนี้ และนำคำสั่งที่แก้ไขไปไว้ในช่องพิมพ์เพื่อส่งใหม่",
-    "message.editSave": "บันทึกและลบคำตอบเดิม",
+      "บันทึกแล้วระบบจะลบคำตอบเดิมของคำสั่งนี้ แล้วส่งคำสั่งที่แก้ไขไปถาม AI ใหม่อีกครั้ง",
+    "message.editSave": "บันทึกและส่งใหม่",
     "message.editEmpty": "คำสั่งต้องไม่ว่าง",
     "message.editBusy": "รอให้ AI ตอบเสร็จก่อนแก้ไขคำสั่ง",
-    "message.editDeleted":
-      "แก้ไขคำสั่งแล้ว ลบคำตอบเดิม และเตรียมข้อความไว้ในช่องพิมพ์",
     "message.editFailed": "แก้ไขคำสั่งไม่สำเร็จ",
     "message.copied": "คัดลอกแล้ว",
     "message.copyFailed": "คัดลอกไม่สำเร็จ",
@@ -704,12 +702,10 @@ const I18N = {
     "message.editPrompt": "Edit prompt",
     "message.editTitle": "Edit prompt",
     "message.editHint":
-      "Saving removes the answer that came from this prompt and puts the edited text in the composer to send again",
-    "message.editSave": "Save and delete old answer",
+      "Saving removes this prompt's old answer and sends the edited prompt to the AI again",
+    "message.editSave": "Save and resend",
     "message.editEmpty": "The prompt cannot be empty",
     "message.editBusy": "Wait for the AI to finish before editing a prompt",
-    "message.editDeleted":
-      "Prompt edited, its old answer removed, and the text placed in the composer",
     "message.editFailed": "Could not edit the prompt",
     "message.copied": "Copied",
     "message.copyFailed": "Could not copy",
@@ -2275,12 +2271,10 @@ async function saveMessageEdit() {
   persistedMessageCount = prefix.length;
   failedSend = null;
   closeMessageEditor();
-  $("input").value = nextText;
-  resizeInput();
-  updateSendState();
   renderMessages();
-  showNotice(t("message.editDeleted"));
-  $("input").focus();
+  // The old answer went away with the edited prompt, so ask the AI again
+  // right away instead of only putting the text back in the composer.
+  await sendChatMessage(nextText, null, nextText);
 }
 $("message-modal-cancel").addEventListener("click", closeMessageEditor);
 $("message-modal-confirm").addEventListener("click", saveMessageEdit);
