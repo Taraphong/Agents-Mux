@@ -97,6 +97,15 @@ def test_a_successful_summary_returns_one_clean_title(title_app):
     assert [entry["event"] for entry in title_app.logs] == []
 
 
+def test_decoration_around_the_final_punctuation_is_trimmed(title_app):
+    title_app.answers = ["**SQLite กับ PostgreSQL ต่างกันอย่างไร**...  \n"]
+
+    response = request_title(title_app)
+
+    assert response.status_code == 200
+    assert response.get_json() == {"title": "SQLite กับ PostgreSQL ต่างกันอย่างไร"}
+
+
 def test_the_requested_chat_model_names_the_conversation(title_app):
     title_app.answers = ["หัวข้อจากโมเดลที่เลือก"]
 

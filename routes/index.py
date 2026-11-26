@@ -757,17 +757,30 @@ TITLE_INPUT_MAX_LENGTH = 4000
 TITLE_MAX_LENGTH = 100
 
 
+def trim_title_tail(title: str) -> str:
+    """Drop trailing whitespace and separators from a model-written title.
+
+    A regex such as ``[\\s.,;:!?]+$`` backtracks polynomially on a reply that
+    ends with many separators, and the reply is model output the user cannot
+    control, so the tail is trimmed with one linear scan instead.
+    """
+    end = len(title)
+    while end and (title[end - 1].isspace() or title[end - 1] in ".,;:!?"):
+        end -= 1
+    return title[:end]
+
+
 def clean_generated_title(answer: str) -> str:
     """Turn a model reply into one plain title line without decoration."""
     line = next((row.strip() for row in str(answer or "").splitlines() if row.strip()), "")
     title = re.sub(r"\s+", " ", line).strip().strip("`*_\"'“”‘’ ")
     # Unwrap quotes first, otherwise "Title: ..." keeps its prefix.
     title = re.sub(r"^(?:title|หัวข้อ|หัวเรื่อง)\s*[:：-]\s*", "", title, flags=re.IGNORECASE)
-    title = re.sub(r"[\s.,;:!?]+$", "", title)
+    title = trim_title_tail(title)
     # Decoration can sit outside the final punctuation ("**Title**."), so the
     # trim runs after the punctuation is gone as well.
     title = title.strip("`*_\"'“”‘’ ")
-    title = re.sub(r"[\s.,;:!?]+$", "", title)
+    title = trim_title_tail(title)
     return title[:TITLE_MAX_LENGTH]
 
 
