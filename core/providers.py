@@ -290,12 +290,17 @@ def key_is_configured(provider: str, settings: dict[str, Any] | None = None) -> 
 
 
 def get_base_url(provider: str, settings: dict[str, Any] | None = None) -> str:
-    """Get the appropriate base URL for a provider, using stored setting or default."""
+    """Get the base URL that belongs to *provider*.
+
+    ``base_url`` is the endpoint for the active chat provider, so it is only
+    reused when *provider* is that provider. A discovery call or key check for
+    another provider must not send its key to the active provider's host.
+    """
     provider = normalize_provider(provider)
     if settings is None:
         settings = load_settings()
     stored_base = str(settings.get("base_url") or "").strip()
-    if stored_base:
+    if stored_base and normalize_provider(settings.get("provider")) == provider:
         return stored_base.rstrip("/")
     # Return provider-specific default if no custom base URL set
     return PROVIDER_BASE_URLS.get(provider, "https://api.openai.com/v1").rstrip("/")
@@ -443,14 +448,10 @@ def provider_readiness(settings: dict[str, Any], language: str = "en") -> dict[s
 def gemini_base_url(settings: dict[str, Any]) -> str:
     """Return the Gemini endpoint used by discovery and the Gemini tools.
 
-    ``base_url`` belongs to the active chat provider, so it is only reused when
-    Gemini itself is that provider. Otherwise the saved Gemini key would travel
-    to an unrelated OpenAI-compatible endpoint.
+    ``get_base_url()`` only reuses the stored Base URL for its own provider, so
+    the saved Gemini key never travels to an unrelated OpenAI-compatible host.
     """
-    stored = str(settings.get("base_url") or "").strip().rstrip("/")
-    if stored and normalize_provider(settings.get("provider")) == "gemini":
-        return stored
-    return PROVIDER_BASE_URLS["gemini"].rstrip("/")
+    return get_base_url("gemini", settings)
 
 
 def gemini_post(

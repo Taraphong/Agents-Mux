@@ -1511,18 +1511,14 @@ def chat():
             # so machine access enabled during call_provider includes
             # read_file and list_files in the approval decision.
             _machine_access = machine_access_enabled(settings) or machine_access_enabled(load_settings())
-            required_tools = approval_required_tools(
-                {"machine_access": _machine_access} if _machine_access is not None else settings
-            )
+            required_tools = approval_required_tools({"machine_access": _machine_access})
             approval_request = next(
                 (item for item in tool_requests if TOOL_ALIASES.get(item["name"], item["name"]) in required_tools),
                 None,
             )
             # Machine access always asks, whatever the command mode says.
             if approval_request and (
-                machine_access_enabled(settings)
-                or machine_access_enabled(load_settings())
-                or command_mode not in {"auto", "fast"}
+                _machine_access or command_mode not in {"auto", "fast"}
             ):
                 approval_id, approval_expires_at = request_tool_approval(approval_request["name"], approval_request["arguments"])
                 return jsonify({
