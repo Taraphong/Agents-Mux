@@ -753,6 +753,138 @@ def history_save():
         return jsonify({"error": status_message(request_language(), "history_locked_save")}), 423
 
 
+TITLE_INPUT_MAX_LENGTH = 4000
+TITLE_MAX_LENGTH = 100
+
+
+def trim_title_tail(title: str) -> str:
+    """Drop trailing whitespace and separators from a model-written title.
+
+    A regex such as ``[\\s.,;:!?]+$`` backtracks polynomially on a reply that
+    ends with many separators, and the reply is model output the user cannot
+    control, so the tail is trimmed with one linear scan instead.
+    """
+    end = len(title)
+    while end and (title[end - 1].isspace() or title[end - 1] in ".,;:!?"):
+        end -= 1
+    return title[:end]
+
+
+def clean_generated_title(answer: str) -> str:
+    """Turn a model reply into one plain title line without decoration."""
+    line = next((row.strip() for row in str(answer or "").splitlines() if row.strip()), "")
+    title = re.sub(r"\s+", " ", line).strip().strip("`*_\"'“”‘’ ")
+    # Unwrap quotes first, otherwise "Title: ..." keeps its prefix.
+    title = re.sub(r"^(?:title|หัวข้อ|หัวเรื่อง)\s*[:：-]\s*", "", title, flags=re.IGNORECASE)
+    title = trim_title_tail(title)
+    # Decoration can sit outside the final punctuation ("**Title**."), so the
+    # trim runs after the punctuation is gone as well.
+    title = title.strip("`*_\"'“”‘’ ")
+    title = trim_title_tail(title)
+    return title[:TITLE_MAX_LENGTH]
+
+
+def summarize_conversation_title(question: str, language: str, settings: dict[str, Any]) -> str:
+    """Ask the configured model for a short title that names the question."""
+    if language == "th":
+        instruction = (
+            "คุณเป็นผู้ตั้งชื่อบทสนทนา สรุปข้อความแรกของผู้ใช้เป็นหัวข้อสั้น ๆ ที่บอกเนื้อหาจริง "
+            "ใช้ภาษาไทย ความยาวไม่เกิน 60 ตัวอักษร ห้ามใส่เครื่องหมายคำพูด ห้ามมีเครื่องหมายวรรคตอนท้าย "
+            "ห้ามขึ้นต้นด้วย 'หัวข้อ:' และห้ามตอบคำถาม ตอบเฉพาะหัวข้อเท่านั้น"
+        )
+    else:
+        instruction = (
+            "You name chat conversations. Summarise the user's first message into one short, specific "
+            "title that names its actual subject. Use English. At most 10 words, no quotes, no ending "
+            "punctuation, no prefix such as 'Title:', and never answer the message. Reply with the title only."
+        )
+    title_settings = dict(settings)
+    # A title is a single cheap line: no thinking budget, a small output cap.
+    title_settings["thinking_level"] = "off"
+    title_settings["max_tokens"] = min(max(int(title_settings.get("max_tokens") or 0), 64), 200)
+    title_settings["temperature"] = 0.2
+    answer, _usage = call_provider(
+        [
+            {"role": "system", "content": instruction},
+            {"role": "user", "content": question},
+        ],
+        title_settings,
+    )
+    return clean_generated_title(answer)
+
+
+TITLE_FALLBACK_STATUSES = {400, 404, 429, 500, 502, 503, 504}
+
+
+def title_fallback_settings(settings: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the configured fallback target, mirroring the chat retry rules."""
+    if not settings.get("fallback_enabled"):
+        return None
+    model = str(settings.get("fallback_model") or "").strip()
+    if not model:
+        return None
+    provider = normalize_provider(settings.get("fallback_provider"))
+    primary_provider = normalize_provider(settings.get("provider"))
+    if provider == primary_provider and model == str(settings.get("model") or "").strip():
+        return None
+    fallback = dict(settings)
+    # A Base URL belongs to the primary provider, so it cannot follow the retry.
+    if provider != primary_provider:
+        fallback["base_url"] = ""
+    fallback["provider"] = provider
+    fallback["model"] = model
+    return fallback
+
+
+def request_conversation_title(question: str, language: str, settings: dict[str, Any]) -> str:
+    """Summarise the question, retrying on the fallback model like /api/chat.
+
+    A busy primary model (503/429) would otherwise leave every new chat with the
+    raw first message as its title, even though a working fallback is configured.
+    """
+    try:
+        return summarize_conversation_title(question, language, settings)
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else None
+        fallback = title_fallback_settings(settings) if status_code in TITLE_FALLBACK_STATUSES else None
+        if fallback is None:
+            raise
+        log_event(
+            "title.retry",
+            "The primary model could not name the conversation, retrying on the fallback",
+            status=status_code,
+        )
+        return summarize_conversation_title(question, language, fallback)
+
+
+@index_bp.post("/api/history/title")
+def history_title():
+    """Summarise the first question into a title for a new conversation."""
+    limited = rate_limit_response("title")
+    if limited:
+        return limited
+    body = request.get_json(silent=True) or {}
+    question = body.get("question")
+    if not isinstance(question, str) or not question.strip():
+        return jsonify({"error": status_message(request_language(), "chat_message_required")}), 400
+    settings = load_settings()
+    requested_model = body.get("model")
+    if isinstance(requested_model, str) and requested_model.strip():
+        settings["model"] = requested_model.strip()[:200]
+    language = request_language()
+    try:
+        title = redact_secrets(request_conversation_title(
+            question.strip()[:TITLE_INPUT_MAX_LENGTH], language, settings
+        ))
+    except (requests.RequestException, RuntimeError, KeyError, ValueError) as exc:
+        log_event("title.failed", "Could not summarise a conversation title", error=str(exc)[:200])
+        return jsonify({"error": status_message(language, "title_generation_failed")}), 502
+    if not title:
+        log_event("title.empty", "The title summary came back empty")
+        return jsonify({"error": status_message(language, "title_generation_failed")}), 502
+    return jsonify({"title": title})
+
+
 @index_bp.get("/api/models")
 def models_get():
     """Return provider models, falling back to a static list on failure."""

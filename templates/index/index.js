@@ -1466,12 +1466,16 @@ function updatePageTitle() {
       ? conversationTitle || t("chat.title")
       : t(`page.${view}`);
 }
-function setConversationTitle(title) {
-  conversationTitle =
+function normalizeConversationTitle(title) {
+  return (
     String(title || "")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 80) || null;
+      .slice(0, 80) || null
+  );
+}
+function setConversationTitle(title) {
+  conversationTitle = normalizeConversationTitle(title);
   updatePageTitle();
 }
 function addCommandResult(text, error = false) {
@@ -3061,6 +3065,48 @@ async function flushPendingAppends(id = null) {
     pendingAppendFlush = null;
   }
 }
+async function requestGeneratedTitle(question) {
+  // A failed summary is not an error the user needs to see: the first
+  // message stays the title, exactly like the earlier behaviour.
+  try {
+    const response = await fetch("/api/history/title", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question,
+        model: $("chat-model-select")?.value || "",
+        lang: currentLanguage,
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data.title === "string" && data.title.trim()
+      ? data.title.trim()
+      : null;
+  } catch (error) {
+    return null;
+  }
+}
+async function applyGeneratedTitle(promise, id, fallbackTitle) {
+  const generated = await promise;
+  if (!generated) return;
+  // A new chat, a reload or a rename means this summary is no longer wanted.
+  if (conversationId !== id) return;
+  if (conversationTitle !== normalizeConversationTitle(fallbackTitle)) return;
+  try {
+    const response = await fetch(`/api/history/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: generated, lang: currentLanguage }),
+    });
+    if (!response.ok) return;
+  } catch (error) {
+    return;
+  }
+  if (conversationId !== id) return;
+  setConversationTitle(generated);
+  await loadHistoryList();
+}
 async function saveConversation(sessionToken = null) {
   if (!messages.length) return null;
   const targetConversationId = conversationId;
@@ -3068,6 +3114,12 @@ async function saveConversation(sessionToken = null) {
     sessionToken === null || sessionToken === chatSessionToken;
   const firstUser = messages.find((message) => message.role === "user");
   const title = firstUser?.content || t("chat.newConversationTitle");
+  // Summarising the first question costs one model call, so it runs beside
+  // the save instead of delaying the reply; the question is only the fallback.
+  const generatedTitle =
+    !targetConversationId && firstUser?.content
+      ? requestGeneratedTitle(firstUser.content)
+      : null;
   if (!targetConversationId) {
     const snapshot = messages.slice();
     try {
@@ -3089,6 +3141,9 @@ async function saveConversation(sessionToken = null) {
         conversationGeneration = saved.generation || conversationGeneration;
         persistedMessageCount = snapshot.length;
         await loadHistoryList();
+      }
+      if (generatedTitle) {
+        applyGeneratedTitle(generatedTitle, saved.id, title).catch(() => {});
       }
       return saved;
     } catch (error) {
