@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask
 
+import core.settings_update as settings_update_module
 import routes.index as index_routes
 import routes.shared as shared_routes
 from core.redaction import mask_url_credentials
@@ -43,7 +44,8 @@ def settings_app(monkeypatch):
     monkeypatch.setattr(index_routes, "discord_status", lambda: {})
     monkeypatch.setattr(index_routes, "list_skills", lambda: [])
     monkeypatch.setattr(index_routes, "apply_settings_update", shared_routes.apply_settings_update)
-    monkeypatch.setattr(shared_routes, "list_skills", lambda: [])
+    # The skills filter moved into the shared settings write path.
+    monkeypatch.setattr(settings_update_module, "list_skills", lambda: [])
     monkeypatch.setattr(shared_routes, "save_settings", lambda value: saved.update(value))
     monkeypatch.setattr(shared_routes, "key_is_configured", lambda provider, settings=None: True)
     monkeypatch.setattr(shared_routes, "start_discord_bot", lambda: None)

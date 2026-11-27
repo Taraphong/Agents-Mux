@@ -97,6 +97,8 @@ STATUS_MESSAGES = {
         "tool_call_unreadable": "โมเดลส่ง tool call มาในรูปแบบที่อ่านไม่ได้ (JSON ไม่สมบูรณ์ หรือไม่มีชื่อเครื่องมือ) จึงยังไม่ได้รันคำสั่ง — ลองส่งข้อความเดิมอีกครั้ง หรือเปลี่ยนไปใช้โมเดลที่เก่งขึ้น",
         "chat_reply_cut": "⚠️ คำตอบนี้อาจไม่ครบ: โมเดลหยุดเขียนก่อนจบ (finishReason: {reason}) — ส่งคำถามเดิมอีกครั้ง หรือเปลี่ยนโมเดล",
         "rate_limited": "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
+        "agent_setting_locked": "AI แก้ไข \"{field}\" ไม่ได้ เพราะเป็นการตั้งค่าที่เก็บข้อมูลลับหรือควบคุมสิทธิ์ของเครื่องมือ — เปลี่ยนได้จากหน้า Settings เท่านั้น",
+        "agent_setting_unknown": "ไม่รู้จักการตั้งค่า \"{field}\" — ใช้ get_settings เพื่อดูรายชื่อที่แก้ไขได้",
     },
     "en": {
         "invalid_key": "{label} API key is invalid or unauthorized",
@@ -185,6 +187,8 @@ STATUS_MESSAGES = {
         "tool_call_unreadable": "The model sent a tool call that could not be read (incomplete JSON or no tool name), so nothing was run. Send the message again or switch to a stronger model",
         "chat_reply_cut": "⚠️ This answer may be incomplete: the model stopped before it finished (finishReason: {reason}). Send the message again or switch models",
         "rate_limited": "Too many requests; wait a moment and try again",
+        "agent_setting_locked": "The AI cannot change \"{field}\": it stores a secret or controls tool permissions. Change it on the Settings page",
+        "agent_setting_unknown": "Unknown setting \"{field}\" — call get_settings for the names it may change",
     },
 }
 

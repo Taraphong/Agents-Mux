@@ -514,6 +514,7 @@ const I18N = {
     "usage.tokens": "{count} tokens",
     "tool.approve": "อนุมัติใช้ {name}",
     "tool.contentLabel": "เนื้อหา:",
+    "tool.settingsChangeLabel": "การตั้งค่าที่จะเปลี่ยน:",
     "tool.working": "กำลังทำงาน...",
     "tool.done": "ทำงานแล้ว",
     "tool.error": "ใช้เครื่องมือไม่สำเร็จ",
@@ -1205,6 +1206,7 @@ const I18N = {
     "usage.tokens": "{count} tokens",
     "tool.approve": "Approve {name}",
     "tool.contentLabel": "Content:",
+    "tool.settingsChangeLabel": "Settings to change:",
     "tool.working": "Working...",
     "tool.done": "Done",
     "tool.error": "The tool could not run",
@@ -2305,14 +2307,29 @@ function addMessage(role, content, meta = null, messageIndex = null) {
     el.appendChild(approval);
     const args = meta.tool_request.arguments || {};
     const summary = args.command || args.path || "";
-    if (summary || args.content) {
+    // A settings change carries neither a command nor a path, so the approval
+    // card lists the keys and their new values instead of an empty detail.
+    const settingsArg =
+      args.settings && typeof args.settings === "object" ? args.settings : null;
+    const settingsPreview = settingsArg
+      ? `${t("tool.settingsChangeLabel")}\n${Object.entries(settingsArg)
+          .map(([key, value]) =>
+            `${key}: ${
+              typeof value === "string" ? value : JSON.stringify(value)
+            }`.slice(0, 300),
+          )
+          .join("\n")}`
+      : "";
+    if (summary || args.content || settingsPreview) {
       const detail = document.createElement("small");
       detail.className = "tool-approval-detail";
       const content = String(args.content || "");
       const preview = content
         ? `${t("tool.contentLabel")}\n${content.slice(0, 500)}${content.length > 500 ? "…" : ""}`
         : "";
-      detail.textContent = [summary, preview].filter(Boolean).join("\n");
+      detail.textContent = [summary, settingsPreview, preview]
+        .filter(Boolean)
+        .join("\n");
       el.appendChild(detail);
     }
   }
