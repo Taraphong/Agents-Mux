@@ -239,6 +239,61 @@ const I18N = {
       "อัปเดตจบแล้วแต่ไม่ทราบผล — ดู log ด้านล่าง",
     "settings.updateLogEmpty": "ยังไม่มีผลการทำงาน",
     "settings.updateLogTruncated": "…แสดงเฉพาะท้าย log",
+    "settings.updateBannerIdleTitle": "ยังไม่ได้ตรวจสอบ",
+    "settings.updateBannerIdleDetail":
+      "กด “ตรวจสอบการอัปเดต” เพื่อดูว่ามีไฟล์ใหม่บน GitHub หรือไม่",
+    "settings.updateBannerAvailableTitle": "มีอัปเดตใหม่",
+    "settings.updateBannerAvailableDetail":
+      "พบ {count} ไฟล์ที่ต่างจาก GitHub — กด “ติดตั้งอัปเดต” เมื่อพร้อม",
+    "settings.updateBannerCurrentTitle": "เป็นเวอร์ชันล่าสุดแล้ว",
+    "settings.updateBannerCurrentDetail":
+      "ตรวจสอบเมื่อ {time} ไม่พบไฟล์ที่ต้องอัปเดต",
+    "settings.updateBannerRunningTitle": "กำลังทำงาน: {mode}",
+    "settings.updateBannerRunningDetail":
+      "รอสักครู่ ระบบกำลังทำงานอยู่เบื้องหลัง",
+    "settings.updateBannerErrorTitle": "อัปเดตไม่สำเร็จ",
+    "settings.updateRestartingDetail":
+      "หน้าเว็บจะเชื่อมต่อใหม่เองเมื่อเซิร์ฟเวอร์พร้อม",
+    "settings.updateLastCheck": "ตรวจสอบล่าสุด",
+    "settings.updateLastCheckNever": "ยังไม่เคยตรวจสอบ",
+    "settings.updateChanges": "ไฟล์ที่ต่างจาก GitHub",
+    "settings.updateChangeCount": "{count} ไฟล์",
+    "settings.updateNoChanges": "ไม่มี (ตรงกับ GitHub แล้ว)",
+    "settings.updateCheckHint":
+      "ดาวน์โหลดรายการไฟล์มาเทียบกับเครื่องนี้เท่านั้น ไม่เปลี่ยนไฟล์และไม่รีสตาร์ต",
+    "settings.updateApplyHint":
+      "เขียนทับเฉพาะไฟล์แอปแล้วรีสตาร์ตเซิร์ฟเวอร์ หน้าเว็บจะขาดการเชื่อมต่อชั่วครู่",
+    "settings.updateCheckFound": "พบ {count} ไฟล์ที่อัปเดตได้",
+    "settings.updateUpToDateNotice":
+      "เป็นเวอร์ชันล่าสุดแล้ว ไม่มีไฟล์ที่ต้องอัปเดต",
+    "settings.updateAvailableNotice":
+      "มีอัปเดตใหม่ {count} ไฟล์ — เปิด Settings → อัปเดต เพื่อติดตั้ง",
+    "settings.updateAutoTitle": "ตรวจสอบอัตโนมัติเมื่อไม่มีการใช้งาน",
+    "settings.updateAutoHint":
+      "เมื่อไม่มีใครใช้งานเว็บต่อเนื่องตามเวลาที่ตั้งไว้ เซิร์ฟเวอร์จะเช็กเวอร์ชันใหม่ให้เอง แล้วแจ้งเตือนที่นี่ โดยยังไม่ติดตั้งจนกว่าคุณจะกด",
+    "settings.updateAutoToggle": "เปิดตรวจสอบอัตโนมัติ",
+    "settings.updateAutoIdleLabel": "ไม่มีการใช้งานนาน (นาที)",
+    "settings.updateAutoIdleHint":
+      "5–1440 นาที และเว้นระยะอย่างน้อย 6 ชั่วโมงระหว่างการตรวจแต่ละครั้ง",
+    "settings.updateAutoLast": "ตรวจอัตโนมัติล่าสุด",
+    "settings.updateAutoNever": "ยังไม่เคย",
+    "settings.updateAutoSave": "บันทึกการตั้งค่าอัตโนมัติ",
+    "settings.updateAutoSaved": "บันทึกการตั้งค่าตรวจสอบอัตโนมัติแล้ว",
+    "settings.updateAutoSaveFailed": "บันทึกการตั้งค่าตรวจสอบอัตโนมัติไม่สำเร็จ",
+    "settings.updateAutoState":
+      "จะตรวจสอบเมื่อไม่มีการใช้งาน {minutes} นาที (ตอนนี้ว่างมาแล้ว {idle} นาที)",
+    "settings.updateAutoStateOff":
+      "การตรวจสอบอัตโนมัติปิดอยู่ — ต้องกดตรวจสอบเอง",
+    "settings.updateStepsTitle": "ขั้นตอนการอัปเดต",
+    "settings.updateStepCheckTitle": "1. ตรวจสอบ",
+    "settings.updateStepCheck":
+      "เปรียบเทียบรายการไฟล์บน GitHub กับเครื่องนี้ ยังไม่มีการเขียนไฟล์ใด ๆ",
+    "settings.updateStepApplyTitle": "2. ติดตั้ง",
+    "settings.updateStepApply":
+      "เขียนทับเฉพาะไฟล์แอป แล้วรีสตาร์ตเซิร์ฟเวอร์ให้อัตโนมัติ",
+    "settings.updateStepKeepTitle": "3. ข้อมูลเดิมยังอยู่",
+    "settings.updateStepKeep":
+      "ไม่แตะ .env การตั้งค่า ประวัติ ใบรับรอง และ llm-wiki",
     "settings.saveScopeHint": "การบันทึกมีผลกับการตั้งค่าทุกหมวด",
     "settings.agentInstructionsTitle": "คำสั่งประจำ Agent",
     "settings.agentInstructionsHint":
@@ -879,6 +934,62 @@ const I18N = {
       "Update finished but the result is unknown — see the output below",
     "settings.updateLogEmpty": "No output yet",
     "settings.updateLogTruncated": "…showing only the end of the output",
+    "settings.updateBannerIdleTitle": "Not checked yet",
+    "settings.updateBannerIdleDetail":
+      'Press "Check for updates" to see whether GitHub has newer files',
+    "settings.updateBannerAvailableTitle": "An update is available",
+    "settings.updateBannerAvailableDetail":
+      '{count} file(s) differ from GitHub — press "Update now" when ready',
+    "settings.updateBannerCurrentTitle": "You are on the latest version",
+    "settings.updateBannerCurrentDetail":
+      "Checked {time}; no files need updating",
+    "settings.updateBannerRunningTitle": "Running: {mode}",
+    "settings.updateBannerRunningDetail":
+      "This works in the background; wait a moment",
+    "settings.updateBannerErrorTitle": "The update failed",
+    "settings.updateRestartingDetail":
+      "The page reconnects by itself once the server is ready",
+    "settings.updateLastCheck": "Last checked",
+    "settings.updateLastCheckNever": "Never checked",
+    "settings.updateChanges": "Files different from GitHub",
+    "settings.updateChangeCount": "{count} file(s)",
+    "settings.updateNoChanges": "None (matches GitHub)",
+    "settings.updateCheckHint":
+      "Only downloads the file list and compares it with this machine; it changes nothing and does not restart",
+    "settings.updateApplyHint":
+      "Replaces only the app files and restarts the server; the page disconnects briefly",
+    "settings.updateCheckFound": "{count} file(s) can be updated",
+    "settings.updateUpToDateNotice":
+      "Already up to date — no files need updating",
+    "settings.updateAvailableNotice":
+      "An update is available ({count} files) — open Settings → Update to install it",
+    "settings.updateAutoTitle": "Check automatically when the app is idle",
+    "settings.updateAutoHint":
+      "Once nobody has used the app for the time below, the server checks for a new version by itself and reports it here. Nothing is installed until you press Update",
+    "settings.updateAutoToggle": "Enable the automatic check",
+    "settings.updateAutoIdleLabel": "Idle time before checking (minutes)",
+    "settings.updateAutoIdleHint":
+      "5–1440 minutes, with at least 6 hours between automatic checks",
+    "settings.updateAutoLast": "Last automatic check",
+    "settings.updateAutoNever": "Never",
+    "settings.updateAutoSave": "Save automatic check settings",
+    "settings.updateAutoSaved": "Automatic check settings saved",
+    "settings.updateAutoSaveFailed":
+      "Could not save the automatic check settings",
+    "settings.updateAutoState":
+      "Checks after {minutes} minutes without use (idle for {idle} minutes now)",
+    "settings.updateAutoStateOff":
+      "The automatic check is off — check for updates manually",
+    "settings.updateStepsTitle": "How an update works",
+    "settings.updateStepCheckTitle": "1. Check",
+    "settings.updateStepCheck":
+      "Compares the file list on GitHub with this machine; nothing is written",
+    "settings.updateStepApplyTitle": "2. Install",
+    "settings.updateStepApply":
+      "Replaces only the app files, then restarts the server for you",
+    "settings.updateStepKeepTitle": "3. Your data stays",
+    "settings.updateStepKeep":
+      "Leaves .env, settings, history, certificates and llm-wiki untouched",
     "settings.saveScopeHint": "Saving applies to every section",
     "settings.agentInstructionsTitle": "Agent instructions",
     "settings.agentInstructionsHint":
@@ -2571,6 +2682,10 @@ document.querySelectorAll("[data-settings-section]").forEach((button) => {
     // when nothing is checked.
     if (["server", "network"].includes(button.dataset.settingsSection)) {
       loadServerStatus();
+    }
+    // Opening the panel refreshes the check result the idle watcher recorded.
+    if (button.dataset.settingsSection === "update") {
+      loadUpdateState({ quiet: true });
     }
   });
 });
@@ -4853,52 +4968,132 @@ $("save").addEventListener("click", async () => {
 // Update section: runs the project's update.sh through the server API.
 const UPDATE_POLL_MS = 2000;
 const UPDATE_POLL_ATTEMPTS = 90;
+// A background refresh must never keep the server from noticing that nobody is
+// using the app, so it only runs on real interaction or when the tab returns.
+const UPDATE_ACTIVITY_REFRESH_MS = 120000;
 const updateState = {
   loaded: false,
   running: false,
   pending: false,
   restarting: false,
   error: "",
-  job: { mode: "", started_at: "", finished_at: "", ok: null, exit_code: null },
+  job: {
+    mode: "",
+    started_at: "",
+    finished_at: "",
+    ok: null,
+    exit_code: null,
+    trigger: "",
+  },
+  check: { finished_at: "", changed: null, files: "", available: null },
+  auto: {
+    enabled: true,
+    idle_minutes: 30,
+    idle_seconds: 0,
+    last_auto_check_at: "",
+  },
   log: "",
   logTruncated: false,
   appUpdatedAt: "",
   scriptAvailable: false,
 };
 let updatePollTimer = null;
+let updateLastLoadedAt = 0;
+let updateNotifiedAt = "";
+// While the user types in the auto-check fields, a background refresh must not
+// overwrite the unsaved values.
+let updateAutoDirty = false;
 function updateJobFinished() {
   return Boolean(updateState.job && updateState.job.finished_at);
 }
-function updateStatusText() {
-  if (updateState.restarting) return t("settings.updateRestarting");
-  if (updateState.error) return updateState.error;
-  if (!updateState.loaded) return t("settings.updateLoading");
-  if (updateState.running) {
-    return t("settings.updateRunning", {
-      mode: t(
-        updateState.job.mode === "check"
-          ? "settings.updateModeCheck"
-          : "settings.updateModeApply",
-      ),
-    });
-  }
-  if (updateJobFinished()) {
-    const key =
-      updateState.job.mode === "check"
-        ? "settings.updateCheckDone"
-        : "settings.updateDone";
-    if (updateState.job.ok === true)
-      return t(key, { time: updateState.job.finished_at });
-    if (updateState.job.ok === false)
-      return t("settings.updateError", {
+function updateChangedCount() {
+  const changed = updateState.check ? updateState.check.changed : null;
+  return Number.isFinite(changed) ? changed : 0;
+}
+function updateAvailable() {
+  return Boolean(updateState.check && updateState.check.available === true);
+}
+function updateMinutes(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.round(number)) : 0;
+}
+function updateBanner() {
+  if (updateState.restarting)
+    return {
+      state: "running",
+      title: t("settings.updateRestarting"),
+      detail: t("settings.updateRestartingDetail"),
+    };
+  if (updateState.error)
+    return {
+      state: "error",
+      title: t("settings.updateBannerErrorTitle"),
+      detail: updateState.error,
+    };
+  if (!updateState.loaded)
+    return { state: "idle", title: t("settings.updateLoading"), detail: "" };
+  if (updateState.running || updateState.pending)
+    return {
+      state: "running",
+      title: t("settings.updateBannerRunningTitle", {
+        mode: t(
+          updateState.job.mode === "check"
+            ? "settings.updateModeCheck"
+            : "settings.updateModeApply",
+        ),
+      }),
+      detail: t("settings.updateBannerRunningDetail"),
+    };
+  if (updateJobFinished() && updateState.job.ok === false)
+    return {
+      state: "error",
+      title: t("settings.updateBannerErrorTitle"),
+      detail: t("settings.updateError", {
         code: updateState.job.exit_code ?? "?",
-      });
-    return t("settings.updateFinishedUnknown");
-  }
-  return t("settings.updateIdle");
+      }),
+    };
+  if (updateAvailable())
+    return {
+      state: "available",
+      title: t("settings.updateBannerAvailableTitle"),
+      detail: t("settings.updateBannerAvailableDetail", {
+        count: updateChangedCount(),
+      }),
+    };
+  if (updateState.check && updateState.check.available === false)
+    return {
+      state: "current",
+      title: t("settings.updateBannerCurrentTitle"),
+      detail: t("settings.updateBannerCurrentDetail", {
+        time: updateState.check.finished_at || "—",
+      }),
+    };
+  if (updateJobFinished())
+    return {
+      state: "current",
+      title: t(
+        updateState.job.mode === "check"
+          ? "settings.updateCheckDone"
+          : "settings.updateDone",
+        { time: updateState.job.finished_at },
+      ),
+      detail: "",
+    };
+  return {
+    state: "idle",
+    title: t("settings.updateBannerIdleTitle"),
+    detail: t("settings.updateBannerIdleDetail"),
+  };
+}
+function updateAutoStateText() {
+  if (updateState.auto.enabled === false) return t("settings.updateAutoStateOff");
+  return t("settings.updateAutoState", {
+    minutes: updateMinutes(updateState.auto.idle_minutes),
+    idle: Math.round(updateMinutes(updateState.auto.idle_seconds) / 60),
+  });
 }
 function renderUpdatePanel() {
-  if (!$("update-log")) return;
+  if (!$("update-log") || !$("update-banner")) return;
   $("update-app-updated").textContent =
     updateState.appUpdatedAt || t("settings.updateUnknown");
   $("update-script-state").textContent = updateState.scriptAvailable
@@ -4908,15 +5103,31 @@ function renderUpdatePanel() {
     "is-missing",
     updateState.loaded && !updateState.scriptAvailable,
   );
-  const status = $("update-status");
-  status.textContent = updateStatusText();
-  status.classList.toggle("restarting", updateState.restarting);
-  status.classList.toggle(
-    "error",
-    !updateState.restarting &&
-      (Boolean(updateState.error) ||
-        (updateJobFinished() && updateState.job.ok === false)),
-  );
+  $("update-last-check").textContent =
+    updateState.check.finished_at || t("settings.updateLastCheckNever");
+  $("update-changes").textContent =
+    updateState.check.available === true
+      ? t("settings.updateChangeCount", { count: updateChangedCount() })
+      : updateState.check.available === false
+        ? t("settings.updateNoChanges")
+        : t("settings.updateUnknown");
+  if (!updateAutoDirty) {
+    $("update_auto_check").checked = updateState.auto.enabled !== false;
+    $("update_idle_minutes").value = updateMinutes(
+      updateState.auto.idle_minutes,
+    );
+  }
+  $("update_idle_minutes").disabled = !$("update_auto_check").checked;
+  $("update-auto-last").textContent =
+    updateState.auto.last_auto_check_at || t("settings.updateAutoNever");
+  $("update-auto-state").textContent = updateAutoStateText();
+  const banner = updateBanner();
+  $("update-banner").dataset.state = banner.state;
+  $("update-banner-title").textContent = banner.title;
+  $("update-banner-detail").textContent = banner.detail;
+  // The rail button gets a dot so a new version is visible without opening
+  // the Update panel.
+  $("settings-tab-update").classList.toggle("has-update", updateAvailable());
   const busy = updateState.running || updateState.pending;
   $("update-check").disabled = busy;
   $("update-run").disabled =
@@ -4928,8 +5139,22 @@ function renderUpdatePanel() {
       ? `${t("settings.updateLogTruncated")}\n\n${updateState.log}`
       : updateState.log
     : t("settings.updateLogEmpty");
+  // The idle check finishes while nobody watches the page, so its result is
+  // announced once when the page learns about it.
+  const checkedAt = updateState.check.finished_at;
+  if (
+    updateState.job.trigger === "auto" &&
+    updateAvailable() &&
+    checkedAt &&
+    checkedAt !== updateNotifiedAt
+  ) {
+    updateNotifiedAt = checkedAt;
+    showNotice(
+      t("settings.updateAvailableNotice", { count: updateChangedCount() }),
+    );
+  }
 }
-async function loadUpdateState() {
+async function loadUpdateState(options = {}) {
   try {
     const response = await fetch("/api/update");
     if (!response.ok) throw new Error(t("settings.updateLoadFailed"));
@@ -4939,6 +5164,8 @@ async function loadUpdateState() {
     updateState.restarting = false;
     updateState.running = Boolean(data.running);
     updateState.job = data.job || updateState.job;
+    updateState.check = data.check || updateState.check;
+    updateState.auto = data.auto || updateState.auto;
     updateState.log = data.log || "";
     updateState.logTruncated = Boolean(data.log_truncated);
     updateState.appUpdatedAt = data.app_updated_at || "";
@@ -4948,10 +5175,12 @@ async function loadUpdateState() {
       // The updater restarts the server, so a failed request is expected here.
       updateState.restarting = true;
       updateState.error = "";
-    } else {
+    } else if (!options.quiet) {
+      // A background refresh stays silent: the panel keeps its last result.
       updateState.error = error.message || t("settings.updateLoadFailed");
     }
   }
+  updateLastLoadedAt = Date.now();
   renderUpdatePanel();
 }
 function pollUpdateState(attempt = 0) {
@@ -4985,16 +5214,22 @@ function pollUpdateState(attempt = 0) {
       updateState.pending = false;
       renderUpdatePanel();
       const ok = updateState.job.ok;
-      showNotice(
-        ok === true
-          ? t("settings.updateDone", { time: updateState.job.finished_at })
-          : ok === false
-            ? t("settings.updateError", {
-                code: updateState.job.exit_code ?? "?",
-              })
-            : t("settings.updateFinishedUnknown"),
-        ok === false,
-      );
+      let message;
+      if (ok === true && updateState.job.mode === "check") {
+        message = updateAvailable()
+          ? t("settings.updateCheckFound", { count: updateChangedCount() })
+          : t("settings.updateUpToDateNotice");
+      } else {
+        message =
+          ok === true
+            ? t("settings.updateDone", { time: updateState.job.finished_at })
+            : ok === false
+              ? t("settings.updateError", {
+                  code: updateState.job.exit_code ?? "?",
+                })
+              : t("settings.updateFinishedUnknown");
+      }
+      showNotice(message, ok === false);
       return;
     }
     if (attempt < 3) pollUpdateState(attempt + 1);
@@ -5018,7 +5253,14 @@ async function startUpdate(mode) {
   updateState.restarting = false;
   updateState.running = true;
   updateState.pending = true;
-  updateState.job = { mode, started_at: "", finished_at: "", ok: null, exit_code: null };
+  updateState.job = {
+    mode,
+    started_at: "",
+    finished_at: "",
+    ok: null,
+    exit_code: null,
+    trigger: "web",
+  };
   renderUpdatePanel();
   try {
     const response = await fetch("/api/update/run", {
@@ -5045,6 +5287,51 @@ async function startUpdate(mode) {
 }
 $("update-check").addEventListener("click", () => startUpdate("check"));
 $("update-run").addEventListener("click", () => startUpdate("apply"));
+$("update_auto_check").addEventListener("change", () => {
+  updateAutoDirty = true;
+  $("update_idle_minutes").disabled = !$("update_auto_check").checked;
+});
+$("update_idle_minutes").addEventListener("input", () => {
+  updateAutoDirty = true;
+});
+async function saveUpdateAutoSettings() {
+  const button = $("update-auto-save");
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        update: {
+          auto_check: $("update_auto_check").checked,
+          idle_minutes: Number($("update_idle_minutes").value) || 30,
+        },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Error(data.error || t("settings.updateAutoSaveFailed"));
+    updateAutoDirty = false;
+    showNotice(t("settings.updateAutoSaved"));
+    await loadUpdateState({ quiet: true });
+  } catch (error) {
+    showNotice(error.message || t("settings.updateAutoSaveFailed"), true);
+  } finally {
+    button.disabled = false;
+  }
+}
+$("update-auto-save").addEventListener("click", saveUpdateAutoSettings);
+function refreshUpdateIfStale() {
+  if (Date.now() - updateLastLoadedAt < UPDATE_ACTIVITY_REFRESH_MS) return;
+  loadUpdateState({ quiet: true });
+}
+["pointerdown", "keydown", "touchstart"].forEach((name) =>
+  document.addEventListener(name, refreshUpdateIfStale, { passive: true }),
+);
+document.addEventListener("visibilitychange", () => {
+  // Coming back is when the result of the idle check matters most.
+  if (!document.hidden) loadUpdateState({ quiet: true });
+});
 // Keep the panel live if the page opened while an update (or its restart) runs.
 loadUpdateState().then(() => {
   if (updateState.running) pollUpdateState();

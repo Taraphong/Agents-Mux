@@ -14,8 +14,13 @@ from typing import Any
 from core.config import DEFAULT_MEMORY_SETTINGS, SENSITIVE_ENV_PARTS, SETTINGS_FILE
 from core.model_cache import forget_model_names
 
+# Idle auto-update check: the server looks for a new version only after the app
+# has sat unused for this many minutes, and never installs without the user.
+DEFAULT_UPDATE_SETTINGS = {"auto_check": True, "idle_minutes": 30}
+
 DEFAULT_SETTINGS = {
     "memory": DEFAULT_MEMORY_SETTINGS.copy(),
+    "update": DEFAULT_UPDATE_SETTINGS.copy(),
     "agent_name": "Mux",
     "agent_role": "A versatile AI assistant",
     "response_language": "auto",
@@ -72,6 +77,19 @@ PROVIDER_BASE_URLS = {
     "groq": "https://api.groq.com/openai/v1",
 }
 SETTINGS_LOCK = threading.Lock()
+
+
+def normalize_update_settings(value: Any) -> dict[str, Any]:
+    """Clamp the idle auto-check settings into their supported range."""
+    current = value if isinstance(value, dict) else {}
+    try:
+        minutes = int(current.get("idle_minutes", DEFAULT_UPDATE_SETTINGS["idle_minutes"]))
+    except (TypeError, ValueError):
+        minutes = DEFAULT_UPDATE_SETTINGS["idle_minutes"]
+    return {
+        "auto_check": bool(current.get("auto_check", DEFAULT_UPDATE_SETTINGS["auto_check"])),
+        "idle_minutes": max(5, min(1440, minutes)),
+    }
 
 
 def normalize_provider(value: Any) -> str:
@@ -188,6 +206,7 @@ def load_settings() -> dict[str, Any]:
     settings = migrate_legacy_api_key(settings)
     settings.pop("terminal_enabled", None)
     settings["custom_api_keys"] = stored_custom_api_keys(settings)
+    settings["update"] = normalize_update_settings(settings.get("update"))
     return settings
 
 

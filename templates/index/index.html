@@ -1355,13 +1355,59 @@
                       ดึงไฟล์เวอร์ชันใหม่จาก GitHub และรีสตาร์ตเซิร์ฟเวอร์
                     </p>
                   </div>
+                  <div
+                    class="card update-banner-card"
+                    id="update-banner"
+                    data-state="idle"
+                  >
+                    <div class="update-banner">
+                      <span class="update-banner-dot" aria-hidden="true"></span>
+                      <div class="update-banner-text">
+                        <strong id="update-banner-title"
+                          >ยังไม่ได้ตรวจสอบ</strong
+                        >
+                        <span class="hint" id="update-banner-detail"></span>
+                      </div>
+                    </div>
+                    <div class="update-actions">
+                      <div class="update-action">
+                        <button
+                          class="secondary"
+                          id="update-check"
+                          type="button"
+                          data-i18n="settings.updateCheck"
+                        >
+                          ตรวจสอบการอัปเดต
+                        </button>
+                        <small class="hint" data-i18n="settings.updateCheckHint"
+                          >ดาวน์โหลดรายการไฟล์มาเทียบกับเครื่องนี้เท่านั้น
+                          ไม่เปลี่ยนไฟล์และไม่รีสตาร์ต</small
+                        >
+                      </div>
+                      <div class="update-action">
+                        <button
+                          id="update-run"
+                          type="button"
+                          data-i18n="settings.updateRun"
+                        >
+                          ติดตั้งอัปเดต
+                        </button>
+                        <small class="hint" data-i18n="settings.updateApplyHint"
+                          >เขียนทับเฉพาะไฟล์แอปแล้วรีสตาร์ตเซิร์ฟเวอร์
+                          หน้าเว็บจะขาดการเชื่อมต่อชั่วครู่</small
+                        >
+                      </div>
+                    </div>
+                  </div>
                   <div class="card">
-                    <h2 data-i18n="settings.updateBuildTitle">
-                      เวอร์ชันที่ติดตั้ง
-                    </h2>
+                    <div class="card-head">
+                      <h2 data-i18n="settings.updateBuildTitle">
+                        เวอร์ชันที่ติดตั้ง
+                      </h2>
+                    </div>
                     <p class="hint" data-i18n="settings.updateBuildHint">
-                      เวลาที่ไฟล์แอปถูกแก้ไขล่าสุดบนเครื่องนี้ และสถานะสคริปต์
-                      updater
+                      เวลาที่ไฟล์แอปถูกแก้ไขล่าสุดบนเครื่องนี้ และผลการตรวจสอบ
+                      ครั้งล่าสุด
                     </p>
                     <div class="update-metrics">
                       <div class="update-metric">
@@ -1376,41 +1422,109 @@
                         >
                         <strong id="update-script-state">—</strong>
                       </div>
+                      <div class="update-metric">
+                        <span data-i18n="settings.updateLastCheck"
+                          >ตรวจสอบล่าสุด</span
+                        >
+                        <strong id="update-last-check">—</strong>
+                      </div>
+                      <div class="update-metric">
+                        <span data-i18n="settings.updateChanges"
+                          >ไฟล์ที่ต่างจาก GitHub</span
+                        >
+                        <strong id="update-changes">—</strong>
+                      </div>
                     </div>
-                    <div class="update-actions">
-                      <button
-                        class="secondary"
-                        id="update-check"
-                        type="button"
-                        data-i18n="settings.updateCheck"
-                      >
-                        ตรวจสอบการอัปเดต
-                      </button>
-                      <button
-                        id="update-run"
-                        type="button"
-                        data-i18n="settings.updateRun"
-                      >
-                        อัปเดตเลย
-                      </button>
-                    </div>
-                    <p class="hint update-status" id="update-status">
-                      ยังไม่ได้ตรวจสอบในรอบนี้
-                    </p>
-                    <p class="hint update-note" data-i18n="settings.updateNote">
-                      การอัปเดตจะดาวน์โหลดจาก GitHub แล้วรีสตาร์ตเซิร์ฟเวอร์
-                      โดยไม่แตะ .env การตั้งค่า ประวัติ หรือใบรับรอง
-                      ระหว่างรีสตาร์ตหน้าเว็บอาจขาดการเชื่อมต่อชั่วครู่
-                    </p>
                   </div>
                   <div class="card">
                     <div class="card-head">
-                      <h2 data-i18n="settings.updateLogTitle">
-                        ผลการทำงาน
+                      <h2 data-i18n="settings.updateAutoTitle">
+                        ตรวจสอบอัตโนมัติเมื่อไม่มีการใช้งาน
                       </h2>
                     </div>
-                    <pre class="update-log is-empty" id="update-log"></pre>
+                    <p class="hint" data-i18n="settings.updateAutoHint">
+                      เมื่อไม่มีใครใช้งานเว็บต่อเนื่องตามเวลาที่ตั้งไว้
+                      เซิร์ฟเวอร์จะเช็กเวอร์ชันใหม่ให้เอง แล้วแจ้งเตือนที่นี่
+                      โดยยังไม่ติดตั้งจนกว่าคุณจะกด
+                    </p>
+                    <div class="grid">
+                      <label class="full toggle">
+                        <input id="update_auto_check" type="checkbox" /><span
+                          data-i18n="settings.updateAutoToggle"
+                          >เปิดตรวจสอบอัตโนมัติ</span
+                        >
+                      </label>
+                      <label
+                        ><span data-i18n="settings.updateAutoIdleLabel"
+                          >ไม่มีการใช้งานนาน (นาที)</span
+                        ><input
+                          id="update_idle_minutes"
+                          type="number"
+                          min="5"
+                          max="1440"
+                          step="5"
+                        /><small
+                          class="hint"
+                          data-i18n="settings.updateAutoIdleHint"
+                          >5–1440 นาที และเว้นระยะอย่างน้อย 6 ชั่วโมงระหว่างการตรวจแต่ละครั้ง</small
+                        ></label
+                      >
+                      <div class="update-metric">
+                        <span data-i18n="settings.updateAutoLast"
+                          >ตรวจอัตโนมัติล่าสุด</span
+                        >
+                        <strong id="update-auto-last">—</strong>
+                      </div>
+                      <div class="full update-auto-controls">
+                        <button
+                          class="secondary"
+                          id="update-auto-save"
+                          type="button"
+                          data-i18n="settings.updateAutoSave"
+                        >
+                          บันทึกการตั้งค่าอัตโนมัติ
+                        </button>
+                        <p class="hint" id="update-auto-state"></p>
+                      </div>
+                    </div>
                   </div>
+                  <div class="card">
+                    <div class="card-head">
+                      <h2 data-i18n="settings.updateStepsTitle">
+                        ขั้นตอนการอัปเดต
+                      </h2>
+                    </div>
+                    <ol class="update-steps">
+                      <li>
+                        <strong data-i18n="settings.updateStepCheckTitle"
+                          >1. ตรวจสอบ</strong
+                        ><span data-i18n="settings.updateStepCheck"
+                          >เปรียบเทียบรายการไฟล์บน GitHub กับเครื่องนี้
+                          ยังไม่มีการเขียนไฟล์ใด ๆ</span
+                        >
+                      </li>
+                      <li>
+                        <strong data-i18n="settings.updateStepApplyTitle"
+                          >2. ติดตั้ง</strong
+                        ><span data-i18n="settings.updateStepApply"
+                          >เขียนทับเฉพาะไฟล์แอป แล้วรีสตาร์ตเซิร์ฟเวอร์ให้อัตโนมัติ</span
+                        >
+                      </li>
+                      <li>
+                        <strong data-i18n="settings.updateStepKeepTitle"
+                          >3. ข้อมูลเดิมยังอยู่</strong
+                        ><span data-i18n="settings.updateStepKeep"
+                          >ไม่แตะ .env การตั้งค่า ประวัติ ใบรับรอง และ llm-wiki</span
+                        >
+                      </li>
+                    </ol>
+                  </div>
+                  <details class="card update-details">
+                    <summary data-i18n="settings.updateLogTitle">
+                      ผลการทำงาน
+                    </summary>
+                    <pre class="update-log is-empty" id="update-log"></pre>
+                  </details>
                 </div>
                 <div
                   class="settings-panel"
