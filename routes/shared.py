@@ -25,6 +25,7 @@ from core.settings import (
     load_settings,
     normalize_custom_key_name,
     normalize_provider,
+    normalize_update_settings,
     parse_discord_ids,
     save_settings,
     stored_api_keys,
@@ -84,7 +85,7 @@ def apply_settings_update():
     previous_base_url = current.get("base_url")
     previous_memory = current.get("memory") if isinstance(current.get("memory"), dict) else {}
     previous_memory_base_url = previous_memory.get("base_url")
-    allowed = {"memory", "agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "gemini_live_model", "gemini_agent", "gemini_decision_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "machine_access"}
+    allowed = {"memory", "update", "agent_name", "agent_role", "response_language", "response_style", "use_markdown", "ask_clarifying_questions", "provider", "model", "base_url", "system_prompt", "memory_review", "skills", "temperature", "max_tokens", "top_p", "thinking_level", "stream", "fallback_enabled", "fallback_provider", "fallback_model", "gemini_live_model", "gemini_agent", "gemini_decision_model", "discord_enabled", "discord_prefix", "discord_allowed_users", "discord_allowed_channels", "machine_access"}
     for key in allowed:
         if key in body:
             current[key] = body[key]
@@ -125,6 +126,7 @@ def apply_settings_update():
     current["discord_allowed_users"] = allowed_users
     current["discord_allowed_channels"] = allowed_channels
     current["machine_access"] = bool(current.get("machine_access", True))
+    current["update"] = normalize_update_settings(current.get("update"))
     raw_skills = current.get("skills")
     available_skill_names = {item["name"] for item in list_skills()}
     current["skills"] = [

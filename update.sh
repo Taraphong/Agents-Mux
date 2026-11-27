@@ -10,8 +10,8 @@
 #   ./update.sh --dry-run       Show what would be updated without writing.
 #   ./update.sh --help
 #
-# The updater only replaces app files (app.py, core/, services/, routes/,
-# templates/, skills/, install scripts). It never touches .env,
+# The updater only replaces app files (app.py, memory_engine.py, core/,
+# services/, routes/, templates/, skills/, install scripts). It never touches .env,
 # .app-settings.json, .app-auth.json, certs/, history/, logs/,
 # the personal llm-wiki vault, scheduled-jobs.json, or .venv.
 #
@@ -43,7 +43,7 @@ DRY_RUN=0
 
 # Files and folders that make up the running app. Anything not listed here is
 # machine-specific data and must survive an update untouched.
-APP_FILES="app.py requirements.txt install.sh start_web.sh update.sh .env.example"
+APP_FILES="app.py memory_engine.py requirements.txt install.sh start_web.sh update.sh .env.example"
 APP_DIRS="templates skills core services routes"
 
 say() {
@@ -179,6 +179,21 @@ SOURCE_DIR="${1%/}"
 say "📦 Source: $REPO@$BRANCH"
 say "📁 Destination: $APP_DIR"
 
+# Count the files that actually differ, so the web page can say how many there
+# are. --dry-run runs the same count, so a check reports what an update would
+# change instead of having to parse the per-file lines.
+count_dir_changes() {
+  src="$1"
+  dst="$2"
+  count=0
+  while IFS= read -r path; do
+    cmp -s "$path" "$dst/${path#"$src"/}" 2>/dev/null || count=$((count + 1))
+  done < <(find "$src" -type f ! -path '*/__pycache__/*' ! -name '*.pyc' 2>/dev/null)
+  printf '%s' "$count"
+}
+
+CHANGED_COUNT=0
+
 # Keep the old dependency list so the updater can tell whether pip must run.
 OLD_REQUIREMENTS=""
 if [ -f "$APP_DIR/requirements.txt" ]; then
@@ -193,6 +208,7 @@ for file in $APP_FILES; do
     continue
   fi
   say "   → $file"
+  CHANGED_COUNT=$((CHANGED_COUNT + 1))
   if [ "$DRY_RUN" -eq 0 ]; then
     cp -f "$SOURCE_DIR/$file" "$APP_DIR/$file.new" && mv -f "$APP_DIR/$file.new" "$APP_DIR/$file" || die "Could not copy $file"
   fi
@@ -202,14 +218,27 @@ for dir in $APP_DIRS; do
   [ -d "$SOURCE_DIR/$dir" ] || continue
   # The loop owns only the app's own code, never user data: skills is merged,
   # and core/services/routes hold nothing machine-specific.
-
-  say "   → $dir/"
+  dir_changed=$(count_dir_changes "$SOURCE_DIR/$dir" "$APP_DIR/$dir")
+  if [ "$dir_changed" -eq 0 ]; then
+    say "   = $dir/ (unchanged)"
+    continue
+  fi
+  say "   → $dir/ ($dir_changed file(s) changed)"
+  CHANGED_COUNT=$((CHANGED_COUNT + dir_changed))
   if [ "$DRY_RUN" -eq 0 ]; then
     mkdir -p "$APP_DIR/$dir"
     # Merge instead of replacing the folder so user-created skills survive.
     cp -R "$SOURCE_DIR/$dir/." "$APP_DIR/$dir/" || die "Could not copy $dir"
   fi
 done
+
+# core/update_job.py reads this marker; keep the format stable.
+say "UPDATE_CHANGED=$CHANGED_COUNT"
+if [ "$CHANGED_COUNT" -eq 0 ]; then
+  say "✅ Already up to date ($REPO@$BRANCH)"
+else
+  say "🆕 $CHANGED_COUNT file(s) differ from $REPO@$BRANCH"
+fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   say "🔍 Dry run finished — no files were written"

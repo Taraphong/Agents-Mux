@@ -48,6 +48,7 @@ from core.tls import (  # noqa: E402
     tls_configuration,
 )
 from core.tools import workspace_directory  # noqa: E402
+from core.update_job import start_update_watcher  # noqa: E402
 from core.wiki import ensure_wiki  # noqa: E402
 from routes.index import index_bp  # noqa: E402
 from routes.pair import pair_bp  # noqa: E402
@@ -167,6 +168,8 @@ def auth_cli(argv: list[str]) -> bool:
 if os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower() in {"1", "true", "yes"}:
     start_scheduler()
     memory_engine.start_scheduler()
+    # The idle update check follows the same switch: it is a background task.
+    start_update_watcher()
 
 app.register_blueprint(pair_bp)
 app.register_blueprint(index_bp)
@@ -177,6 +180,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
     start_scheduler()
     memory_engine.start_scheduler()
+    start_update_watcher()
     start_discord_bot()
     print_pairing_banner(bootstrap_pairing_key())
     port = int(os.getenv("PORT", "5000"))

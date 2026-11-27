@@ -92,17 +92,14 @@ from core.tools import (
     strip_tool_markers,
 )
 from core.update_job import (
-    UPDATE_JOB,
-    UPDATE_JOB_LOCK,
-    UPDATE_LOG_FILE,
-    UPDATE_MODES,
-    UPDATE_SCRIPT,
-    save_update_status,
+    UpdateJobError,
+    start_update_job,
+    update_auto_state,
     update_build_info,
+    update_check_state,
     update_job_snapshot,
     update_log_tail,
     update_script_ready,
-    watch_update_job,
 )
 from datetime import datetime, timedelta, timezone
 import json
@@ -1328,16 +1325,20 @@ def server_action():
 
 @index_bp.get("/api/update")
 def update_state():
-    """Report the installed build, the last update run, and its log tail."""
+    """Report the installed build, the last run, the check result, and the log."""
     log_tail, log_truncated = update_log_tail()
     snapshot = update_job_snapshot()
-    return jsonify({
+    # The idle check writes its result to the same status file, so this view
+    # answers "is there an update?" even when the page was closed at the time.
+    return no_store(jsonify({
         **update_build_info(),
         "script_available": update_script_ready(),
         **snapshot,
+        "check": update_check_state(snapshot, log_tail),
+        "auto": update_auto_state(),
         "log": log_tail,
         "log_truncated": log_truncated,
-    })
+    }))
 
 
 @index_bp.post("/api/update/run")
@@ -1345,51 +1346,17 @@ def update_run():
     """Run update.sh for a dry-run check or a real update, detached from Flask."""
     body = request.get_json(silent=True) or {}
     mode = str(body.get("mode") or "apply").strip().lower()
-    if mode not in UPDATE_MODES:
-        return jsonify({"ok": False, "error": status_message(request_language(), "update_mode_invalid")}), 400
-    if not update_script_ready():
-        return jsonify({"ok": False, "error": status_message(request_language(), "update_script_missing")}), 400
-    # Check the same view GET /api/update reports, so a job that is still running
-    # after a server restart is not truncated and replaced by a second updater.
-    if update_job_snapshot()["running"]:
-        return jsonify({"ok": False, "error": status_message(request_language(), "update_busy")}), 409
-    with UPDATE_JOB_LOCK:
-        process = UPDATE_JOB.get("process")
-        if process and process.poll() is None:
-            return jsonify({"ok": False, "error": status_message(request_language(), "update_busy")}), 409
-        args = [str(UPDATE_SCRIPT)]
-        if mode == "check":
-            # A dry run only compares files, so it must not write or restart.
-            args += ["--dry-run", "--no-restart"]
-        try:
-            UPDATE_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(UPDATE_LOG_FILE, "wb") as handle:
-                new_process = subprocess.Popen(
-                    args,
-                    cwd=str(PROJECT_ROOT),
-                    stdin=subprocess.DEVNULL,
-                    stdout=handle,
-                    stderr=subprocess.STDOUT,
-                    # A real update restarts the server; a separate session keeps
-                    # this updater alive while the web process is replaced.
-                    start_new_session=True,
-                    env={**os.environ, "AI_WEB_UPDATE_FROM_WEB": "1"},
-                )
-        except OSError:
-            return jsonify({"ok": False, "error": status_message(request_language(), "update_start_failed")}), 500
-        started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        UPDATE_JOB.clear()
-        UPDATE_JOB.update({
-            "process": new_process,
-            "pid": new_process.pid,
-            "mode": mode,
-            "started_at": started_at,
-            "finished_at": "",
-            "ok": None,
-            "exit_code": None,
-        })
-        save_update_status({"mode": mode, "started_at": started_at, "pid": new_process.pid})
-    threading.Thread(target=watch_update_job, args=(new_process,), daemon=True).start()
+    try:
+        new_process = start_update_job(mode)
+    except UpdateJobError as exc:
+        # "busy" covers a job that is still running after a server restart, so
+        # the same updater is never replaced by a second one.
+        key, status = {
+            "invalid_mode": ("update_mode_invalid", 400),
+            "missing": ("update_script_missing", 400),
+            "busy": ("update_busy", 409),
+        }.get(exc.kind, ("update_start_failed", 500))
+        return jsonify({"ok": False, "error": status_message(request_language(), key)}), status
     log_event("system.update_started", "Started a system update from the web page", mode=mode)
     return jsonify({"ok": True, "mode": mode, "pid": new_process.pid}), 202
 
