@@ -12,7 +12,7 @@ def _write_log(tmp_path, monkeypatch, lines):
     log = tmp_path / "update.log"
     log.write_text("\n".join(lines) + "\n", encoding="utf-8")
     monkeypatch.setattr(update_job, "UPDATE_LOG_FILE", log)
-    return log
+    return update_job.update_log_tail()[0]
 
 
 def test_normalize_update_settings_clamps_values():
@@ -26,11 +26,10 @@ def test_normalize_update_settings_clamps_values():
 
 
 def test_update_check_state_reports_a_new_version(tmp_path, monkeypatch):
-    _write_log(tmp_path, monkeypatch, [
+    tail = _write_log(tmp_path, monkeypatch, [
         "📦 Source: owner/repo@main",
-        "   → core/ (3 file(s) changed)",
+        "   → core/ (4 file(s) changed)",
         "UPDATE_CHANGED=4",
-        "UPDATE_FILES=core(3) app.py",
         "🆕 4 file(s) differ from owner/repo@main",
         "🔍 Dry run finished — no files were written",
     ])
@@ -38,50 +37,48 @@ def test_update_check_state_reports_a_new_version(tmp_path, monkeypatch):
         "running": False,
         "job": {"mode": "check", "finished_at": "2026-01-01 10:00:00", "ok": True},
     }
-    state = update_job.update_check_state(snapshot)
+    state = update_job.update_check_state(snapshot, tail)
     assert state["changed"] == 4
-    assert state["files"] == "core(3) app.py"
     assert state["available"] is True
 
 
 def test_update_check_state_reports_up_to_date(tmp_path, monkeypatch):
-    _write_log(tmp_path, monkeypatch, [
+    tail = _write_log(tmp_path, monkeypatch, [
         "   = core/ (unchanged)",
         "UPDATE_CHANGED=0",
-        "UPDATE_FILES=",
         "✅ Already up to date (owner/repo@main)",
     ])
     snapshot = {
         "running": False,
         "job": {"mode": "check", "finished_at": "2026-01-01 10:00:00", "ok": True},
     }
-    assert update_job.update_check_state(snapshot)["available"] is False
+    assert update_job.update_check_state(snapshot, tail)["available"] is False
 
 
 def test_update_check_state_ignores_an_apply_run(tmp_path, monkeypatch):
-    # An apply logs the files it installed; that must not look like a pending
-    # update right after the update finished.
-    _write_log(tmp_path, monkeypatch, ["UPDATE_CHANGED=2", "UPDATE_FILES=app.py", "✅ Update finished"])
+    # An apply logs what it installed; that must not look like a pending update
+    # right after the update finished.
+    tail = _write_log(tmp_path, monkeypatch, ["UPDATE_CHANGED=2", "✅ Update finished"])
     snapshot = {
         "running": False,
         "job": {"mode": "apply", "finished_at": "2026-01-01 10:00:00", "ok": True},
     }
-    assert update_job.update_check_state(snapshot)["available"] is None
+    assert update_job.update_check_state(snapshot, tail)["available"] is None
 
 
 def test_update_log_succeeded_accepts_a_check_that_found_changes(tmp_path, monkeypatch):
     # A check with new files ends with the dry-run line and never prints ✅.
-    _write_log(tmp_path, monkeypatch, [
+    tail = _write_log(tmp_path, monkeypatch, [
         "UPDATE_CHANGED=2",
         "🆕 2 file(s) differ from owner/repo@main",
         "🔍 Dry run finished — no files were written",
     ])
-    assert update_job.update_log_succeeded() is True
+    assert update_job.update_log_succeeded(tail) is True
 
 
 def test_update_log_succeeded_reports_a_failure(tmp_path, monkeypatch):
-    _write_log(tmp_path, monkeypatch, ["❌ Download failed: https://example.invalid"])
-    assert update_job.update_log_succeeded() is False
+    tail = _write_log(tmp_path, monkeypatch, ["❌ Download failed: https://example.invalid"])
+    assert update_job.update_log_succeeded(tail) is False
 
 
 def test_maybe_run_auto_check_waits_for_idle(monkeypatch):

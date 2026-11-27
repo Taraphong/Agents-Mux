@@ -31,10 +31,9 @@ UPDATE_JOB: dict[str, Any] = {}
 # server reads it back to report what happened before the restart.
 UPDATE_STATUS_FILE = Path(os.getenv("AI_WEB_UPDATE_STATUS_FILE", "logs/update-status.json"))
 
-# update.sh ends every run with these two machine-readable lines. The page shows
-# "N files can be updated" from them instead of guessing from prose.
+# update.sh ends every run with this machine-readable line, so the page can show
+# "N files can be updated" instead of guessing from prose.
 UPDATE_COUNT_MARKER = "UPDATE_CHANGED="
-UPDATE_FILES_MARKER = "UPDATE_FILES="
 
 # An automatic check downloads the remote tarball, so it runs at most this often
 # and only after the app has sat unused for the configured number of minutes.
@@ -43,7 +42,6 @@ UPDATE_WATCH_INTERVAL_SECONDS = 60
 UPDATE_WATCH_START_DELAY_SECONDS = 45
 _WATCHER_STARTED = False
 _WATCHER_LOCK = threading.Lock()
-_AUTO_CHECK_LOCK = threading.Lock()
 _LAST_AUTO_CHECK = 0.0
 
 
@@ -121,14 +119,13 @@ def update_log_finished_at() -> str:
         return ""
 
 
-def update_log_succeeded() -> bool | None:
+def update_log_succeeded(tail: str) -> bool | None:
     """Read the updater's own success/failure verdict from its log tail.
 
     A check that finds new files ends with the dry-run line instead of ✅, so
     that line counts as success too: otherwise the page could never report the
     update it just found.
     """
-    tail, _ = update_log_tail()
     if "❌" in tail:
         return False
     if "✅" in tail or "🔍 Dry run finished" in tail:
@@ -136,108 +133,78 @@ def update_log_succeeded() -> bool | None:
     return None
 
 
+def update_check_result(tail: str) -> int | None:
+    """Read the changed-file count update.sh printed during its last run."""
+    for line in tail.splitlines():
+        text = line.strip()
+        if text.startswith(UPDATE_COUNT_MARKER):
+            try:
+                return int(text.split("=", 1)[1].strip())
+            except ValueError:
+                return None
+    return None
+
+
+def update_check_state(snapshot: dict[str, Any], tail: str) -> dict[str, Any]:
+    """Describe the last check so the page can say whether an update exists.
+
+    Only a finished, successful *check* answers that question: an apply run
+    reports what it installed, which would look like a pending update right
+    after the update finished.
+    """
+    job = snapshot.get("job") or {}
+    changed = update_check_result(tail)
+    checked = job.get("mode") == "check" and job.get("ok") is True and not snapshot.get("running")
+    return {
+        "finished_at": job.get("finished_at") or "",
+        "changed": changed,
+        "available": bool(changed) if checked and changed is not None else None,
+    }
+
+
+def _job_fields(source: dict[str, Any]) -> dict[str, Any]:
+    """Pick the job fields the page reads out of a job or status record."""
+    return {
+        "mode": source.get("mode", ""),
+        "started_at": source.get("started_at", ""),
+        "finished_at": source.get("finished_at", ""),
+        "ok": source.get("ok"),
+        "exit_code": source.get("exit_code"),
+        "trigger": source.get("trigger", ""),
+    }
+
+
 def update_job_snapshot() -> dict[str, Any]:
     """Report the current update job, falling back to the persisted record."""
     with UPDATE_JOB_LOCK:
         process = UPDATE_JOB.get("process")
         if process is not None:
-            return {
-                "running": process.poll() is None,
-                "job": {
-                    "mode": UPDATE_JOB.get("mode", ""),
-                    "started_at": UPDATE_JOB.get("started_at", ""),
-                    "finished_at": UPDATE_JOB.get("finished_at", ""),
-                    "ok": UPDATE_JOB.get("ok"),
-                    "exit_code": UPDATE_JOB.get("exit_code"),
-                    "trigger": UPDATE_JOB.get("trigger", ""),
-                },
-            }
+            return {"running": process.poll() is None, "job": _job_fields(UPDATE_JOB)}
     persisted = load_update_status()
     if not persisted:
-        return {
-            "running": False,
-            "job": {
-                "mode": "",
-                "started_at": "",
-                "finished_at": "",
-                "ok": None,
-                "exit_code": None,
-                "trigger": "",
-            },
-        }
+        return {"running": False, "job": _job_fields({})}
     # The updater runs in its own session, so it outlives the restart we just did.
     running = process_is_alive(persisted.get("pid"))
-    return {
-        "running": running,
-        "job": {
-            "mode": persisted.get("mode", ""),
-            "started_at": persisted.get("started_at", ""),
-            "finished_at": "" if running else update_log_finished_at(),
-            "ok": None if running else update_log_succeeded(),
-            "exit_code": None,
-            "trigger": persisted.get("trigger", ""),
-        },
-    }
-
-
-def update_check_result() -> dict[str, Any]:
-    """Read the changed-file summary update.sh printed during its last run."""
-    tail, _ = update_log_tail()
-    changed: int | None = None
-    files = ""
-    for line in tail.splitlines():
-        text = line.strip()
-        if text.startswith(UPDATE_COUNT_MARKER):
-            try:
-                changed = int(text.split("=", 1)[1].strip())
-            except ValueError:
-                changed = None
-        elif text.startswith(UPDATE_FILES_MARKER):
-            files = text.split("=", 1)[1].strip()
-    return {"changed": changed, "files": files}
-
-
-def update_check_state(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Describe the last check so the page can say whether an update exists.
-
-    Only a finished, successful *check* run answers that question: an apply run
-    reports the files it installed, which would otherwise look like a pending
-    update right after the update finished.
-    """
-    job = snapshot.get("job") or {}
-    summary = update_check_result()
-    checked = (
-        job.get("mode") == "check"
-        and not snapshot.get("running")
-        and bool(job.get("finished_at"))
-        and job.get("ok") is True
-    )
-    available: bool | None = None
-    if checked and summary["changed"] is not None:
-        available = summary["changed"] > 0
-    return {
-        "finished_at": job.get("finished_at") or "",
-        "changed": summary["changed"],
-        "files": summary["files"],
-        "available": available,
-    }
+    job = _job_fields(persisted)
+    if not running:
+        tail, _ = update_log_tail()
+        job["finished_at"] = update_log_finished_at()
+        job["ok"] = update_log_succeeded(tail)
+    return {"running": running, "job": job}
 
 
 def update_auto_settings() -> dict[str, Any]:
-    """Read the idle auto-check settings without pulling the app modules in."""
+    """Read the idle auto-check settings (imported here to keep this module light)."""
     from core.settings import load_settings, normalize_update_settings
 
     return normalize_update_settings(load_settings().get("update"))
 
 
 def update_idle_seconds() -> float:
-    """Seconds since the user last used the app (0 if it cannot be read)."""
-    try:
-        import memory_engine
+    """Seconds since the user last used the app."""
+    import memory_engine
 
-        return float(memory_engine.idle_seconds())
-    except Exception:  # noqa: BLE001 - the watcher must never die on this
-        return 0.0
+    return float(memory_engine.idle_seconds())
 
 
 def update_auto_state() -> dict[str, Any]:
@@ -249,7 +216,6 @@ def update_auto_state() -> dict[str, Any]:
         "idle_minutes": config["idle_minutes"],
         "idle_seconds": int(update_idle_seconds()),
         "last_auto_check_at": str(persisted.get("auto_checked_at") or ""),
-        "cooldown_minutes": AUTO_CHECK_COOLDOWN_SECONDS // 60,
     }
 
 
@@ -274,14 +240,14 @@ def start_update_job(mode: str, trigger: str = "web") -> "subprocess.Popen[bytes
         raise UpdateJobError("missing")
     if update_job_snapshot()["running"]:
         raise UpdateJobError("busy")
+    args = [str(UPDATE_SCRIPT)]
+    if mode == "check":
+        # A dry run only compares files, so it must not write or restart.
+        args += ["--dry-run", "--no-restart"]
     with UPDATE_JOB_LOCK:
         process = UPDATE_JOB.get("process")
         if process and process.poll() is None:
             raise UpdateJobError("busy")
-        args = [str(UPDATE_SCRIPT)]
-        if mode == "check":
-            # A dry run only compares files, so it must not write or restart.
-            args += ["--dry-run", "--no-restart"]
         try:
             UPDATE_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(UPDATE_LOG_FILE, "wb") as handle:
@@ -310,22 +276,22 @@ def start_update_job(mode: str, trigger: str = "web") -> "subprocess.Popen[bytes
             "ok": None,
             "exit_code": None,
         })
-        # auto_checked_at is the only record of the last idle check: it survives
+        # auto_checked_at is the only record of the last idle check; it survives
         # the restart an apply performs, unlike the in-memory timestamp below.
-        previous = load_update_status()
-        save_update_status({
-            "mode": mode,
-            "started_at": started_at,
-            "pid": new_process.pid,
-            "trigger": trigger,
-            "auto_checked_at": started_at if trigger == "auto" else str(previous.get("auto_checked_at") or ""),
-        })
+        status = load_update_status()
+        status.update({"mode": mode, "started_at": started_at, "pid": new_process.pid, "trigger": trigger})
+        if trigger == "auto":
+            status["auto_checked_at"] = started_at
+        save_update_status(status)
     threading.Thread(target=watch_update_job, args=(new_process,), daemon=True).start()
     return new_process
 
 
 def maybe_run_auto_check() -> bool:
-    """Start a background check when the app has been idle long enough."""
+    """Start a background check when the app has been idle long enough.
+
+    Only the watcher thread calls this, so the cooldown needs no lock.
+    """
     global _LAST_AUTO_CHECK
     config = update_auto_settings()
     if not config["auto_check"]:
@@ -334,17 +300,13 @@ def maybe_run_auto_check() -> bool:
         return False
     if update_job_snapshot()["running"]:
         return False
-    now = time.time()
-    with _AUTO_CHECK_LOCK:
-        if now - _LAST_AUTO_CHECK < AUTO_CHECK_COOLDOWN_SECONDS:
-            return False
-        _LAST_AUTO_CHECK = now
+    if time.time() - _LAST_AUTO_CHECK < AUTO_CHECK_COOLDOWN_SECONDS:
+        return False
     try:
         start_update_job("check", trigger="auto")
     except UpdateJobError:
-        with _AUTO_CHECK_LOCK:
-            _LAST_AUTO_CHECK = 0.0
         return False
+    _LAST_AUTO_CHECK = time.time()
     log_event("system.update_auto_check", "Started the idle-time update check", idle_minutes=config["idle_minutes"])
     return True
 

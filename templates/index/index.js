@@ -4971,21 +4971,24 @@ const UPDATE_POLL_ATTEMPTS = 90;
 // A background refresh must never keep the server from noticing that nobody is
 // using the app, so it only runs on real interaction or when the tab returns.
 const UPDATE_ACTIVITY_REFRESH_MS = 120000;
+function emptyUpdateJob(mode = "") {
+  return {
+    mode,
+    started_at: "",
+    finished_at: "",
+    ok: null,
+    exit_code: null,
+    trigger: "",
+  };
+}
 const updateState = {
   loaded: false,
   running: false,
   pending: false,
   restarting: false,
   error: "",
-  job: {
-    mode: "",
-    started_at: "",
-    finished_at: "",
-    ok: null,
-    exit_code: null,
-    trigger: "",
-  },
-  check: { finished_at: "", changed: null, files: "", available: null },
+  job: emptyUpdateJob(),
+  check: { finished_at: "", changed: null, available: null },
   auto: {
     enabled: true,
     idle_minutes: 30,
@@ -5004,96 +5007,123 @@ let updateNotifiedAt = "";
 // overwrite the unsaved values.
 let updateAutoDirty = false;
 function updateJobFinished() {
-  return Boolean(updateState.job && updateState.job.finished_at);
+  return Boolean(updateState.job.finished_at);
 }
 function updateChangedCount() {
-  const changed = updateState.check ? updateState.check.changed : null;
-  return Number.isFinite(changed) ? changed : 0;
+  return Number.isFinite(updateState.check.changed) ? updateState.check.changed : 0;
 }
 function updateAvailable() {
-  return Boolean(updateState.check && updateState.check.available === true);
+  return updateState.check.available === true;
 }
 function updateMinutes(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? Math.max(0, Math.round(number)) : 0;
+  const minutes = Math.round(Number(value));
+  return Number.isFinite(minutes) ? Math.max(0, minutes) : 0;
+}
+function updateBannerState(state, title, detail = "") {
+  return { state, title, detail };
 }
 function updateBanner() {
   if (updateState.restarting)
-    return {
-      state: "running",
-      title: t("settings.updateRestarting"),
-      detail: t("settings.updateRestartingDetail"),
-    };
+    return updateBannerState(
+      "running",
+      t("settings.updateRestarting"),
+      t("settings.updateRestartingDetail"),
+    );
   if (updateState.error)
-    return {
-      state: "error",
-      title: t("settings.updateBannerErrorTitle"),
-      detail: updateState.error,
-    };
+    return updateBannerState(
+      "error",
+      t("settings.updateBannerErrorTitle"),
+      updateState.error,
+    );
   if (!updateState.loaded)
-    return { state: "idle", title: t("settings.updateLoading"), detail: "" };
+    return updateBannerState("idle", t("settings.updateLoading"));
   if (updateState.running || updateState.pending)
-    return {
-      state: "running",
-      title: t("settings.updateBannerRunningTitle", {
+    return updateBannerState(
+      "running",
+      t("settings.updateBannerRunningTitle", {
         mode: t(
           updateState.job.mode === "check"
             ? "settings.updateModeCheck"
             : "settings.updateModeApply",
         ),
       }),
-      detail: t("settings.updateBannerRunningDetail"),
-    };
+      t("settings.updateBannerRunningDetail"),
+    );
   if (updateJobFinished() && updateState.job.ok === false)
-    return {
-      state: "error",
-      title: t("settings.updateBannerErrorTitle"),
-      detail: t("settings.updateError", {
-        code: updateState.job.exit_code ?? "?",
-      }),
-    };
+    return updateBannerState(
+      "error",
+      t("settings.updateBannerErrorTitle"),
+      t("settings.updateError", { code: updateState.job.exit_code ?? "?" }),
+    );
   if (updateAvailable())
-    return {
-      state: "available",
-      title: t("settings.updateBannerAvailableTitle"),
-      detail: t("settings.updateBannerAvailableDetail", {
+    return updateBannerState(
+      "available",
+      t("settings.updateBannerAvailableTitle"),
+      t("settings.updateBannerAvailableDetail", {
         count: updateChangedCount(),
       }),
-    };
-  if (updateState.check && updateState.check.available === false)
-    return {
-      state: "current",
-      title: t("settings.updateBannerCurrentTitle"),
-      detail: t("settings.updateBannerCurrentDetail", {
-        time: updateState.check.finished_at || "—",
+    );
+  if (updateState.check.available === false)
+    return updateBannerState(
+      "current",
+      t("settings.updateBannerCurrentTitle"),
+      t("settings.updateBannerCurrentDetail", {
+        time: updateState.check.finished_at,
       }),
-    };
+    );
   if (updateJobFinished())
-    return {
-      state: "current",
-      title: t(
+    return updateBannerState(
+      "current",
+      t(
         updateState.job.mode === "check"
           ? "settings.updateCheckDone"
           : "settings.updateDone",
         { time: updateState.job.finished_at },
       ),
-      detail: "",
-    };
-  return {
-    state: "idle",
-    title: t("settings.updateBannerIdleTitle"),
-    detail: t("settings.updateBannerIdleDetail"),
-  };
+    );
+  return updateBannerState(
+    "idle",
+    t("settings.updateBannerIdleTitle"),
+    t("settings.updateBannerIdleDetail"),
+  );
 }
 function updateAutoStateText() {
-  if (updateState.auto.enabled === false) return t("settings.updateAutoStateOff");
+  if (!updateState.auto.enabled) return t("settings.updateAutoStateOff");
   return t("settings.updateAutoState", {
     minutes: updateMinutes(updateState.auto.idle_minutes),
     idle: Math.round(updateMinutes(updateState.auto.idle_seconds) / 60),
   });
 }
+function updateChangesText() {
+  if (updateAvailable())
+    return t("settings.updateChangeCount", { count: updateChangedCount() });
+  return updateState.check.available === false
+    ? t("settings.updateNoChanges")
+    : t("settings.updateUnknown");
+}
+function updateFinishedNotice() {
+  const job = updateState.job;
+  if (job.ok === null)
+    return { text: t("settings.updateFinishedUnknown"), failed: false };
+  if (job.ok === false)
+    return {
+      text: t("settings.updateError", { code: job.exit_code ?? "?" }),
+      failed: true,
+    };
+  if (job.mode === "check")
+    return {
+      text: updateAvailable()
+        ? t("settings.updateCheckFound", { count: updateChangedCount() })
+        : t("settings.updateUpToDateNotice"),
+      failed: false,
+    };
+  return {
+    text: t("settings.updateDone", { time: job.finished_at }),
+    failed: false,
+  };
+}
 function renderUpdatePanel() {
-  if (!$("update-log") || !$("update-banner")) return;
+  if (!$("update-log")) return;
   $("update-app-updated").textContent =
     updateState.appUpdatedAt || t("settings.updateUnknown");
   $("update-script-state").textContent = updateState.scriptAvailable
@@ -5105,12 +5135,7 @@ function renderUpdatePanel() {
   );
   $("update-last-check").textContent =
     updateState.check.finished_at || t("settings.updateLastCheckNever");
-  $("update-changes").textContent =
-    updateState.check.available === true
-      ? t("settings.updateChangeCount", { count: updateChangedCount() })
-      : updateState.check.available === false
-        ? t("settings.updateNoChanges")
-        : t("settings.updateUnknown");
+  $("update-changes").textContent = updateChangesText();
   if (!updateAutoDirty) {
     $("update_auto_check").checked = updateState.auto.enabled !== false;
     $("update_idle_minutes").value = updateMinutes(
@@ -5139,20 +5164,22 @@ function renderUpdatePanel() {
       ? `${t("settings.updateLogTruncated")}\n\n${updateState.log}`
       : updateState.log
     : t("settings.updateLogEmpty");
-  // The idle check finishes while nobody watches the page, so its result is
-  // announced once when the page learns about it.
+}
+// The idle check finishes while nobody watches the page, so its result is
+// announced once when the page learns about it.
+function notifyUpdateAvailable() {
   const checkedAt = updateState.check.finished_at;
   if (
-    updateState.job.trigger === "auto" &&
-    updateAvailable() &&
-    checkedAt &&
-    checkedAt !== updateNotifiedAt
-  ) {
-    updateNotifiedAt = checkedAt;
-    showNotice(
-      t("settings.updateAvailableNotice", { count: updateChangedCount() }),
-    );
-  }
+    updateState.job.trigger !== "auto" ||
+    !updateAvailable() ||
+    !checkedAt ||
+    checkedAt === updateNotifiedAt
+  )
+    return;
+  updateNotifiedAt = checkedAt;
+  showNotice(
+    t("settings.updateAvailableNotice", { count: updateChangedCount() }),
+  );
 }
 async function loadUpdateState(options = {}) {
   try {
@@ -5182,6 +5209,7 @@ async function loadUpdateState(options = {}) {
   }
   updateLastLoadedAt = Date.now();
   renderUpdatePanel();
+  notifyUpdateAvailable();
 }
 function pollUpdateState(attempt = 0) {
   clearTimeout(updatePollTimer);
@@ -5213,23 +5241,8 @@ function pollUpdateState(attempt = 0) {
       }
       updateState.pending = false;
       renderUpdatePanel();
-      const ok = updateState.job.ok;
-      let message;
-      if (ok === true && updateState.job.mode === "check") {
-        message = updateAvailable()
-          ? t("settings.updateCheckFound", { count: updateChangedCount() })
-          : t("settings.updateUpToDateNotice");
-      } else {
-        message =
-          ok === true
-            ? t("settings.updateDone", { time: updateState.job.finished_at })
-            : ok === false
-              ? t("settings.updateError", {
-                  code: updateState.job.exit_code ?? "?",
-                })
-              : t("settings.updateFinishedUnknown");
-      }
-      showNotice(message, ok === false);
+      const notice = updateFinishedNotice();
+      showNotice(notice.text, notice.failed);
       return;
     }
     if (attempt < 3) pollUpdateState(attempt + 1);
@@ -5253,14 +5266,7 @@ async function startUpdate(mode) {
   updateState.restarting = false;
   updateState.running = true;
   updateState.pending = true;
-  updateState.job = {
-    mode,
-    started_at: "",
-    finished_at: "",
-    ok: null,
-    exit_code: null,
-    trigger: "web",
-  };
+  updateState.job = { ...emptyUpdateJob(mode), trigger: "web" };
   renderUpdatePanel();
   try {
     const response = await fetch("/api/update/run", {
@@ -5325,7 +5331,7 @@ function refreshUpdateIfStale() {
   if (Date.now() - updateLastLoadedAt < UPDATE_ACTIVITY_REFRESH_MS) return;
   loadUpdateState({ quiet: true });
 }
-["pointerdown", "keydown", "touchstart"].forEach((name) =>
+["pointerdown", "keydown"].forEach((name) =>
   document.addEventListener(name, refreshUpdateIfStale, { passive: true }),
 );
 document.addEventListener("visibilitychange", () => {

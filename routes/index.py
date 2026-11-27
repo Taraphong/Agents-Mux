@@ -92,7 +92,6 @@ from core.tools import (
     strip_tool_markers,
 )
 from core.update_job import (
-    UPDATE_MODES,
     UpdateJobError,
     start_update_job,
     update_auto_state,
@@ -1335,7 +1334,7 @@ def update_state():
         **update_build_info(),
         "script_available": update_script_ready(),
         **snapshot,
-        "check": update_check_state(snapshot),
+        "check": update_check_state(snapshot, log_tail),
         "auto": update_auto_state(),
         "log": log_tail,
         "log_truncated": log_truncated,
@@ -1347,14 +1346,13 @@ def update_run():
     """Run update.sh for a dry-run check or a real update, detached from Flask."""
     body = request.get_json(silent=True) or {}
     mode = str(body.get("mode") or "apply").strip().lower()
-    if mode not in UPDATE_MODES:
-        return jsonify({"ok": False, "error": status_message(request_language(), "update_mode_invalid")}), 400
     try:
         new_process = start_update_job(mode)
     except UpdateJobError as exc:
         # "busy" covers a job that is still running after a server restart, so
         # the same updater is never replaced by a second one.
         key, status = {
+            "invalid_mode": ("update_mode_invalid", 400),
             "missing": ("update_script_missing", 400),
             "busy": ("update_busy", 409),
         }.get(exc.kind, ("update_start_failed", 500))

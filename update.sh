@@ -180,24 +180,19 @@ say "📦 Source: $REPO@$BRANCH"
 say "📁 Destination: $APP_DIR"
 
 # Count the files that actually differ, so the web page can say how many there
-# are instead of parsing the per-file lines. --dry-run runs the same count, so a
-# check reports what an update would change.
+# are. --dry-run runs the same count, so a check reports what an update would
+# change instead of having to parse the per-file lines.
 count_dir_changes() {
   src="$1"
   dst="$2"
   count=0
-  list="$WORK_DIR/change-list.txt"
-  [ -d "$src" ] || { printf '0'; return; }
-  (cd "$src" && find . -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print | sed 's|^\./||') > "$list" 2>/dev/null || : > "$list"
-  while IFS= read -r rel; do
-    [ -n "$rel" ] || continue
-    cmp -s "$src/$rel" "$dst/$rel" 2>/dev/null || count=$((count + 1))
-  done < "$list"
+  while IFS= read -r path; do
+    cmp -s "$path" "$dst/${path#"$src"/}" 2>/dev/null || count=$((count + 1))
+  done < <(find "$src" -type f ! -path '*/__pycache__/*' ! -name '*.pyc' 2>/dev/null)
   printf '%s' "$count"
 }
 
 CHANGED_COUNT=0
-CHANGED_NAMES=""
 
 # Keep the old dependency list so the updater can tell whether pip must run.
 OLD_REQUIREMENTS=""
@@ -214,7 +209,6 @@ for file in $APP_FILES; do
   fi
   say "   → $file"
   CHANGED_COUNT=$((CHANGED_COUNT + 1))
-  CHANGED_NAMES="$CHANGED_NAMES $file"
   if [ "$DRY_RUN" -eq 0 ]; then
     cp -f "$SOURCE_DIR/$file" "$APP_DIR/$file.new" && mv -f "$APP_DIR/$file.new" "$APP_DIR/$file" || die "Could not copy $file"
   fi
@@ -225,13 +219,12 @@ for dir in $APP_DIRS; do
   # The loop owns only the app's own code, never user data: skills is merged,
   # and core/services/routes hold nothing machine-specific.
   dir_changed=$(count_dir_changes "$SOURCE_DIR/$dir" "$APP_DIR/$dir")
-  if [ "$dir_changed" -eq 0 ] && [ -d "$APP_DIR/$dir" ]; then
+  if [ "$dir_changed" -eq 0 ]; then
     say "   = $dir/ (unchanged)"
     continue
   fi
   say "   → $dir/ ($dir_changed file(s) changed)"
   CHANGED_COUNT=$((CHANGED_COUNT + dir_changed))
-  CHANGED_NAMES="$CHANGED_NAMES $dir($dir_changed)"
   if [ "$DRY_RUN" -eq 0 ]; then
     mkdir -p "$APP_DIR/$dir"
     # Merge instead of replacing the folder so user-created skills survive.
@@ -239,10 +232,8 @@ for dir in $APP_DIRS; do
   fi
 done
 
-# The two markers are read by core/update_job.py; keep the format stable.
-CHANGED_NAMES="$(printf '%s' "$CHANGED_NAMES" | sed 's/^ *//')"
+# core/update_job.py reads this marker; keep the format stable.
 say "UPDATE_CHANGED=$CHANGED_COUNT"
-say "UPDATE_FILES=$CHANGED_NAMES"
 if [ "$CHANGED_COUNT" -eq 0 ]; then
   say "✅ Already up to date ($REPO@$BRANCH)"
 else
