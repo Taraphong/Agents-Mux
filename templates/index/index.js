@@ -270,16 +270,13 @@ const I18N = {
       "มีอัปเดตใหม่ {count} ไฟล์ — เปิด Settings → อัปเดต เพื่อติดตั้ง",
     "settings.updateAutoTitle": "ตรวจสอบอัตโนมัติเมื่อไม่มีการใช้งาน",
     "settings.updateAutoHint":
-      "เมื่อไม่มีใครใช้งานเว็บต่อเนื่องตามเวลาที่ตั้งไว้ เซิร์ฟเวอร์จะเช็กเวอร์ชันใหม่ให้เอง แล้วแจ้งเตือนที่นี่ โดยยังไม่ติดตั้งจนกว่าคุณจะกด",
+      "เมื่อไม่มีใครใช้งานเว็บต่อเนื่องตามเวลาที่ตั้งไว้ เซิร์ฟเวอร์จะเช็กเวอร์ชันใหม่ให้เอง แล้วแจ้งเตือนที่นี่ โดยยังไม่ติดตั้งจนกว่าคุณจะกด — ค่าที่แก้ในส่วนนี้จะบันทึกเมื่อกดปุ่มบันทึกการตั้งค่าด้านล่าง",
     "settings.updateAutoToggle": "เปิดตรวจสอบอัตโนมัติ",
     "settings.updateAutoIdleLabel": "ไม่มีการใช้งานนาน (นาที)",
     "settings.updateAutoIdleHint":
       "5–1440 นาที และเว้นระยะอย่างน้อย 6 ชั่วโมงระหว่างการตรวจแต่ละครั้ง",
     "settings.updateAutoLast": "ตรวจอัตโนมัติล่าสุด",
     "settings.updateAutoNever": "ยังไม่เคย",
-    "settings.updateAutoSave": "บันทึกการตั้งค่าอัตโนมัติ",
-    "settings.updateAutoSaved": "บันทึกการตั้งค่าตรวจสอบอัตโนมัติแล้ว",
-    "settings.updateAutoSaveFailed": "บันทึกการตั้งค่าตรวจสอบอัตโนมัติไม่สำเร็จ",
     "settings.updateAutoState":
       "จะตรวจสอบเมื่อไม่มีการใช้งาน {minutes} นาที (ตอนนี้ว่างมาแล้ว {idle} นาที)",
     "settings.updateAutoStateOff":
@@ -965,17 +962,13 @@ const I18N = {
       "An update is available ({count} files) — open Settings → Update to install it",
     "settings.updateAutoTitle": "Check automatically when the app is idle",
     "settings.updateAutoHint":
-      "Once nobody has used the app for the time below, the server checks for a new version by itself and reports it here. Nothing is installed until you press Update",
+      "Once nobody has used the app for the time below, the server checks for a new version by itself and reports it here. Nothing is installed until you press Update. Changes in this section are saved with the Save settings button below.",
     "settings.updateAutoToggle": "Enable the automatic check",
     "settings.updateAutoIdleLabel": "Idle time before checking (minutes)",
     "settings.updateAutoIdleHint":
       "5–1440 minutes, with at least 6 hours between automatic checks",
     "settings.updateAutoLast": "Last automatic check",
     "settings.updateAutoNever": "Never",
-    "settings.updateAutoSave": "Save automatic check settings",
-    "settings.updateAutoSaved": "Automatic check settings saved",
-    "settings.updateAutoSaveFailed":
-      "Could not save the automatic check settings",
     "settings.updateAutoState":
       "Checks after {minutes} minutes without use (idle for {idle} minutes now)",
     "settings.updateAutoStateOff":
@@ -3711,7 +3704,7 @@ function renderMemory() {
   $("memory-dreams").textContent =
     memoryEntriesCache.dreams || t("memory.noDreams");
 }
-function memoryNumber(id, fallback) {
+function numberValue(id, fallback) {
   const raw = $(id).value.trim();
   if (!raw) return fallback;
   const value = Number(raw);
@@ -4815,6 +4808,10 @@ async function loadSettings() {
   $("memory_provider").value = memory.provider || "";
   $("memory_model").value = memory.model || "";
   $("memory_base_url").value = memory.base_url || "";
+  const update = s.update || {};
+  $("update_auto_check").checked = update.auto_check !== false;
+  $("update_idle_minutes").value = update.idle_minutes ?? 30;
+  $("update_idle_minutes").disabled = !$("update_auto_check").checked;
   // The Memory panel shows the detected capabilities and paths; a status read
   // fills them without waiting for the user to open the Memory page.
   fetch("/api/memory/status")
@@ -4876,18 +4873,22 @@ function collectSettingsBody() {
     discord_allowed_channels: $("discord_allowed_channels").value,
     discord_allowed_users: $("discord_allowed_users").value,
     machine_access: $("machine_access").checked,
+    update: {
+      auto_check: $("update_auto_check").checked,
+      idle_minutes: numberValue("update_idle_minutes", 30),
+    },
     memory: {
       enabled: $("memory_enabled").checked,
       schedule: $("memory_schedule").value.trim(),
       window_end: $("memory_window_end").value.trim() || "06:00",
-      lookback_days: memoryNumber("memory_lookback", 7),
-      threshold: memoryNumber("memory_threshold", 0.65),
-      idle_minutes: memoryNumber("memory_idle", 15),
-      max_items: memoryNumber("memory_max_items", 25),
-      max_entries: memoryNumber("memory_max_entries", 200),
+      lookback_days: numberValue("memory_lookback", 7),
+      threshold: numberValue("memory_threshold", 0.65),
+      idle_minutes: numberValue("memory_idle", 15),
+      max_items: numberValue("memory_max_items", 25),
+      max_entries: numberValue("memory_max_entries", 200),
       retrieval: $("memory_retrieval").checked,
-      retrieval_items: memoryNumber("memory_retrieval_items", 4),
-      retrieval_chars: memoryNumber("memory_retrieval_chars", 800),
+      retrieval_items: numberValue("memory_retrieval_items", 4),
+      retrieval_chars: numberValue("memory_retrieval_chars", 800),
       include_locked: $("memory_include_locked").checked,
       llm: $("memory_llm").checked,
       provider: $("memory_provider").value,
@@ -4951,6 +4952,9 @@ $("save").addEventListener("click", async () => {
     );
     if (r.ok) {
       await loadSettings();
+      // The auto-check state line is built from /api/update, so it must pick up
+      // a changed idle time right after the save.
+      await loadUpdateState({ quiet: true });
       applyChatMeta({
         thinking_level: $("thinking_level").value,
         model: $("model_select").value === "__custom__"
@@ -5003,9 +5007,6 @@ const updateState = {
 let updatePollTimer = null;
 let updateLastLoadedAt = 0;
 let updateNotifiedAt = "";
-// While the user types in the auto-check fields, a background refresh must not
-// overwrite the unsaved values.
-let updateAutoDirty = false;
 function updateJobFinished() {
   return Boolean(updateState.job.finished_at);
 }
@@ -5136,13 +5137,6 @@ function renderUpdatePanel() {
   $("update-last-check").textContent =
     updateState.check.finished_at || t("settings.updateLastCheckNever");
   $("update-changes").textContent = updateChangesText();
-  if (!updateAutoDirty) {
-    $("update_auto_check").checked = updateState.auto.enabled !== false;
-    $("update_idle_minutes").value = updateMinutes(
-      updateState.auto.idle_minutes,
-    );
-  }
-  $("update_idle_minutes").disabled = !$("update_auto_check").checked;
   $("update-auto-last").textContent =
     updateState.auto.last_auto_check_at || t("settings.updateAutoNever");
   $("update-auto-state").textContent = updateAutoStateText();
@@ -5293,40 +5287,11 @@ async function startUpdate(mode) {
 }
 $("update-check").addEventListener("click", () => startUpdate("check"));
 $("update-run").addEventListener("click", () => startUpdate("apply"));
+// The idle check fields belong to the settings form, so the main Save button
+// stores them; this only keeps the number field enabled with the switch.
 $("update_auto_check").addEventListener("change", () => {
-  updateAutoDirty = true;
   $("update_idle_minutes").disabled = !$("update_auto_check").checked;
 });
-$("update_idle_minutes").addEventListener("input", () => {
-  updateAutoDirty = true;
-});
-async function saveUpdateAutoSettings() {
-  const button = $("update-auto-save");
-  button.disabled = true;
-  try {
-    const response = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        update: {
-          auto_check: $("update_auto_check").checked,
-          idle_minutes: Number($("update_idle_minutes").value) || 30,
-        },
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok)
-      throw new Error(data.error || t("settings.updateAutoSaveFailed"));
-    updateAutoDirty = false;
-    showNotice(t("settings.updateAutoSaved"));
-    await loadUpdateState({ quiet: true });
-  } catch (error) {
-    showNotice(error.message || t("settings.updateAutoSaveFailed"), true);
-  } finally {
-    button.disabled = false;
-  }
-}
-$("update-auto-save").addEventListener("click", saveUpdateAutoSettings);
 function refreshUpdateIfStale() {
   if (Date.now() - updateLastLoadedAt < UPDATE_ACTIVITY_REFRESH_MS) return;
   loadUpdateState({ quiet: true });

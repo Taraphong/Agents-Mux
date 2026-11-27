@@ -5010,15 +5010,6 @@ body:not(.light-theme) .history-actions .history-action:hover:not(:disabled) {
   display: block;
   line-height: 1.45;
 }
-.update-auto-controls {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-.update-auto-controls button {
-  justify-self: start;
-  min-height: 40px;
-}
 .update-steps {
   display: grid;
   gap: 10px;
