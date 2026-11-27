@@ -104,7 +104,7 @@ python app.py
 ## The chat page
 
 - **Provider, model, and thinking level** are chosen in Settings and can be overridden for the next message from the toolbar above the chat box.
-- **Command execution mode** sits next to them: `Ask first` (default) stops for approval before every tool call, while `Auto` and `Fast+` let the model use tools within the turn without that prompt when **Machine access** is off. With machine access on, every call asks regardless of the mode.
+- **Command execution mode** sits next to them: `Manual` (default) stops for approval before every tool call, while `Auto` runs tools within the turn without that prompt. **Machine access** still decides which paths and commands the tools may reach.
 - **Attachments:** text-like files up to 1 MB are read in the browser and sent as text. Images and PDFs up to 6 MB are sent inline; audio and video work only with Gemini, and PDFs work with Gemini or Anthropic.
 - Markdown rendering can be turned off in Settings. Messages can be copied; Enter sends and Shift+Enter adds a newline.
 

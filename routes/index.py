@@ -129,6 +129,17 @@ import uuid
 
 index_bp = Blueprint("index", __name__)
 
+# The chat box offers two modes: manual asks before every tool call, auto runs
+# the tool inside the turn. Older settings files still carry "ask" and "fast"
+# from the three-mode version, so they map onto the two modes instead of
+# falling back to a prompt the user did not choose.
+COMMAND_MODE_ALIASES = {"ask": "manual", "manual": "manual", "auto": "auto", "fast": "auto"}
+
+
+def normalize_command_mode(value: Any) -> str:
+    """Map a requested command mode to ``manual`` or ``auto``."""
+    return COMMAND_MODE_ALIASES.get(str(value or "").strip().lower(), "manual")
+
 
 @index_bp.get("/api/tools")
 def tools_get():
@@ -1431,9 +1442,7 @@ def chat():
         requested_model = body.get("model")
         if isinstance(requested_model, str) and requested_model.strip():
             settings["model"] = requested_model.strip()
-        command_mode = body.get("command_mode", settings.get("command_mode", "ask"))
-        if command_mode not in {"ask", "auto", "fast"}:
-            command_mode = "ask"
+        command_mode = normalize_command_mode(body.get("command_mode", settings.get("command_mode", "manual")))
         settings["system_prompt"] = build_system_prompt(settings, messages)
         provider = str(settings.get("provider", "openai")).lower()
         # Must run before clean_messages(), which keeps only role and content.
@@ -1516,10 +1525,9 @@ def chat():
                 (item for item in tool_requests if TOOL_ALIASES.get(item["name"], item["name"]) in required_tools),
                 None,
             )
-            # Machine access always asks, whatever the command mode says.
-            if approval_request and (
-                _machine_access or command_mode not in {"auto", "fast"}
-            ):
+            # Manual mode stops for an approval; auto mode runs the tool in
+            # this turn, whatever the machine-access setting says.
+            if approval_request and command_mode == "manual":
                 approval_id, approval_expires_at = request_tool_approval(approval_request["name"], approval_request["arguments"])
                 return jsonify({
                     "answer": APPROVAL_PLACEHOLDER,
@@ -1541,7 +1549,7 @@ def chat():
                 result = run_local_tool(
                     tool_request["name"],
                     tool_request["arguments"],
-                    approved=bool(approval_request),
+                    approved=command_mode == "auto" or bool(approval_request),
                 )
                 results.append(result)
             messages.extend([

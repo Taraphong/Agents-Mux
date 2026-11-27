@@ -35,7 +35,7 @@ DEFAULT_SETTINGS = {
     "top_p": 1,
     "stream": False,
     "thinking_level": "off",
-    "command_mode": "ask",
+    "command_mode": "manual",
     "fallback_enabled": False,
     "fallback_provider": os.getenv("AI_FALLBACK_PROVIDER", "openai"),
     "fallback_model": os.getenv("AI_FALLBACK_MODEL", ""),

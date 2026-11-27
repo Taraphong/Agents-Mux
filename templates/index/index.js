@@ -52,9 +52,8 @@ const I18N = {
     "chat.thinkingMedium": "กลาง",
     "chat.thinkingHigh": "สูง",
     "chat.commandModeTitle": "โหมดการรันคำสั่ง",
-    "chat.commandAsk": "ถามก่อน",
+    "chat.commandAsk": "แมนนวล",
     "chat.commandAuto": "อัตโนมัติ",
-    "chat.commandFast": "Fast+",
     "chat.modelTitle": "เลือกโมเดล",
     "chat.modelLoading": "กำลังโหลดโมเดล...",
     "chat.send": "ส่ง",
@@ -345,8 +344,8 @@ const I18N = {
     "settings.discordAllowedUsersHint": "เว้นว่างเพื่อให้ทุกคนในช่องที่อนุญาตใช้งานได้ ใส่ User ID คั่นด้วยจุลภาค (เปิด Developer Mode แล้วคลิกขวาที่ผู้ใช้ > Copy ID)",
     "settings.machineTitle": "สิทธิ์เข้าถึงเครื่อง",
     "settings.machineHint":
-      "ให้ agent เข้าถึงทุก path ในเครื่องและรันคำสั่งผ่าน shell จริง (รวม sudo ถ้าผู้ใช้ที่รันแอปมีสิทธิ์) ทุกการเรียกเครื่องมือจะขออนุมัติในแชตก่อนทุกครั้ง",
-    "settings.machineEnable": "ให้ agent เข้าถึงทั้งเครื่อง (ขออนุมัติทุกครั้ง)",
+      "ให้ agent เข้าถึงทุก path ในเครื่องและรันคำสั่งผ่าน shell จริง (รวม sudo ถ้าผู้ใช้ที่รันแอปมีสิทธิ์) โหมดแมนนวลจะขออนุมัติในแชตก่อนทุกครั้ง",
+    "settings.machineEnable": "ให้ agent เข้าถึงทั้งเครื่อง",
     "auth.title": "ความปลอดภัยและการจับคู่อุปกรณ์",
     "auth.hint":
       "เว็บนี้ต้องจับคู่อุปกรณ์ก่อนใช้งาน สร้าง Pairing Key จากฝั่ง server แล้วนำคีย์ไปใส่ที่หน้า /pair ของ client คีย์ใช้ได้ครั้งเดียวและมีอายุจำกัด",
@@ -690,9 +689,8 @@ const I18N = {
     "chat.thinkingMedium": "Medium",
     "chat.thinkingHigh": "High",
     "chat.commandModeTitle": "Command execution mode",
-    "chat.commandAsk": "Ask first",
+    "chat.commandAsk": "Manual",
     "chat.commandAuto": "Auto",
-    "chat.commandFast": "Fast+",
     "chat.modelTitle": "Choose model",
     "chat.modelLoading": "Loading models...",
     "chat.send": "Send",
@@ -985,8 +983,8 @@ const I18N = {
     "settings.discordAllowedUsersHint": "Leave blank to allow everyone in the allowed channels. Separate User IDs with commas (enable Developer Mode, then right-click a user > Copy ID).",
     "settings.machineTitle": "Machine access",
     "settings.machineHint":
-      "Let agents reach every path on this machine and run commands through a real shell (including sudo when the user running the app is allowed to). Every tool call asks for approval in the chat first.",
-    "settings.machineEnable": "Let agents reach the whole machine (approval every time)",
+      "Let agents reach every path on this machine and run commands through a real shell (including sudo when the user running the app is allowed to). Manual mode asks for approval in the chat first.",
+    "settings.machineEnable": "Let agents reach the whole machine",
     "auth.title": "Security and device pairing",
     "auth.hint":
       "This web app requires a paired device. Generate a Pairing Key on the server and enter it on the client's /pair page. Each key is single-use and expires.",
