@@ -143,13 +143,27 @@ def normalize_command_mode(value: Any) -> str:
 
 @index_bp.get("/api/tools")
 def tools_get():
-    """List the local tools, their scope, and which ones require approval."""
+    """List the local tools, their scope, and the approval policy of a mode.
+
+    ``approval_required`` follows the command mode, not machine access alone:
+    manual mode asks before a tool that can change the machine, auto mode never
+    asks. Pass ``?mode=auto`` (or ``command_mode=auto``) to describe another
+    mode; without it the saved ``command_mode`` applies.
+    """
     settings = load_settings()
-    required = approval_required_tools(settings)
+    command_mode = normalize_command_mode(
+        request.args.get("mode")
+        or request.args.get("command_mode")
+        or settings.get("command_mode", "manual")
+    )
     machine_access = machine_access_enabled(settings)
+    # Auto mode runs a tool inside the turn, so nothing stops for an approval.
+    required = approval_required_tools(settings) if command_mode == "manual" else set()
     return jsonify({
         "scope": "machine" if machine_access else str(PROJECT_ROOT),
         "machine_access": machine_access,
+        "command_mode": command_mode,
+        "modes": ["manual", "auto"],
         "tools": [
             {"name": "list_files", "approval_required": "list_files" in required},
             {"name": "read_file", "approval_required": "read_file" in required},
@@ -178,8 +192,16 @@ def tools_execute():
         log_event("tool.invalid", "Invalid tool payload")
         return jsonify({"ok": False, "error": status_message(request_language(), "tool_invalid_payload")}), 400
     canonical_name = TOOL_ALIASES.get(name, name)
-    approved = False
-    if canonical_name in approval_required_tools():
+    # Same policy /api/tools reports: an approval token is only needed in manual
+    # mode, while auto mode executes the tool inside the turn. The page's
+    # approve button sends no mode, so it keeps redeeming its token.
+    command_mode = normalize_command_mode(
+        body.get("command_mode")
+        or body.get("mode")
+        or load_settings().get("command_mode", "manual")
+    )
+    approved = command_mode == "auto"
+    if not approved and canonical_name in approval_required_tools():
         approved = consume_tool_approval(approval_id, name, arguments)
         if not approved:
             log_event("tool.denied", f"Denied {name} because there is no valid approval", tool=name)

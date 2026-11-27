@@ -138,3 +138,116 @@ def test_the_page_offers_exactly_the_two_modes():
 
     assert values == ["manual", "auto"]
     assert "Fast+" not in select
+
+
+def make_test_client(monkeypatch, settings):
+    """A bare app with the index blueprint, so no session hook is involved."""
+    import core.tools
+    import routes.index as index_routes
+    from flask import Flask
+
+    app = Flask(__name__)
+    app.register_blueprint(index_routes.index_bp)
+    monkeypatch.setattr(index_routes, "load_settings", lambda: settings)
+    monkeypatch.setattr(index_routes, "rate_limit_response", lambda *_a, **_k: None)
+    monkeypatch.setattr(index_routes, "log_event", lambda *_a, **_k: None)
+    monkeypatch.setattr(core.tools, "load_settings", lambda: settings)
+    return app.test_client()
+
+
+def tool_policy(client, query=""):
+    body = client.get(f"/api/tools{query}").get_json()
+    approvals = {item["name"]: item["approval_required"] for item in body["tools"]}
+    return body, approvals
+
+
+def test_tools_endpoint_reports_auto_mode(engine, monkeypatch):
+    client = make_test_client(monkeypatch, chat_settings())
+
+    body, approvals = tool_policy(client, "?mode=auto")
+
+    assert body["command_mode"] == "auto"
+    assert body["modes"] == ["manual", "auto"]
+    assert body["machine_access"] is True
+    # Machine access is on, which used to force an approval for every tool.
+    assert approvals["run_command"] is False
+    assert not any(approvals.values())
+
+
+def test_tools_endpoint_reports_manual_mode_with_machine_access(engine, monkeypatch):
+    client = make_test_client(monkeypatch, chat_settings())
+
+    body, approvals = tool_policy(client)
+
+    assert body["command_mode"] == "manual"
+    assert approvals["read_file"] is True
+    assert approvals["list_files"] is True
+    assert approvals["run_command"] is True
+    assert approvals["execute_command"] is True
+
+
+def test_tools_endpoint_follows_the_mode_without_machine_access(engine, monkeypatch):
+    settings = chat_settings()
+    settings["machine_access"] = False
+    client = make_test_client(monkeypatch, settings)
+
+    _body, manual = tool_policy(client, "?mode=manual")
+    _body, auto = tool_policy(client, "?command_mode=auto")
+
+    # Project scope: only the tools that change things ask, and auto asks none.
+    assert manual["list_files"] is False
+    assert manual["read_file"] is False
+    assert manual["run_command"] is True
+    assert manual["write_file"] is True
+    assert not any(auto.values())
+
+
+def test_tools_execute_auto_mode_needs_no_token(engine, monkeypatch):
+    import routes.index as index_routes
+
+    client = make_test_client(monkeypatch, chat_settings())
+    calls = []
+
+    def fake_tool(name, arguments, approved=False):
+        calls.append((name, approved))
+        return {"tool": name, "stdout": "/home/user"}
+
+    monkeypatch.setattr(index_routes, "run_local_tool", fake_tool)
+
+    response = client.post(
+        "/api/tools/execute",
+        json={
+            "name": "run_command",
+            "arguments": {"command": "pwd"},
+            "command_mode": "auto",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["ok"] is True
+    assert calls == [("run_command", True)]
+
+
+def test_tools_execute_manual_mode_still_needs_the_token(engine, monkeypatch):
+    import routes.index as index_routes
+
+    client = make_test_client(monkeypatch, chat_settings())
+    calls = []
+
+    def fake_tool(name, arguments, approved=False):
+        calls.append((name, approved))
+        return {"tool": name}
+
+    monkeypatch.setattr(index_routes, "run_local_tool", fake_tool)
+
+    response = client.post(
+        "/api/tools/execute",
+        json={
+            "name": "run_command",
+            "arguments": {"command": "pwd"},
+            "command_mode": "manual",
+        },
+    )
+
+    assert response.status_code == 403
+    assert calls == []
