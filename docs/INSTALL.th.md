@@ -160,7 +160,7 @@ bash install.sh
 | `AI_WEB_PAIRING_TTL_MINUTES`, `AI_WEB_SESSION_DAYS` | อายุ Pairing Key (30 นาที) และอายุ session (30 วัน) |
 | `AI_WEB_TRUST_PROXY` | `1` เมื่อมี reverse proxy ที่ terminate TLS |
 | `AI_WEB_TLS_CERT`, `AI_WEB_TLS_KEY`, `AI_WEB_TLS_ADHOC` | โหมด HTTPS |
-| `AI_WEB_ENABLE_SCHEDULER` | `1` เพื่อเปิดงานตามเวลาเมื่อรันใต้ WSGI |
+| `AI_WEB_ENABLE_SCHEDULER` | `1` เพื่อเปิดงานตามเวลาเมื่อรันใต้ WSGI, `0` เพื่อปิดเมื่อรันด้วย `python app.py` |
 | `PORT` | พอร์ตที่รับฟัง (ค่าเริ่มต้น `5000`) |
 
 ไฟล์ตัวอย่างยังมีตัวแปรเรื่องที่เก็บข้อมูลและขีดจำกัดด้วย (`AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_MAX_CONTENT_BYTES`, `AI_WEB_LOG_MAX_ENTRIES`, …)
@@ -350,7 +350,7 @@ Flask รันด้วย `debug=False` ให้รีสตาร์ตด�
 `401` หมายถึงอุปกรณ์ยังไม่จับคู่ `403` มักมาจากคำขอที่มาจาก origin อื่น `502`/`503` มาจากผู้ให้บริการ: ตรวจว่า API key ถูกต้อง `AI_PROVIDER` ตรงกับ key และ model ที่เลือกมีอยู่จริงสำหรับผู้ให้บริการนั้น (นี่คืออาการปกติของ Anthropic)
 
 **งานตามเวลาไม่รัน**
-Scheduler ทำงานเฉพาะขณะเซิร์ฟเวอร์ทำงาน ถ้ารันใต้ WSGI ภายนอกให้ตั้ง `AI_WEB_ENABLE_SCHEDULER=1`
+Scheduler ทำงานเฉพาะขณะเซิร์ฟเวอร์ทำงาน `python app.py` จะเริ่มให้ตามค่าเริ่มต้น ถ้าต้องการปิดให้ตั้ง `AI_WEB_ENABLE_SCHEDULER=0` และถ้ารันใต้ WSGI ภายนอกให้ตั้ง `AI_WEB_ENABLE_SCHEDULER=1`
 
 ---
 

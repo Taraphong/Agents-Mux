@@ -162,7 +162,7 @@ The values worth knowing:
 | `AI_WEB_PAIRING_TTL_MINUTES`, `AI_WEB_SESSION_DAYS` | Pairing Key lifetime (30 min) and session lifetime (30 days) |
 | `AI_WEB_TRUST_PROXY` | `1` when a reverse proxy terminates TLS |
 | `AI_WEB_TLS_CERT`, `AI_WEB_TLS_KEY`, `AI_WEB_TLS_ADHOC` | HTTPS mode |
-| `AI_WEB_ENABLE_SCHEDULER` | `1` to enable scheduled jobs under WSGI |
+| `AI_WEB_ENABLE_SCHEDULER` | `1` to enable scheduled jobs under WSGI, `0` to turn them off under `python app.py` |
 | `PORT` | Listen port (default `5000`) |
 
 The sample file also lists the storage-path and limit variables (`AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_MAX_CONTENT_BYTES`, `AI_WEB_LOG_MAX_ENTRIES`, …).
@@ -352,7 +352,7 @@ Flask runs with `debug=False`; restart it with `./start_web.sh --restart` (`.css
 `401` means the device is not paired. `403` usually means the request came from another origin. `502`/`503` come from the provider: check that the API key is valid, that `AI_PROVIDER` matches the key, and that the selected model exists for that provider (this is the usual Anthropic symptom).
 
 **Scheduled jobs do not run**
-The scheduler runs only while the server is running. Under an external WSGI server set `AI_WEB_ENABLE_SCHEDULER=1`.
+The scheduler runs only while the server is running. `python app.py` starts it by default; set `AI_WEB_ENABLE_SCHEDULER=0` to turn it off. Under an external WSGI server set `AI_WEB_ENABLE_SCHEDULER=1`.
 
 ---
 

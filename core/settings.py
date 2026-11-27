@@ -76,7 +76,7 @@ PROVIDER_BASE_URLS = {
     "or": "https://openrouter.ai/api/v1",
     "groq": "https://api.groq.com/openai/v1",
 }
-SETTINGS_LOCK = threading.Lock()
+SETTINGS_LOCK = threading.RLock()
 
 
 def normalize_update_settings(value: Any) -> dict[str, Any]:
@@ -178,21 +178,23 @@ def stored_custom_api_keys(settings: dict[str, Any]) -> dict[str, str]:
     return keys
 
 
-def migrate_legacy_api_key(settings: dict[str, Any]) -> dict[str, Any]:
-    """Move the old single api_key slot into the per-provider map, once."""
+def migrate_legacy_api_key(settings: dict[str, Any]) -> bool:
+    """Move the old single api_key slot into the per-provider map, once.
+
+    Returns True when a legacy key was migrated so the caller can persist the
+    settings after normalizing them; writing here would store raw custom keys
+    and an unclamped update block.
+    """
     if "api_keys" in settings:
         settings.pop("api_key", None)
-        return settings
+        return False
     legacy = str(settings.get("api_key") or "").strip()
     settings.pop("api_key", None)
     settings["api_keys"] = {}
-    if legacy:
-        settings["api_keys"][normalize_provider(settings.get("provider"))] = legacy
-        try:
-            save_settings(settings)
-        except OSError:
-            pass
-    return settings
+    if not legacy:
+        return False
+    settings["api_keys"][normalize_provider(settings.get("provider"))] = legacy
+    return True
 
 
 def load_settings() -> dict[str, Any]:
@@ -203,26 +205,33 @@ def load_settings() -> dict[str, Any]:
             settings.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError):
             pass
-    settings = migrate_legacy_api_key(settings)
+    migrated = migrate_legacy_api_key(settings)
     settings.pop("terminal_enabled", None)
     settings["custom_api_keys"] = stored_custom_api_keys(settings)
     settings["update"] = normalize_update_settings(settings.get("update"))
+    if migrated:
+        # Persist the migrated key only now that the rest is normalized.
+        try:
+            save_settings(settings)
+        except OSError:
+            pass
     return settings
 
 
 def save_settings(settings: dict[str, Any]) -> None:
     """Write the current settings atomically so readers never see a partial file."""
-    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = SETTINGS_FILE.with_name(f".{SETTINGS_FILE.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        payload = json.dumps(settings, ensure_ascii=False, indent=2).encode("utf-8")
-        descriptor = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(payload)
-        os.replace(temp_path, SETTINGS_FILE)
-    finally:
-        if temp_path.exists():
-            temp_path.unlink(missing_ok=True)
+    with SETTINGS_LOCK:
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = SETTINGS_FILE.with_name(f".{SETTINGS_FILE.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            payload = json.dumps(settings, ensure_ascii=False, indent=2).encode("utf-8")
+            descriptor = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(payload)
+            os.replace(temp_path, SETTINGS_FILE)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
     # A changed API key or base URL can change the model list, so drop the cached
     # ids Discord autocomplete answers from.
     forget_model_names()
