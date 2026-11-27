@@ -1774,6 +1774,10 @@ body.light-theme select option {
   flex: 1;
   background: rgba(255, 255, 255, 0.06);
 }
+.model-divider {
+  margin: 14px 0 18px;
+  text-transform: none;
+}
 .assistant-shell {
   display: flex;
   align-items: flex-start;
