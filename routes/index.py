@@ -170,6 +170,8 @@ def tools_get():
             {"name": "create_schedule", "approval_required": "create_schedule" in required},
             {"name": "list_schedules", "approval_required": "list_schedules" in required},
             {"name": "update_schedule", "approval_required": "update_schedule" in required},
+            {"name": "get_settings", "approval_required": "get_settings" in required},
+            {"name": "update_settings", "approval_required": "update_settings" in required},
             {"name": "execute_command", "alias_for": "run_command", "approval_required": "run_command" in required},
         ],
     })

@@ -59,6 +59,11 @@ from core.settings import (
     secret_values,
     stored_custom_api_keys,
 )
+from core.settings_update import (
+    SettingsUpdateError,
+    apply_agent_settings,
+    settings_snapshot,
+)
 from core.skills import save_skill, skill_path
 
 
@@ -443,6 +448,46 @@ def run_local_tool(name: str, arguments: dict[str, Any], approved: bool = False)
         }
         log_event("tool.success", f"Used {name}", tool=name, count=len(items))
         return result
+
+    if name == "get_settings":
+        # A masked report: the agent needs the current values to change them,
+        # never the stored keys. Reading is harmless, so it needs no approval.
+        snapshot = settings_snapshot()
+        log_event("tool.success", f"Used {name}", tool=name)
+        return {"tool": name, "settings": snapshot}
+
+    if name == "update_settings":
+        if not approved:
+            raise PermissionError("Changing settings needs approval first")
+        # Accept either {"settings": {...}} or the setting keys directly: a
+        # smaller model often puts them beside the tool name.
+        nested = arguments.get("settings")
+        body = nested if isinstance(nested, dict) else {
+            key: value for key, value in arguments.items() if key != "settings"
+        }
+        if not body:
+            raise ValueError(
+                'A settings object is required, for example {"settings":{"agent_name":"Mux"}}'
+            )
+        try:
+            updated, changed = apply_agent_settings(body)
+        except SettingsUpdateError as exc:
+            raise ValueError(str(exc)) from exc
+        if changed:
+            # Keep the Discord bot in step with a saved enable flag, like the
+            # page does. The import stays local: services.discord_bot imports
+            # this module, so a module-level import would be a cycle.
+            try:
+                from services.discord_bot import start_discord_bot, stop_discord_bot
+
+                if updated.get("discord_enabled"):
+                    start_discord_bot()
+                else:
+                    stop_discord_bot()
+            except Exception as exc:  # A bot restart must not undo a saved setting.
+                log_event("settings.discord_sync_failed", "Could not sync the Discord bot", error=str(exc)[:200])
+            log_event("settings.updated", "Updated settings with a tool call", keys=",".join(changed))
+        return {"tool": name, "updated": changed, "settings": settings_snapshot(updated)}
 
     if name == "update_schedule":
         if not approved:
