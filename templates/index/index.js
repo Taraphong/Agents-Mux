@@ -145,6 +145,7 @@ const I18N = {
     "chat.typingStillWorking": "AI ยังทำงานอยู่ กรุณารออีกนิด",
     "chat.typingElapsed": "· {seconds} วิ",
     "chat.fallbackUsed": " · สำรอง: {model}",
+    "chat.modelChanged": "สลับโมเดลเป็น {model}",
     "chat.newConversationTitle": "บทสนทนาใหม่",
     "chat.defaultAttachmentPrompt": "ช่วยวิเคราะห์ไฟล์แนบนี้ให้หน่อย",
     "chat.error": "เกิดข้อผิดพลาด",
@@ -782,6 +783,7 @@ const I18N = {
     "chat.typingStillWorking": "AI is still working — one moment",
     "chat.typingElapsed": "· {seconds}s",
     "chat.fallbackUsed": " · fallback: {model}",
+    "chat.modelChanged": "Model switched to {model}",
     "chat.newConversationTitle": "New conversation",
     "chat.defaultAttachmentPrompt": "Please analyze this attachment",
     "chat.error": "Something went wrong",
@@ -2091,7 +2093,27 @@ async function clearStoredApproval(id, messageId) {
     // cleanup only leaves a button that answers 403.
   }
 }
+// Model of the last reply shown in the open chat. It resets on every full
+// re-render so the divider is rebuilt from the saved messages in order.
+let lastRenderedModel = null;
+function addModelDivider(model) {
+  const divider = document.createElement("div");
+  divider.className = "session-divider model-divider";
+  const span = document.createElement("span");
+  span.textContent = t("chat.modelChanged", { model });
+  divider.appendChild(span);
+  $("messages").appendChild(divider);
+}
 function addMessage(role, content, meta = null, messageIndex = null) {
+  // A reply from another model is a boundary in the conversation: mark it once
+  // so a new model is never mistaken for the previous one. An approval prompt
+  // is page text, not a reply, so it does not open a section of its own.
+  const approvalPrompt = Boolean(meta?.approval_id && meta?.tool_request);
+  if (role === "assistant" && meta?.model && !approvalPrompt) {
+    const model = String(meta.model);
+    if (lastRenderedModel && model !== lastRenderedModel) addModelDivider(model);
+    lastRenderedModel = model;
+  }
   const el = document.createElement("div");
   el.className = `message ${role}`;
   const text = document.createElement("div");
@@ -3344,6 +3366,7 @@ async function sendChatMessage(
       message_id: newMessageId(),
       duration_ms: data.duration_ms,
       usage: data.usage,
+      model: data.model,
       tool_request: data.tool_request,
       approval_id: data.approval_id,
       approval_expires_at: data.approval_expires_at,
@@ -5685,6 +5708,7 @@ function renderMessages(keepTyping = false) {
   }
   const container = $("messages");
   container.innerHTML = "";
+  lastRenderedModel = null;
   const restoreIndicator = () => {
     if (!indicator) return;
     const label = indicator.querySelector(".typing-label");
