@@ -4,7 +4,10 @@ The idle check must wait for real inactivity, never replace a running job, and
 read its verdict from the markers update.sh prints.
 """
 
+import re
+
 import core.update_job as update_job
+from core.config import PROJECT_ROOT
 from core.settings import normalize_update_settings
 
 
@@ -79,6 +82,15 @@ def test_update_log_succeeded_accepts_a_check_that_found_changes(tmp_path, monke
 def test_update_log_succeeded_reports_a_failure(tmp_path, monkeypatch):
     tail = _write_log(tmp_path, monkeypatch, ["❌ Download failed: https://example.invalid"])
     assert update_job.update_log_succeeded(tail) is False
+
+
+def test_updater_ships_every_top_level_app_module():
+    """A top-level module the app imports must reach the installed copy."""
+    script = (PROJECT_ROOT / "update.sh").read_text(encoding="utf-8")
+    match = re.search(r'^APP_FILES="([^"]+)"', script, re.MULTILINE)
+    assert match, "APP_FILES is missing from update.sh"
+    shipped = set(match.group(1).split())
+    assert {"app.py", "memory_engine.py"} <= shipped
 
 
 def test_maybe_run_auto_check_waits_for_idle(monkeypatch):
