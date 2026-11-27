@@ -2096,13 +2096,39 @@ async function clearStoredApproval(id, messageId) {
 // Model of the last reply shown in the open chat. It resets on every full
 // re-render so the divider is rebuilt from the saved messages in order.
 let lastRenderedModel = null;
+function modelDisplayName(id) {
+  const value = String(id || "");
+  if (!value) return "";
+  // The model selector is the one source of readable names, so a divider
+  // shows the same label the user picked instead of the provider's raw id.
+  const match = currentChatModels.find(
+    (model) => (model.id || model) === value,
+  );
+  return match ? String(match.name || match.id || match) : value;
+}
 function addModelDivider(model) {
   const divider = document.createElement("div");
   divider.className = "session-divider model-divider";
+  divider.dataset.model = model;
   const span = document.createElement("span");
-  span.textContent = t("chat.modelChanged", { model });
+  span.textContent = t("chat.modelChanged", {
+    model: modelDisplayName(model),
+  });
   divider.appendChild(span);
   $("messages").appendChild(divider);
+}
+function refreshModelDividers() {
+  // The model list can arrive after the conversation is drawn (a reload, or a
+  // slow provider): relabel the dividers instead of re-rendering the chat.
+  document
+    .querySelectorAll("#messages .model-divider[data-model]")
+    .forEach((divider) => {
+      const span = divider.querySelector("span");
+      if (!span) return;
+      span.textContent = t("chat.modelChanged", {
+        model: modelDisplayName(divider.dataset.model),
+      });
+    });
 }
 function addMessage(role, content, meta = null, messageIndex = null) {
   // A reply from another model is a boundary in the conversation: mark it once
@@ -4194,6 +4220,7 @@ function updateChatModelOptions(models, selected = "") {
     select.value = selected;
     currentChatModels = [];
     currentChatSelected = selected;
+    refreshModelDividers();
     return;
   }
   select.innerHTML = choices
@@ -4215,6 +4242,7 @@ function updateChatModelOptions(models, selected = "") {
   if (selected) select.value = selected;
   currentChatModels = choices;
   currentChatSelected = select.value;
+  refreshModelDividers();
 }
 function updateSendState() {
   const isCommand = $("input").value.trim().startsWith("/");
