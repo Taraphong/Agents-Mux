@@ -95,7 +95,7 @@ python app.py
 | `AI_WEB_SESSION_DAYS` | Paired-device session lifetime (default `30`) |
 | `AI_WEB_TRUST_PROXY` | Set to `1` behind a TLS-terminating reverse proxy |
 | `AI_WEB_TLS_CERT`, `AI_WEB_TLS_KEY`, `AI_WEB_TLS_ADHOC` | HTTPS mode |
-| `AI_WEB_ENABLE_SCHEDULER` | Set to `1` to enable the scheduler under WSGI |
+| `AI_WEB_ENABLE_SCHEDULER` | Set to `1` to enable the scheduler under WSGI, or `0` to turn it off when running `python app.py` |
 | `AI_WEB_MAX_CONTENT_BYTES` | Request body cap (default 8 MB) |
 | `AI_WEB_LOG_MAX_ENTRIES` | In-memory log window (default `1000`) |
 | `AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_SCHEDULE_FILE`, `AI_WEB_WORKSPACE_DIR` | Storage path overrides |
@@ -196,7 +196,7 @@ The **Schedule** page stores cron-style jobs (5-field cron) in `scheduled-jobs.j
 - Each job has a name, schedule, prompt, optional model, enable flag, and an optional Discord channel ID for the result.
 - A job runs unattended, so it may call tools itself without a chat approval (at most 6 tool rounds per run). Only a real final answer is saved and posted; an approval placeholder, an unreadable tool call, or an empty reply is recorded as a failed run with a reason instead of being sent.
 - Jobs keep their own conversation in the history, with the last run time, status, and error.
-- `AI_WEB_ENABLE_SCHEDULER=1` enables the scheduler when the app runs under an external WSGI server.
+- `AI_WEB_ENABLE_SCHEDULER` controls the background loops. Running `python app.py` starts them by default; set it to `0` to turn the scheduler, memory consolidation, and the idle update check off. Under an external WSGI server they stay off unless it is set to `1`.
 
 ## Memory consolidation
 

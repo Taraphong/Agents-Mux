@@ -94,7 +94,7 @@ python app.py
 | `AI_WEB_SESSION_DAYS` | อายุ session ของอุปกรณ์ (ค่าเริ่มต้น `30` วัน) |
 | `AI_WEB_TRUST_PROXY` | ตั้งเป็น `1` เมื่อมี reverse proxy ที่ terminate TLS |
 | `AI_WEB_TLS_CERT`, `AI_WEB_TLS_KEY`, `AI_WEB_TLS_ADHOC` | โหมด HTTPS |
-| `AI_WEB_ENABLE_SCHEDULER` | ตั้งเป็น `1` เพื่อเปิด Scheduler เมื่อรันใต้ WSGI |
+| `AI_WEB_ENABLE_SCHEDULER` | ตั้งเป็น `1` เพื่อเปิด Scheduler เมื่อรันใต้ WSGI หรือ `0` เพื่อปิดเมื่อรันด้วย `python app.py` |
 | `AI_WEB_MAX_CONTENT_BYTES` | ขนาดสูงสุดของ request body (ค่าเริ่มต้น 8 MB) |
 | `AI_WEB_LOG_MAX_ENTRIES` | จำนวนรายการ log ในหน่วยความจำ (ค่าเริ่มต้น `1000`) |
 | `AI_WEB_LOG_FILE`, `AI_WEB_SETTINGS_FILE`, `AI_WEB_HISTORY_DIR`, `AI_WEB_SKILLS_DIR`, `AI_WEB_SCHEDULE_FILE`, `AI_WEB_WORKSPACE_DIR` | เปลี่ยนที่เก็บข้อมูล |
@@ -195,7 +195,7 @@ llm-wiki/
 - แต่ละงานมีชื่อ, ตารางเวลา, prompt, model (ไม่บังคับ), สถานะเปิด/ปิด และ Discord Channel ID (ไม่บังคับ) สำหรับส่งผลลัพธ์
 - งานรันเองโดยไม่มีคนดูแล จึงเรียกเครื่องมือได้เองโดยไม่ต้องอนุมัติในแชต (ไม่เกิน 6 รอบต่อการรัน) และจะบันทึก/ส่งเฉพาะคำตอบจริงเท่านั้น ถ้าได้ข้อความ placeholder, tool call ที่อ่านไม่ได้ หรือคำตอบว่าง งานจะถูกบันทึกเป็นล้มเหลวพร้อมเหตุผลและไม่ส่งเข้า Discord
 - งานแต่ละงานมีบทสนทนาของตัวเองในประวัติ พร้อมเวลาและสถานะการรันครั้งล่าสุดและข้อผิดพลาด
-- `AI_WEB_ENABLE_SCHEDULER=1` เปิด Scheduler เมื่อแอปรันใต้ WSGI ภายนอก
+- `AI_WEB_ENABLE_SCHEDULER` ควบคุมงานพื้นหลัง เมื่อรันด้วย `python app.py` งานจะเริ่มทำงานตามค่าเริ่มต้น ถ้าตั้งเป็น `0` จะปิด Scheduler, การรวมความจำ และการเช็กอัปเดตตอน idle ส่วนเมื่อรันใต้ WSGI ภายนอกจะไม่ทำงานจนกว่าจะตั้งเป็น `1`
 
 ## ระบบความจำ
 

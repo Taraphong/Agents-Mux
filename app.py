@@ -165,11 +165,42 @@ def auth_cli(argv: list[str]) -> bool:
     return True
 
 
-if os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower() in {"1", "true", "yes"}:
+SCHEDULER_ON_VALUES = {"1", "true", "yes", "on"}
+SCHEDULER_OFF_VALUES = {"0", "false", "no", "off"}
+
+
+def scheduler_switch() -> bool | None:
+    """Read AI_WEB_ENABLE_SCHEDULER: True/False when set, None when empty."""
+    value = os.getenv("AI_WEB_ENABLE_SCHEDULER", "").strip().lower()
+    if value in SCHEDULER_ON_VALUES:
+        return True
+    if value in SCHEDULER_OFF_VALUES:
+        return False
+    return None
+
+
+def start_background_tasks(default: bool = False) -> None:
+    """Start the cron, memory and idle-update loops when the switch allows it.
+
+    The loops are idempotent, so both entry points can call this. ``python
+    app.py`` passes ``default=True`` because the app owns its process: the loops
+    run unless ``AI_WEB_ENABLE_SCHEDULER`` turns them off. An external WSGI
+    server only imports the module (``default=False``), so it must opt in with
+    ``AI_WEB_ENABLE_SCHEDULER=1``.
+    """
+    enabled = scheduler_switch()
+    if enabled is None:
+        enabled = default
+    if not enabled:
+        return
     start_scheduler()
     memory_engine.start_scheduler()
     # The idle update check follows the same switch: it is a background task.
     start_update_watcher()
+
+
+# WSGI imports start the loops only when AI_WEB_ENABLE_SCHEDULER=1.
+start_background_tasks()
 
 app.register_blueprint(pair_bp)
 app.register_blueprint(index_bp)
@@ -178,9 +209,8 @@ app.register_blueprint(index_bp)
 if __name__ == "__main__":
     if auth_cli(sys.argv[1:]):
         raise SystemExit(0)
-    start_scheduler()
-    memory_engine.start_scheduler()
-    start_update_watcher()
+    # Running our own server: the loops are on unless the switch disables them.
+    start_background_tasks(default=True)
     start_discord_bot()
     print_pairing_banner(bootstrap_pairing_key())
     port = int(os.getenv("PORT", "5000"))
