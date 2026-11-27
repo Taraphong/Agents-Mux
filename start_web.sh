@@ -72,6 +72,39 @@ else
   PYTHON="$(command -v python3 || command -v python || true)"
 fi
 
+# Modules app.py imports before it can run. A missing package used to make the
+# start fail with a ModuleNotFoundError traceback appended to logs/ai-web.log —
+# for example `--start` before install.sh installed the dependencies, or a
+# .venv rebuilt by another Python version, which keeps the packages in a
+# different lib/pythonX.Y folder. Asking the interpreter first turns that into
+# one readable line and keeps the log free of stack traces.
+REQUIRED_MODULES="flask requests dotenv"
+
+missing_modules() {
+  "$PYTHON" - "$REQUIRED_MODULES" <<'PY' 2>/dev/null
+import importlib
+import sys
+
+missing = []
+for name in sys.argv[1].split():
+    try:
+        importlib.import_module(name)
+    except Exception:
+        missing.append(name)
+print(" ".join(missing))
+PY
+}
+
+require_dependencies() {
+  local missing
+  missing="$(missing_modules 2>/dev/null)" || missing=""
+  [ -n "$missing" ] || return 0
+  echo "❌ Cannot start the server: $PYTHON cannot import $missing"
+  echo "   Install the packages:  $PYTHON -m pip install -r $APP_DIR/requirements.txt"
+  echo "   or run the installer:  bash $APP_DIR/install.sh"
+  return 1
+}
+
 server_pids() {
   local pid cwd
   for pid in $(pgrep -f "$SERVER_PATTERN" 2>/dev/null || true); do
@@ -231,6 +264,9 @@ start_server() {
     echo "❌ Port $PORT is already in use by another program — stop it or run with PORT=<free port>"
     return 1
   fi
+  if ! require_dependencies; then
+    return 1
+  fi
   cd "$APP_DIR" || return 1
   mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
   # Only the output of this attempt is useful when it fails; older tracebacks
@@ -361,6 +397,9 @@ make_cert() {
 pair_device() {
   if [ -z "$PYTHON" ]; then
     echo "❌ python3 or .venv/bin/python not found"
+    return 1
+  fi
+  if ! require_dependencies; then
     return 1
   fi
   cd "$APP_DIR" || return 1

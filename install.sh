@@ -88,6 +88,14 @@ info "Updating pip"
 info "Installing dependencies from requirements.txt (this may take a while)"
 "$VENV_PY" -m pip install --quiet -r requirements.txt || die "Failed to install dependencies — check your internet connection and try again"
 
+# pip can succeed while the interpreter still cannot import the packages (a
+# .venv rebuilt by another Python version keeps the old ones in a different
+# lib/pythonX.Y folder). Stop here with one line instead of letting the first
+# start write a ModuleNotFoundError traceback into logs/ai-web.log.
+if ! "$VENV_PY" -c 'import flask, requests, dotenv' >/dev/null 2>&1; then
+  die "Dependencies are installed but not importable by $VENV_PY — run: $VENV_PY -m pip install -r requirements.txt"
+fi
+
 # ---------- 4. Configuration file and folders ----------
 if [ ! -f .env ]; then
   (umask 077; cp .env.example .env; chmod 600 .env)
