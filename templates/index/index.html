@@ -300,14 +300,11 @@
                       title="โหมดการรันคำสั่ง"
                       data-i18n-title="chat.commandModeTitle"
                     >
-                      <option value="ask" data-i18n="chat.commandAsk">
-                        ถามก่อน
+                      <option value="manual" data-i18n="chat.commandAsk">
+                        แมนนวล
                       </option>
                       <option value="auto" data-i18n="chat.commandAuto">
                         อัตโนมัติ
-                      </option>
-                      <option value="fast" data-i18n="chat.commandFast">
-                        Fast+
                       </option>
                     </select>
                     <span id="attachment-chip" class="attachment-chip" hidden>
@@ -1013,12 +1010,12 @@
                     <p class="hint" data-i18n="settings.machineHint">
                       ให้ agent เข้าถึงทุก path ในเครื่องและรันคำสั่งผ่าน shell
                       จริง (รวม sudo ถ้าผู้ใช้ที่รันแอปมีสิทธิ์)
-                      ทุกการเรียกเครื่องมือจะขออนุมัติในแชตก่อนทุกครั้ง
+                      โหมดแมนนวลจะขออนุมัติในแชตก่อนทุกครั้ง
                     </p>
                     <label class="toggle"
                       ><input id="machine_access" type="checkbox" /><span
                         data-i18n="settings.machineEnable"
-                        >ให้ agent เข้าถึงทั้งเครื่อง (ขออนุมัติทุกครั้ง)</span
+                        >ให้ agent เข้าถึงทั้งเครื่อง</span
                       ></label
                     >
                   </div>

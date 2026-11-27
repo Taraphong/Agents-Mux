@@ -129,16 +129,41 @@ import uuid
 
 index_bp = Blueprint("index", __name__)
 
+# The chat box offers two modes: manual asks before every tool call, auto runs
+# the tool inside the turn. Older settings files still carry "ask" and "fast"
+# from the three-mode version, so they map onto the two modes instead of
+# falling back to a prompt the user did not choose.
+COMMAND_MODE_ALIASES = {"ask": "manual", "manual": "manual", "auto": "auto", "fast": "auto"}
+
+
+def normalize_command_mode(value: Any) -> str:
+    """Map a requested command mode to ``manual`` or ``auto``."""
+    return COMMAND_MODE_ALIASES.get(str(value or "").strip().lower(), "manual")
+
 
 @index_bp.get("/api/tools")
 def tools_get():
-    """List the local tools, their scope, and which ones require approval."""
+    """List the local tools, their scope, and the approval policy of a mode.
+
+    ``approval_required`` follows the command mode, not machine access alone:
+    manual mode asks before a tool that can change the machine, auto mode never
+    asks. Pass ``?mode=auto`` (or ``command_mode=auto``) to describe another
+    mode; without it the saved ``command_mode`` applies.
+    """
     settings = load_settings()
-    required = approval_required_tools(settings)
+    command_mode = normalize_command_mode(
+        request.args.get("mode")
+        or request.args.get("command_mode")
+        or settings.get("command_mode", "manual")
+    )
     machine_access = machine_access_enabled(settings)
+    # Auto mode runs a tool inside the turn, so nothing stops for an approval.
+    required = approval_required_tools(settings) if command_mode == "manual" else set()
     return jsonify({
         "scope": "machine" if machine_access else str(PROJECT_ROOT),
         "machine_access": machine_access,
+        "command_mode": command_mode,
+        "modes": ["manual", "auto"],
         "tools": [
             {"name": "list_files", "approval_required": "list_files" in required},
             {"name": "read_file", "approval_required": "read_file" in required},
@@ -167,8 +192,16 @@ def tools_execute():
         log_event("tool.invalid", "Invalid tool payload")
         return jsonify({"ok": False, "error": status_message(request_language(), "tool_invalid_payload")}), 400
     canonical_name = TOOL_ALIASES.get(name, name)
-    approved = False
-    if canonical_name in approval_required_tools():
+    # Same policy /api/tools reports: an approval token is only needed in manual
+    # mode, while auto mode executes the tool inside the turn. The page's
+    # approve button sends no mode, so it keeps redeeming its token.
+    command_mode = normalize_command_mode(
+        body.get("command_mode")
+        or body.get("mode")
+        or load_settings().get("command_mode", "manual")
+    )
+    approved = command_mode == "auto"
+    if not approved and canonical_name in approval_required_tools():
         approved = consume_tool_approval(approval_id, name, arguments)
         if not approved:
             log_event("tool.denied", f"Denied {name} because there is no valid approval", tool=name)
@@ -1431,9 +1464,7 @@ def chat():
         requested_model = body.get("model")
         if isinstance(requested_model, str) and requested_model.strip():
             settings["model"] = requested_model.strip()
-        command_mode = body.get("command_mode", settings.get("command_mode", "ask"))
-        if command_mode not in {"ask", "auto", "fast"}:
-            command_mode = "ask"
+        command_mode = normalize_command_mode(body.get("command_mode", settings.get("command_mode", "manual")))
         settings["system_prompt"] = build_system_prompt(settings, messages)
         provider = str(settings.get("provider", "openai")).lower()
         # Must run before clean_messages(), which keeps only role and content.
@@ -1516,10 +1547,9 @@ def chat():
                 (item for item in tool_requests if TOOL_ALIASES.get(item["name"], item["name"]) in required_tools),
                 None,
             )
-            # Machine access always asks, whatever the command mode says.
-            if approval_request and (
-                _machine_access or command_mode not in {"auto", "fast"}
-            ):
+            # Manual mode stops for an approval; auto mode runs the tool in
+            # this turn, whatever the machine-access setting says.
+            if approval_request and command_mode == "manual":
                 approval_id, approval_expires_at = request_tool_approval(approval_request["name"], approval_request["arguments"])
                 return jsonify({
                     "answer": APPROVAL_PLACEHOLDER,
@@ -1541,7 +1571,7 @@ def chat():
                 result = run_local_tool(
                     tool_request["name"],
                     tool_request["arguments"],
-                    approved=bool(approval_request),
+                    approved=command_mode == "auto" or bool(approval_request),
                 )
                 results.append(result)
             messages.extend([
